@@ -39,7 +39,10 @@ RUN apk add --no-cache openssl
 # End: Fix required for Prisma on Alpine
 
 # Copy public assets
+# Copy public assets
 COPY --from=builder /app/public ./public
+# Create uploads directory and set permissions (ensures volume inherits this owner)
+RUN mkdir -p ./public/uploads && chown -R nextjs:nodejs ./public
 
 # Copy standalone output
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
