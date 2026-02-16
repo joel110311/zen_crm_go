@@ -119,8 +119,6 @@ export function FunnelEditorDialog({
             const res = await createPipelineStage({
                 name: newStageName,
                 color: STAGE_COLORS[Math.floor(Math.random() * STAGE_COLORS.length)],
-                // Place it before the first closed stage, or at end if none
-                order: editingStages.length,
             });
             if (res.success) {
                 setNewStageName("");

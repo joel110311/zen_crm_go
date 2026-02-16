@@ -356,8 +356,8 @@ export function BigCalendar({ initialEvents, onSelectSlot, onSelectEvent }: BigC
             <DragAndDropCalendar
                 localizer={localizer}
                 events={events}
-                startAccessor="start"
-                endAccessor="end"
+                startAccessor={(event: any) => event.start}
+                endAccessor={(event: any) => event.end}
                 style={{ height: "100%" }}
                 views={[Views.MONTH, Views.WEEK, Views.DAY]}
                 view={view}
@@ -381,7 +381,7 @@ export function BigCalendar({ initialEvents, onSelectSlot, onSelectEvent }: BigC
                 }}
                 components={{
                     toolbar: CustomToolbar,
-                    event: CustomEvent
+                    event: CustomEvent as any
                 }}
                 culture="es"
                 step={15}
