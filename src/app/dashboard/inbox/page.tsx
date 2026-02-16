@@ -75,17 +75,27 @@ function getLastMessagePreview(conv: Conversation): string {
 }
 
 // ──────────── Media Renderer ────────────
+function getCleanMediaUrl(url: string | null | undefined): string | undefined {
+    if (!url) return undefined;
+    // Fix legacy localhost URLs when in production (Mixed Content fix)
+    if (typeof window !== "undefined" && window.location.hostname !== "localhost" && url.includes("localhost:3000")) {
+        return url.replace("http://localhost:3000", "");
+    }
+    return url;
+}
+
 function MediaContent({ msg }: { msg: Message }) {
     const isOutbound = msg.direction === "outbound";
+    const cleanUrl = getCleanMediaUrl(msg.mediaUrl);
 
-    if (msg.type === "image" && msg.mediaUrl) {
+    if (msg.type === "image" && cleanUrl) {
         return (
             <div className="space-y-1">
                 <img
-                    src={msg.mediaUrl}
+                    src={cleanUrl}
                     alt={msg.content || "Image"}
                     className="max-w-[280px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                    onClick={() => window.open(msg.mediaUrl!, "_blank")}
+                    onClick={() => window.open(cleanUrl, "_blank")}
                     loading="lazy"
                 />
                 {msg.content && !["[Imagen]", "[Sticker]", "[image]"].includes(msg.content) && (
@@ -95,29 +105,29 @@ function MediaContent({ msg }: { msg: Message }) {
         );
     }
 
-    if (msg.type === "audio" && msg.mediaUrl) {
+    if (msg.type === "audio" && cleanUrl) {
         return (
             <audio controls className="max-w-[250px]" preload="metadata">
-                <source src={msg.mediaUrl} type={msg.mediaType || "audio/ogg"} />
+                <source src={cleanUrl} type={msg.mediaType || "audio/ogg"} />
             </audio>
         );
     }
 
-    if (msg.type === "video" && msg.mediaUrl) {
+    if (msg.type === "video" && cleanUrl) {
         return (
             <div className="space-y-1">
                 <video controls className="max-w-[280px] rounded-lg" preload="metadata">
-                    <source src={msg.mediaUrl} type={msg.mediaType || "video/mp4"} />
+                    <source src={cleanUrl} type={msg.mediaType || "video/mp4"} />
                 </video>
                 {msg.content && msg.content !== "[Video]" && <p className="text-sm">{msg.content}</p>}
             </div>
         );
     }
 
-    if (msg.type === "document" && msg.mediaUrl) {
+    if (msg.type === "document" && cleanUrl) {
         return (
             <a
-                href={msg.mediaUrl}
+                href={cleanUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className={cn(
