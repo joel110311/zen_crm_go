@@ -4,27 +4,51 @@ services:
   zen-crm:
     image: ghcr.io/joel110311/zen_crm:latest
     environment:
-      # Connects to your existing shared PostgreSQL on SociosNet
-      # You must create the database first: CREATE DATABASE zencrm;
-      - DATABASE_URL=postgresql://postgres:950b719a13e682e057b42c7b11dd5516@postgres:5432/zencrm
+      # Each CRM deployment gets its own dedicated database
+      - DATABASE_URL=postgresql://zencrm:CHANGE_ME_SECURE_PASSWORD@zen-crm-db:5432/zencrm
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - YCLOUD_API_KEY=${YCLOUD_API_KEY:-}
       - YCLOUD_WHATSAPP_PHONE_ID=${YCLOUD_WHATSAPP_PHONE_ID:-}
       - META_VERIFY_TOKEN=${META_VERIFY_TOKEN:-}
     networks:
       - SociosNet
+    depends_on:
+      - zen-crm-db
     deploy:
       replicas: 1
       restart_policy:
         condition: on-failure
       labels:
         - "traefik.enable=true"
-        # Both domains point to the same container
         - "traefik.http.routers.zen-crm.rule=Host(`crm.logicapp.net`) || Host(`apicrm.logicapp.net`)"
         - "traefik.http.routers.zen-crm.entrypoints=websecure"
         - "traefik.http.routers.zen-crm.tls.certresolver=letsencryptresolver"
         - "traefik.http.services.zen-crm.loadbalancer.server.port=3000"
         - "traefik.docker.network=SociosNet"
+
+  # Dedicated pgvector Database (one per CRM tenant)
+  zen-crm-db:
+    image: pgvector/pgvector:pg16
+    environment:
+      - POSTGRES_USER=zencrm
+      - POSTGRES_PASSWORD=CHANGE_ME_SECURE_PASSWORD
+      - POSTGRES_DB=zencrm
+    volumes:
+      - zen_crm_db_data:/var/lib/postgresql/data
+    networks:
+      - SociosNet
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+
+volumes:
+  zen_crm_db_data:
+
 
 networks:
   SociosNet:
