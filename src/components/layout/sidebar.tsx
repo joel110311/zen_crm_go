@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
+import { ZenLogo } from "@/components/icons/zen-logo";
 
 const sidebarNavItems = [
     {
@@ -84,7 +85,7 @@ export function Sidebar({ className }: SidebarProps) {
             <div className={cn("hidden border-r bg-card md:block w-64 flex-col", className)}>
                 <div className="flex h-16 items-center px-6 border-b">
                     <Link href="/dashboard" className="flex items-center gap-2 font-bold text-xl text-primary">
-                        <BrainCircuit className="h-6 w-6" />
+                        <ZenLogo className="h-7 w-7" />
                         <span>Zen CRM</span>
                     </Link>
                 </div>
@@ -127,7 +128,7 @@ function MobileSidebarContent({ pathname, setOpen }: { pathname: string, setOpen
         <div className="flex flex-col h-full">
             <div className="flex h-16 items-center px-6 border-b">
                 <span className="font-bold text-xl text-primary flex items-center gap-2">
-                    <BrainCircuit className="h-6 w-6" />
+                    <ZenLogo className="h-7 w-7" />
                     Zen CRM
                 </span>
             </div>
