@@ -7,61 +7,31 @@ interface ZenLogoProps {
 }
 
 export function ZenLogo({ className }: ZenLogoProps) {
+    // Selected Logo: "Candlestick Zen" (Wall Street + Zen)
     return (
         <svg
             viewBox="0 0 100 100"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
-            className={cn("h-8 w-8", className)}
+            className={cn("h-auto w-auto", className)}
         >
-            {/* Bottom stone (largest) */}
-            <ellipse
-                cx="50"
-                cy="78"
-                rx="32"
-                ry="14"
-                className="fill-primary"
-            />
-            {/* Middle stone */}
-            <ellipse
-                cx="50"
-                cy="55"
-                rx="24"
-                ry="11"
-                className="fill-primary/80"
-            />
-            {/* Top stone (smallest) */}
-            <ellipse
-                cx="50"
-                cy="36"
-                rx="16"
-                ry="9"
-                className="fill-primary/60"
-            />
+            {/* Background Grid Hint */}
+            <path d="M20 20 L20 80 L80 80" className="stroke-primary/10" strokeWidth="2" strokeLinecap="round" />
 
-            {/* Network dots */}
-            <circle cx="18" cy="40" r="3.5" className="fill-primary" />
-            <circle cx="82" cy="40" r="3.5" className="fill-primary" />
-            <circle cx="26" cy="22" r="3" className="fill-primary/80" />
-            <circle cx="74" cy="22" r="3" className="fill-primary/80" />
-            <circle cx="50" cy="14" r="3.5" className="fill-primary" />
-            <circle cx="14" cy="62" r="3" className="fill-primary/70" />
-            <circle cx="86" cy="62" r="3" className="fill-primary/70" />
+            {/* Candle 1 (Low) */}
+            <line x1="35" y1="65" x2="35" y2="85" className="stroke-primary/40" strokeWidth="1" />
+            <rect x="30" y="65" width="10" height="15" rx="1" className="fill-primary/40" />
+            <line x1="35" y1="65" x2="35" y2="60" className="stroke-primary/40" strokeWidth="1" />
 
-            {/* Network lines connecting dots to stones */}
-            <line x1="18" y1="40" x2="26" y2="47" className="stroke-primary/40" strokeWidth="1.2" />
-            <line x1="82" y1="40" x2="74" y2="47" className="stroke-primary/40" strokeWidth="1.2" />
-            <line x1="26" y1="22" x2="34" y2="30" className="stroke-primary/40" strokeWidth="1.2" />
-            <line x1="74" y1="22" x2="66" y2="30" className="stroke-primary/40" strokeWidth="1.2" />
-            <line x1="50" y1="14" x2="50" y2="27" className="stroke-primary/40" strokeWidth="1.2" />
-            <line x1="26" y1="22" x2="50" y2="14" className="stroke-primary/30" strokeWidth="1" />
-            <line x1="74" y1="22" x2="50" y2="14" className="stroke-primary/30" strokeWidth="1" />
-            <line x1="18" y1="40" x2="26" y2="22" className="stroke-primary/30" strokeWidth="1" />
-            <line x1="82" y1="40" x2="74" y2="22" className="stroke-primary/30" strokeWidth="1" />
-            <line x1="14" y1="62" x2="18" y2="40" className="stroke-primary/30" strokeWidth="1" />
-            <line x1="86" y1="62" x2="82" y2="40" className="stroke-primary/30" strokeWidth="1" />
-            <line x1="14" y1="62" x2="22" y2="70" className="stroke-primary/30" strokeWidth="1" />
-            <line x1="86" y1="62" x2="78" y2="70" className="stroke-primary/30" strokeWidth="1" />
+            {/* Candle 2 (Mid) */}
+            <line x1="55" y1="45" x2="55" y2="70" className="stroke-primary/60" strokeWidth="1" />
+            <rect x="50" y="45" width="10" height="20" rx="1" className="fill-primary/60" />
+            <line x1="55" y1="45" x2="55" y2="35" className="stroke-primary/60" strokeWidth="1" />
+
+            {/* Candle 3 (High) */}
+            <line x1="75" y1="20" x2="75" y2="50" className="stroke-primary" strokeWidth="1" />
+            <rect x="70" y="20" width="10" height="25" rx="1" className="fill-primary" />
+            <line x1="75" y1="20" x2="75" y2="10" className="stroke-primary" strokeWidth="1" />
         </svg>
     );
 }

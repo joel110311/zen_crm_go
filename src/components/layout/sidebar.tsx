@@ -84,8 +84,8 @@ export function Sidebar({ className }: SidebarProps) {
 
             <div className={cn("hidden border-r bg-card md:block w-64 flex-col", className)}>
                 <div className="flex h-16 items-center px-6 border-b">
-                    <Link href="/dashboard" className="flex items-center gap-2 font-bold text-xl text-primary">
-                        <ZenLogo className="h-7 w-7" />
+                    <Link href="/dashboard" className="flex items-center gap-3 font-bold text-xl text-primary">
+                        <ZenLogo className="h-12 w-12" />
                         <span>Zen CRM</span>
                     </Link>
                 </div>
@@ -127,8 +127,8 @@ function MobileSidebarContent({ pathname, setOpen }: { pathname: string, setOpen
     return (
         <div className="flex flex-col h-full">
             <div className="flex h-16 items-center px-6 border-b">
-                <span className="font-bold text-xl text-primary flex items-center gap-2">
-                    <ZenLogo className="h-7 w-7" />
+                <span className="font-bold text-xl text-primary flex items-center gap-3">
+                    <ZenLogo className="h-12 w-12" />
                     Zen CRM
                 </span>
             </div>
