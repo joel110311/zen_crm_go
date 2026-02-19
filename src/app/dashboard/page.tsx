@@ -75,7 +75,7 @@ export default async function DashboardPage() {
             </div>
 
             {/* Stats Overview */}
-            <div className="grid gap-3 md:gap-6 grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 md:gap-6 grid-cols-2 lg:grid-cols-4">
                 <StatsCard
                     title="Contactos Totales"
                     value={stats.totalContacts.toLocaleString("es-MX")}
@@ -108,33 +108,33 @@ export default async function DashboardPage() {
             </div>
 
             {/* Main Content Grid */}
-            <div className="grid gap-6 grid-cols-1 lg:grid-cols-7">
+            <div className="grid gap-4 md:gap-6 grid-cols-1 xl:grid-cols-12">
 
                 {/* 1. Pipeline Breakdown */}
-                <Card className="lg:col-span-4 border-none shadow-sm h-full">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <Card className="xl:col-span-7 border-none shadow-sm h-full rounded-2xl">
+                    <CardHeader className="flex flex-row items-center justify-between pb-4">
                         <div>
-                            <CardTitle className="text-lg font-bold">Distribución del Pipeline</CardTitle>
-                            <CardDescription>Oportunidades por etapa de venta</CardDescription>
+                            <CardTitle className="text-xl font-bold">Distribución del Pipeline</CardTitle>
+                            <CardDescription className="text-base">Oportunidades por etapa</CardDescription>
                         </div>
                     </CardHeader>
                     <CardContent>
-                        <div className="space-y-5">
+                        <div className="space-y-6">
                             {stats.dealsByStage.map((stage) => {
                                 const stageValue = stage.deals.reduce((v, d) => v + d.value, 0);
                                 const maxDeals = Math.max(...stats.dealsByStage.map(s => s._count.deals), 1);
                                 const width = Math.max((stage._count.deals / maxDeals) * 100, 2); // Min 2% visibility
 
                                 return (
-                                    <div key={stage.id} className="space-y-1.5">
-                                        <div className="flex items-center justify-between text-sm">
+                                    <div key={stage.id} className="space-y-2">
+                                        <div className="flex items-center justify-between text-base">
                                             <span className="font-medium text-foreground">{stage.name}</span>
-                                            <span className="font-semibold text-muted-foreground">
+                                            <span className="font-bold text-foreground">
                                                 ${stageValue.toLocaleString("es-MX")}
                                             </span>
                                         </div>
-                                        <div className="grid grid-cols-[1fr_auto] gap-3 items-center">
-                                            <div className="h-2.5 w-full bg-muted/50 rounded-full overflow-hidden">
+                                        <div className="grid grid-cols-[1fr_auto] gap-4 items-center">
+                                            <div className="h-3 w-full bg-muted/40 rounded-full overflow-hidden">
                                                 <div
                                                     className="h-full rounded-full transition-all duration-500 ease-out"
                                                     style={{
@@ -143,7 +143,7 @@ export default async function DashboardPage() {
                                                     }}
                                                 />
                                             </div>
-                                            <span className="text-xs font-bold text-muted-foreground w-6 text-right">
+                                            <span className="text-sm font-bold text-muted-foreground w-8 text-right">
                                                 {stage._count.deals}
                                             </span>
                                         </div>
@@ -155,32 +155,32 @@ export default async function DashboardPage() {
                 </Card>
 
                 {/* 2. Right Column Stack */}
-                <div className="lg:col-span-3 flex flex-col gap-6">
+                <div className="xl:col-span-5 flex flex-col gap-4 md:gap-6">
 
                     {/* Activity Feed */}
-                    <Card className="border-none shadow-sm flex-1">
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <Card className="border-none shadow-sm flex-1 rounded-2xl">
+                        <CardHeader className="flex flex-row items-center justify-between pb-4">
                             <div>
-                                <CardTitle className="text-lg font-bold">Actividad Reciente</CardTitle>
-                                <CardDescription>Últimos movimientos</CardDescription>
+                                <CardTitle className="text-xl font-bold">Actividad Reciente</CardTitle>
+                                <CardDescription className="text-base">Últimos movimientos</CardDescription>
                             </div>
-                            <Button variant="ghost" size="sm" className="h-8 text-xs text-primary" asChild>
+                            <Button variant="ghost" size="sm" className="h-9 text-sm text-primary font-medium" asChild>
                                 <Link href="/dashboard/pipeline">
                                     Ver todo <ArrowRight className="ml-1 h-3 w-3" />
                                 </Link>
                             </Button>
                         </CardHeader>
                         <CardContent>
-                            <div className="space-y-4">
+                            <div className="space-y-5">
                                 {stats.recentDeals.length === 0 ? (
-                                    <div className="text-center py-6 text-muted-foreground text-sm">
+                                    <div className="text-center py-8 text-muted-foreground text-base">
                                         No hay actividad reciente.
                                     </div>
                                 ) : (
                                     stats.recentDeals.map((deal) => (
-                                        <div key={deal.id} className="flex items-center gap-3">
+                                        <div key={deal.id} className="flex items-center gap-4">
                                             <div
-                                                className="h-8 w-8 sm:h-9 sm:w-9 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-extrabold flex-shrink-0 shadow-sm"
+                                                className="h-10 w-10 md:h-11 md:w-11 rounded-full flex items-center justify-center text-sm font-extrabold flex-shrink-0 shadow-sm"
                                                 style={{
                                                     backgroundColor: deal.stage.color + "15",
                                                     color: deal.stage.color,
@@ -190,14 +190,14 @@ export default async function DashboardPage() {
                                                 {(deal.contact?.name || deal.title).charAt(0).toUpperCase()}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-semibold truncate text-foreground leading-none mb-1">
+                                                <p className="text-base font-semibold truncate text-foreground leading-snug mb-0.5">
                                                     {deal.contact?.name || deal.title}
                                                 </p>
-                                                <p className="text-xs text-muted-foreground truncate">
+                                                <p className="text-sm text-muted-foreground truncate">
                                                     {deal.stage.name} • <span className="font-medium text-foreground">${deal.value.toLocaleString("es-MX")}</span>
                                                 </p>
                                             </div>
-                                            <div className="text-[10px] text-muted-foreground bg-muted px-2 py-1 rounded-md whitespace-nowrap">
+                                            <div className="text-xs text-muted-foreground bg-muted/50 px-2.5 py-1 rounded-lg whitespace-nowrap font-medium">
                                                 Ahora
                                             </div>
                                         </div>
@@ -208,30 +208,30 @@ export default async function DashboardPage() {
                     </Card>
 
                     {/* Upcoming Appointments */}
-                    <Card className="border-none shadow-sm">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-lg font-bold flex items-center gap-2">
-                                <Calendar className="h-4 w-4 text-primary" />
+                    <Card className="border-none shadow-sm rounded-2xl">
+                        <CardHeader className="pb-4">
+                            <CardTitle className="text-xl font-bold flex items-center gap-2">
+                                <Calendar className="h-5 w-5 text-primary" />
                                 Próximas Citas
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
                             {stats.upcomingAppointments.length === 0 ? (
-                                <p className="text-sm text-muted-foreground py-2">No tienes citas próximas.</p>
+                                <p className="text-base text-muted-foreground py-2">No tienes citas próximas.</p>
                             ) : (
                                 <div className="space-y-3">
                                     {stats.upcomingAppointments.map((apt) => (
-                                        <div key={apt.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 border border-border/50">
-                                            <div className="bg-primary/10 text-primary h-8 w-8 rounded flex items-center justify-center flex-shrink-0 mt-0.5">
-                                                <span className="text-xs font-bold">
+                                        <div key={apt.id} className="flex items-center gap-4 p-3 rounded-xl bg-muted/20 border border-border/40 hover:bg-muted/40 transition-colors">
+                                            <div className="bg-primary/10 text-primary h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0">
+                                                <span className="text-sm font-bold">
                                                     {new Date(apt.startTime).getDate()}
                                                 </span>
                                             </div>
                                             <div className="min-w-0 flex-1">
-                                                <p className="text-sm font-semibold text-foreground truncate">
+                                                <p className="text-base font-semibold text-foreground truncate">
                                                     {apt.title}
                                                 </p>
-                                                <p className="text-xs text-muted-foreground mt-0.5">
+                                                <p className="text-sm text-muted-foreground mt-0.5">
                                                     {new Date(apt.startTime).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}
                                                     {apt.contact?.name ? ` • ${apt.contact.name}` : ""}
                                                 </p>
