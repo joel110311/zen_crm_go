@@ -1,153 +1,124 @@
 "use client";
 
-import { Suspense, useState } from "react";
-import { signIn } from "next-auth/react";
-import { useSearchParams } from "next/navigation";
+import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ZenLogo } from "@/components/icons/zen-logo";
 import { Loader2, Eye, EyeOff } from "lucide-react";
+import { loginAction } from "./actions";
 
-function LoginForm() {
-    const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
+export default function LoginPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState("");
-    const [isLoading, setIsLoading] = useState(false);
-    const searchParams = useSearchParams();
-    const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
+    const [isPending, startTransition] = useTransition();
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setError("");
-        setIsLoading(true);
 
-        try {
-            const result = await signIn("credentials", {
-                email,
-                password,
-                redirect: false,
-            });
+        const formData = new FormData(e.currentTarget);
 
+        startTransition(async () => {
+            const result = await loginAction(formData);
             if (result?.error) {
-                setError("Credenciales incorrectas. Verifica tu email y contraseña.");
-                setIsLoading(false);
-            } else {
-                window.location.href = callbackUrl;
+                setError(result.error);
             }
-        } catch {
-            setError("Error de conexión. Intenta de nuevo.");
-            setIsLoading(false);
-        }
+        });
     };
 
     return (
-        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-7 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1)]">
-            <div className="mb-5">
-                <h2 className="text-lg font-semibold text-[#0F172A]">Iniciar Sesión</h2>
-                <p className="text-sm text-[#64748B] mt-0.5">Ingresa tus credenciales para continuar</p>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-1.5">
-                    <Label htmlFor="email" className="text-[#0F172A] text-sm font-medium">
-                        Correo Electrónico
-                    </Label>
-                    <Input
-                        id="email"
-                        type="email"
-                        placeholder="tu@email.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required
-                        className="bg-[#F8FAFC] border-[#E2E8F0] text-[#0F172A] placeholder:text-[#94A3B8] focus:border-primary focus:ring-primary/20 h-11"
-                    />
-                </div>
-
-                <div className="space-y-1.5">
-                    <Label htmlFor="password" className="text-[#0F172A] text-sm font-medium">
-                        Contraseña
-                    </Label>
-                    <div className="relative">
-                        <Input
-                            id="password"
-                            type={showPassword ? "text" : "password"}
-                            placeholder="••••••••"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            required
-                            className="bg-[#F8FAFC] border-[#E2E8F0] text-[#0F172A] placeholder:text-[#94A3B8] focus:border-primary focus:ring-primary/20 h-11 pr-10"
-                        />
-                        <button
-                            type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#64748B] transition"
-                        >
-                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </button>
-                    </div>
-                </div>
-
-                {error && (
-                    <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-                        {error}
-                    </div>
-                )}
-
-                <Button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full h-11 bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-medium rounded-lg shadow-md transition-all duration-200"
-                >
-                    {isLoading ? (
-                        <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Verificando...
-                        </>
-                    ) : (
-                        "Iniciar Sesión"
-                    )}
-                </Button>
-            </form>
-        </div>
-    );
-}
-
-export default function LoginPage() {
-    return (
-        <div className="min-h-screen flex items-center justify-center bg-white relative overflow-hidden">
+        <div className="min-h-screen flex items-center justify-center bg-white relative overflow-hidden px-4">
             {/* Subtle background accent */}
-            <div className="absolute inset-0">
-                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4" />
-                <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-blue-100/40 rounded-full blur-3xl translate-y-1/3 -translate-x-1/4" />
+            <div className="absolute inset-0 pointer-events-none">
+                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gray-100 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4" />
+                <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-gray-50 rounded-full blur-3xl translate-y-1/3 -translate-x-1/4" />
             </div>
 
-            <div className="relative z-10 w-full max-w-sm px-6">
-                {/* Logo and branding — like zenmedix-dental */}
-                <div className="text-center mb-8">
-                    <div className="flex justify-center mb-4">
-                        <ZenLogo className="h-24 w-24 text-primary" />
+            <div className="relative z-10 w-full max-w-md">
+                {/* Logo and branding */}
+                <div className="text-center mb-8 sm:mb-10">
+                    <div className="flex justify-center mb-5">
+                        <ZenLogo className="h-20 w-20 sm:h-28 sm:w-28 text-[#0F172A]" />
                     </div>
-                    <h1 className="text-2xl font-bold text-[#0F172A] tracking-tight">
+                    <h1 className="text-2xl sm:text-3xl font-bold text-[#0F172A] tracking-tight">
                         Zen CRM
                     </h1>
-                    <p className="text-sm text-[#64748B] mt-1">
+                    <p className="text-sm sm:text-base text-[#64748B] mt-1">
                         Gestión inteligente de clientes con IA
                     </p>
                 </div>
 
-                {/* Login form wrapped in Suspense for useSearchParams */}
-                <Suspense fallback={
-                    <div className="bg-white border border-[#E2E8F0] rounded-2xl p-7 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1)] flex items-center justify-center h-64">
-                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                {/* Login card */}
+                <div className="bg-white border border-[#E2E8F0] rounded-2xl p-6 sm:p-8 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1)]">
+                    <div className="mb-5 sm:mb-6">
+                        <h2 className="text-lg sm:text-xl font-semibold text-[#0F172A]">Iniciar Sesión</h2>
+                        <p className="text-sm text-[#64748B] mt-0.5">Ingresa tus credenciales para continuar</p>
                     </div>
-                }>
-                    <LoginForm />
-                </Suspense>
+
+                    <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
+                        <div className="space-y-1.5">
+                            <Label htmlFor="email" className="text-[#0F172A] text-sm font-medium">
+                                Correo Electrónico
+                            </Label>
+                            <Input
+                                id="email"
+                                name="email"
+                                type="email"
+                                placeholder="tu@email.com"
+                                required
+                                className="bg-[#F8FAFC] border-[#E2E8F0] text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#0F172A] focus:ring-[#0F172A]/20 h-12 sm:h-12 text-base"
+                            />
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <Label htmlFor="password" className="text-[#0F172A] text-sm font-medium">
+                                Contraseña
+                            </Label>
+                            <div className="relative">
+                                <Input
+                                    id="password"
+                                    name="password"
+                                    type={showPassword ? "text" : "password"}
+                                    placeholder="••••••••"
+                                    required
+                                    className="bg-[#F8FAFC] border-[#E2E8F0] text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#0F172A] focus:ring-[#0F172A]/20 h-12 sm:h-12 text-base pr-11"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#64748B] transition"
+                                >
+                                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                                </button>
+                            </div>
+                        </div>
+
+                        {error && (
+                            <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+                                {error}
+                            </div>
+                        )}
+
+                        <Button
+                            type="submit"
+                            disabled={isPending}
+                            className="w-full h-12 bg-[#0F172A] hover:bg-[#1E293B] text-white font-medium rounded-lg shadow-md transition-all duration-200 text-base"
+                        >
+                            {isPending ? (
+                                <>
+                                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                                    Verificando...
+                                </>
+                            ) : (
+                                "Iniciar Sesión"
+                            )}
+                        </Button>
+                    </form>
+                </div>
 
                 {/* Footer */}
-                <p className="text-center text-xs text-[#94A3B8] mt-8">
+                <p className="text-center text-xs text-[#94A3B8] mt-6 sm:mt-8">
                     v1.0 · © 2026 Zen CRM
                 </p>
             </div>
