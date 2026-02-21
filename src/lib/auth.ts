@@ -50,6 +50,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 token.id = user.id;
                 token.name = user.name || (user.email ?? "Usuario");
             }
+            // Fallback for existing sessions where name was never stored in the token
+            if (!token.name && token.id) {
+                try {
+                    const dbUser = await prisma.user.findUnique({
+                        where: { id: token.id as string },
+                        select: { name: true, email: true },
+                    });
+                    token.name = dbUser?.name || dbUser?.email || "Usuario";
+                } catch {
+                    token.name = (token.email as string) || "Usuario";
+                }
+            }
             return token;
         },
         async session({ session, token }) {

@@ -38,7 +38,6 @@ export async function createUser(data: {
 }) {
     await requireSuperAdmin();
 
-    // Check if email already exists
     const existing = await prisma.user.findUnique({
         where: { email: data.email },
     });
@@ -59,6 +58,52 @@ export async function createUser(data: {
             password: hashedPassword,
             role: data.role,
         },
+        select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            createdAt: true,
+        },
+    });
+
+    revalidatePath("/dashboard/settings");
+    return { success: true, user };
+}
+
+export async function updateUser(userId: string, data: {
+    name?: string;
+    email?: string;
+    password?: string;
+    role?: "ADMIN" | "SUPERADMIN";
+}) {
+    await requireSuperAdmin();
+
+    // If email is being changed, check uniqueness
+    if (data.email) {
+        const existing = await prisma.user.findUnique({
+            where: { email: data.email },
+        });
+        if (existing && existing.id !== userId) {
+            return { success: false, error: "Ya existe un usuario con ese correo." };
+        }
+    }
+
+    // Build update payload
+    const updateData: any = {};
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.email !== undefined) updateData.email = data.email;
+    if (data.role !== undefined) updateData.role = data.role;
+    if (data.password && data.password.length > 0) {
+        if (data.password.length < 6) {
+            return { success: false, error: "La contraseña debe tener al menos 6 caracteres." };
+        }
+        updateData.password = await bcrypt.hash(data.password, 12);
+    }
+
+    const user = await prisma.user.update({
+        where: { id: userId },
+        data: updateData,
         select: {
             id: true,
             name: true,
