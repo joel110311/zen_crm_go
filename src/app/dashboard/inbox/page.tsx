@@ -1232,6 +1232,7 @@ export default function InboxPage() {
             {viewerMessageId && selectedChat && (
                 <ImageViewer
                     conversation={selectedChat}
+                    messages={messages}
                     initialMessageId={viewerMessageId}
                     onClose={() => setViewerMessageId(null)}
                 />

@@ -9,15 +9,16 @@ import type { Message, Conversation } from "@/app/dashboard/inbox/page";
 
 interface ImageViewerProps {
     conversation: Conversation;
+    messages: Message[];
     initialMessageId: string;
     onClose: () => void;
 }
 
-export function ImageViewer({ conversation, initialMessageId, onClose }: ImageViewerProps) {
+export function ImageViewer({ conversation, messages, initialMessageId, onClose }: ImageViewerProps) {
     const [currentIndex, setCurrentIndex] = useState(0);
 
     // Filter to only include image messages that have a valid URL
-    const imageMessages = conversation.messages.filter(
+    const imageMessages = messages.filter(
         msg => msg.type === "image" && Boolean(msg.mediaUrl)
     );
 
