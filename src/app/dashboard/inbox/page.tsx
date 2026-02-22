@@ -19,9 +19,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { maybePlayNotification } from "@/lib/notificationSounds";
+import { ImageViewer } from "@/components/inbox/image-viewer";
 
 // ──────────── Types ────────────
-type Message = {
+export type Message = {
     id: string;
     content: string;
     senderId: string | null;
@@ -33,7 +34,7 @@ type Message = {
     mediaFileName?: string | null;
 };
 
-type Conversation = {
+export type Conversation = {
     id: string;
     contact: {
         id: string;
@@ -85,7 +86,7 @@ function getCleanMediaUrl(url: string | null | undefined): string | undefined {
     return url;
 }
 
-function MediaContent({ msg }: { msg: Message }) {
+function MediaContent({ msg, onImageClick }: { msg: Message, onImageClick?: (msgId: string) => void }) {
     const isOutbound = msg.direction === "outbound";
     const cleanUrl = getCleanMediaUrl(msg.mediaUrl);
 
@@ -96,7 +97,7 @@ function MediaContent({ msg }: { msg: Message }) {
                     src={cleanUrl}
                     alt={msg.content || "Image"}
                     className="max-w-[280px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                    onClick={() => window.open(cleanUrl, "_blank")}
+                    onClick={() => onImageClick ? onImageClick(msg.id) : window.open(cleanUrl, "_blank")}
                     loading="lazy"
                 />
                 {msg.content && !["[Imagen]", "[Sticker]", "[image]"].includes(msg.content) && (
@@ -364,6 +365,7 @@ export default function InboxPage() {
     const [showContactInfo, setShowContactInfo] = useState(false);
     const [activeTab, setActiveTab] = useState<"all" | "favorites" | "groups">("all");
     const [confirmAction, setConfirmAction] = useState<{ type: string; title: string; desc: string } | null>(null);
+    const [viewerMessageId, setViewerMessageId] = useState<string | null>(null);
 
     // Voice recording state
     const [isRecording, setIsRecording] = useState(false);
@@ -1102,7 +1104,7 @@ export default function InboxPage() {
                                                             : "bg-card border rounded-bl-none"
                                                     )}
                                                 >
-                                                    <MediaContent msg={msg} />
+                                                    <MediaContent msg={msg} onImageClick={setViewerMessageId} />
                                                     <p className={cn("text-[10px] mt-1 text-right opacity-70", msg.direction === "outbound" ? "text-primary-foreground" : "text-muted-foreground")}>
                                                         {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                     </p>
@@ -1225,6 +1227,15 @@ export default function InboxPage() {
                     <ContactInfoPanel conversation={selectedChat} onClose={() => setShowContactInfo(false)} />
                 )}
             </div>
+
+            {/* Image Viewer Lightbox */}
+            {viewerMessageId && selectedChat && (
+                <ImageViewer
+                    conversation={selectedChat}
+                    initialMessageId={viewerMessageId}
+                    onClose={() => setViewerMessageId(null)}
+                />
+            )}
         </>
     );
 }
