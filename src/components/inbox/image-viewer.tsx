@@ -44,13 +44,27 @@ export function ImageViewer({ conversation, messages, initialMessageId, onClose 
 
     const currentMsg = imageMessages[currentIndex];
 
-    // Clean URL for localhost / Mixed Content
+    // Clean URL for localhost / Mixed Content / Docker standalone
     const getCleanMediaUrl = (url: string | null | undefined) => {
         if (!url) return "";
-        if (typeof window !== "undefined" && window.location.hostname !== "localhost" && url.includes("localhost:3000")) {
-            return url.replace("http://localhost:3000", "");
+        let cleanUrl = url;
+        if (typeof window !== "undefined") {
+            const origin = window.location.origin;
+            if (cleanUrl.startsWith(origin)) {
+                cleanUrl = cleanUrl.replace(origin, "");
+            }
         }
-        return url;
+        if (cleanUrl.includes("localhost:3000")) {
+            cleanUrl = cleanUrl.replace(/https?:\/\/localhost:3000/, "");
+        }
+        if (cleanUrl.includes("/uploads/") && cleanUrl.startsWith("http")) {
+            cleanUrl = cleanUrl.substring(cleanUrl.indexOf("/uploads/"));
+        }
+        if (cleanUrl.startsWith("/uploads/")) {
+            const filename = cleanUrl.substring("/uploads/".length);
+            return `/api/media/${filename}`;
+        }
+        return cleanUrl;
     };
 
     const currentUrl = getCleanMediaUrl(currentMsg.mediaUrl);

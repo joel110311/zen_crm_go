@@ -79,11 +79,32 @@ function getLastMessagePreview(conv: Conversation): string {
 // ──────────── Media Renderer ────────────
 function getCleanMediaUrl(url: string | null | undefined): string | undefined {
     if (!url) return undefined;
-    // Fix legacy localhost URLs when in production (Mixed Content fix)
-    if (typeof window !== "undefined" && window.location.hostname !== "localhost" && url.includes("localhost:3000")) {
-        return url.replace("http://localhost:3000", "");
+
+    let cleanUrl = url;
+
+    // Strip full domain prefix to get a relative path
+    if (typeof window !== "undefined") {
+        const origin = window.location.origin;
+        if (cleanUrl.startsWith(origin)) {
+            cleanUrl = cleanUrl.replace(origin, "");
+        }
     }
-    return url;
+    // Also handle legacy localhost URLs
+    if (cleanUrl.includes("localhost:3000")) {
+        cleanUrl = cleanUrl.replace(/https?:\/\/localhost:3000/, "");
+    }
+    // Strip any other full domain that contains /uploads/
+    if (cleanUrl.includes("/uploads/") && cleanUrl.startsWith("http")) {
+        cleanUrl = cleanUrl.substring(cleanUrl.indexOf("/uploads/"));
+    }
+
+    // Route /uploads/ through /api/media/ for reliable serving in Docker standalone
+    if (cleanUrl.startsWith("/uploads/")) {
+        const filename = cleanUrl.substring("/uploads/".length);
+        return `/api/media/${filename}`;
+    }
+
+    return cleanUrl;
 }
 
 function MediaContent({ msg, onImageClick }: { msg: Message, onImageClick?: (msgId: string) => void }) {
