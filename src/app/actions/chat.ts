@@ -253,6 +253,8 @@ export async function processInboundMessage(
                     customerName: customerName || contact.name,
                     contactId: contact.id,
                     conversationId: conversation.id,
+                    direction: "inbound",
+                    senderType: "customer",
                     media,
                     timestamp: new Date().toISOString(),
                 };

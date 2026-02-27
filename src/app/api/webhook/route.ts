@@ -98,9 +98,81 @@ export async function POST(req: NextRequest) {
             return new NextResponse("EVENT_RECEIVED", { status: 200 });
         }
 
-        // Handle message echoes (messages sent from WhatsApp app)
+        // Handle message echoes (messages sent from n8n, WhatsApp app, or other external sources via YCloud)
+        // These are outbound messages that need to appear in the CRM
         if (body.type === "whatsapp.smb.message.echoes" && body.whatsappInboundMessage) {
-            console.log("[YCloud] Message echo received (sent from WhatsApp app)");
+            const msg = body.whatsappInboundMessage;
+            const to = msg.to?.replace(/\D/g, "") || msg.from?.replace(/\D/g, "") || "";
+
+            console.log(`[YCloud] Message echo: outbound to ${to}`);
+
+            if (to) {
+                try {
+                    const { prisma } = await import("@/lib/db");
+
+                    // Find contact by phone number
+                    const contact = await prisma.contact.findFirst({
+                        where: { phone: { contains: to.slice(-10) } },
+                    });
+
+                    if (contact) {
+                        // Find or create conversation
+                        let conversation = await prisma.conversation.findFirst({
+                            where: { contactId: contact.id },
+                        });
+
+                        if (!conversation) {
+                            conversation = await prisma.conversation.create({
+                                data: { contactId: contact.id, status: "active" },
+                            });
+                        }
+
+                        // Determine content
+                        let text = "";
+                        let messageType = "text";
+                        if (msg.type === "text" && msg.text?.body) {
+                            text = msg.text.body;
+                        } else {
+                            text = `[${msg.type || "Media"}]`;
+                            messageType = msg.type || "text";
+                        }
+
+                        // Check if this message was already stored (avoid duplicates from CRM-sent messages)
+                        const recentDuplicate = await prisma.message.findFirst({
+                            where: {
+                                conversationId: conversation.id,
+                                content: text,
+                                direction: "outbound",
+                                createdAt: { gte: new Date(Date.now() - 30000) }, // Within last 30 seconds
+                            },
+                        });
+
+                        if (!recentDuplicate) {
+                            await prisma.message.create({
+                                data: {
+                                    conversationId: conversation.id,
+                                    content: text,
+                                    direction: "outbound",
+                                    status: "sent",
+                                    type: messageType,
+                                    senderType: "bot", // Sent by external system (n8n)
+                                },
+                            });
+
+                            await prisma.conversation.update({
+                                where: { id: conversation.id },
+                                data: { updatedAt: new Date() },
+                            });
+
+                            console.log(`[YCloud] Echo stored as outbound message for ${contact.name}`);
+                        } else {
+                            console.log(`[YCloud] Echo skipped (duplicate of CRM-sent message)`);
+                        }
+                    }
+                } catch (echoError) {
+                    console.error("[YCloud] Echo processing error:", echoError);
+                }
+            }
             return new NextResponse("EVENT_RECEIVED", { status: 200 });
         }
 

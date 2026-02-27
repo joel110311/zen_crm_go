@@ -270,6 +270,36 @@ export async function POST(request: NextRequest) {
             data: updateData,
         });
 
+        // ── Forward outbound message to n8n webhook ──
+        try {
+            const settings = await prisma.systemSettings.findFirst();
+            if (settings?.n8nWebhookUrl) {
+                const n8nPayload = {
+                    from: conversation.contact?.phone || "",
+                    text: content || `[${type}]`,
+                    customerName: conversation.contact?.name || "",
+                    contactId: conversation.contact?.id || "",
+                    conversationId,
+                    direction: "outbound",
+                    senderType: "human",
+                    media: mediaUrl ? { type, mediaUrl, mediaType, mediaFileName } : undefined,
+                    timestamp: new Date().toISOString(),
+                };
+
+                fetch(settings.n8nWebhookUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(n8nPayload),
+                }).then(res => {
+                    console.log(`[n8n Forward] Outbound forwarded, status: ${res.status}`);
+                }).catch(err => {
+                    console.error("[n8n Forward] Failed:", err);
+                });
+            }
+        } catch (fwdError) {
+            console.error("[n8n Forward] Settings error:", fwdError);
+        }
+
         return NextResponse.json({ success: true, message });
     } catch (error) {
         console.error("[API] Error:", error);
