@@ -392,8 +392,16 @@ body {
   color: var(--foreground);
 }
 
-/* Hide the all-day row that the user found useless */
-.big-calendar-wrapper .rbc-allday-cell {
+/* 
+ * Hide the all-day row completely (user doesn't use all-day events).
+ * We target the specific .rbc-row inside the .rbc-time-header 
+ * that isn't the date header itself. 
+ */
+.big-calendar-wrapper .rbc-time-header .rbc-allday-cell {
+  display: none !important;
+}
+
+.big-calendar-wrapper .rbc-time-header>.rbc-row:nth-child(2) {
   display: none !important;
 }
 
