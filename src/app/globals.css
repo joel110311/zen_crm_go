@@ -436,7 +436,11 @@ body {
 }
 
 .big-calendar-wrapper .rbc-day-slot .rbc-time-slot {
-  border-top: 1px solid var(--border) !important;
+  border-top: 1px dotted rgba(0, 0, 0, 0.15) !important;
+}
+
+.dark .big-calendar-wrapper .rbc-day-slot .rbc-time-slot {
+  border-top: 1px dotted rgba(255, 255, 255, 0.15) !important;
 }
 
 .big-calendar-wrapper .rbc-day-slot .rbc-time-slot:first-child {

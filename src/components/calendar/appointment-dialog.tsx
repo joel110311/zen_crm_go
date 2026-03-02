@@ -15,7 +15,7 @@ import { es } from "date-fns/locale";
 import { CalendarIcon, Clock, Check, ChevronsUpDown, Loader2, User } from "lucide-react";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { createAppointment, updateAppointment, deleteAppointment } from "@/app/actions/calendar"; // Ensure these exist
-import { getContacts } from "@/app/actions/contacts"; // Need a search function for contacts
+import { createContact, getContacts } from "@/app/actions/contacts"; // Need a search function for contacts
 import { useToast } from "@/components/ui/use-toast";
 
 interface AppointmentDialogProps {
@@ -42,6 +42,12 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
     const [contacts, setContacts] = useState<any[]>([]);
     const [openCombobox, setOpenCombobox] = useState(false);
     const [query, setQuery] = useState("");
+
+    // New Contact Form State
+    const [isCreatingContact, setIsCreatingContact] = useState(false);
+    const [newContactName, setNewContactName] = useState("");
+    const [newContactPhone, setNewContactPhone] = useState("");
+    const [isSubmittingContact, setIsSubmittingContact] = useState(false);
 
     // Initialize form when opening
     useEffect(() => {
@@ -140,6 +146,41 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
         });
     };
 
+    const handleCreateContact = async () => {
+        if (!newContactName.trim() || !newContactPhone.trim()) {
+            toast({ title: "Error", description: "Nombre y teléfono son obligatorios", variant: "destructive" });
+            return;
+        }
+        setIsSubmittingContact(true);
+        try {
+            const formData = new FormData();
+            formData.append("name", newContactName);
+            formData.append("phone", newContactPhone);
+
+            const result = await createContact(formData);
+            if (result.success && result.contact) {
+                toast({ title: "Contacto creado exitosamente" });
+                // Auto-select the new contact
+                setContacts(prev => [result.contact, ...prev]);
+                setContactId(result.contact.id);
+                // Auto-fill title
+                if (!title) setTitle(`Cita con ${result.contact.name}`);
+
+                // Reset form state
+                setIsCreatingContact(false);
+                setNewContactName("");
+                setNewContactPhone("");
+                setOpenCombobox(false);
+            } else {
+                toast({ title: "Error", description: result.error || "No se pudo crear", variant: "destructive" });
+            }
+        } catch (error) {
+            toast({ title: "Error", description: "Error al crear contacto", variant: "destructive" });
+        } finally {
+            setIsSubmittingContact(false);
+        }
+    };
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[600px] bg-card">
@@ -198,10 +239,71 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                                             ))}
                                         </CommandGroup>
                                     </CommandList>
+
+                                    <div className="p-2 border-t mt-1">
+                                        <Button
+                                            variant="ghost"
+                                            className="w-full justify-start text-primary font-medium"
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                setIsCreatingContact(true);
+                                                setOpenCombobox(false);
+                                            }}
+                                        >
+                                            + Registrar nuevo contacto
+                                        </Button>
+                                    </div>
                                 </Command>
                             </PopoverContent>
                         </Popover>
                     </div>
+
+                    {/* New Contact Inline Form */}
+                    {isCreatingContact && (
+                        <div className="p-4 bg-muted/30 rounded-lg border space-y-4 mb-2 -mt-2 animate-in fade-in slide-in-from-top-2">
+                            <div className="flex items-center justify-between pb-2 border-b">
+                                <h4 className="font-medium text-sm text-foreground flex items-center">
+                                    <User className="w-4 h-4 mr-2 text-primary" />
+                                    Registrar Contacto Rápido
+                                </h4>
+                                <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setIsCreatingContact(false)}>
+                                    Cancelar
+                                </Button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <Label className="text-xs">Nombre *</Label>
+                                    <Input
+                                        size={1}
+                                        value={newContactName}
+                                        onChange={e => setNewContactName(e.target.value)}
+                                        placeholder="Ej. Juan Pérez"
+                                        className="h-8 text-sm"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label className="text-xs">Teléfono *</Label>
+                                    <Input
+                                        size={1}
+                                        value={newContactPhone}
+                                        onChange={e => setNewContactPhone(e.target.value)}
+                                        placeholder="Ej. 521..."
+                                        className="h-8 text-sm"
+                                    />
+                                </div>
+                            </div>
+                            <Button
+                                type="button"
+                                size="sm"
+                                className="w-full h-8"
+                                onClick={handleCreateContact}
+                                disabled={isSubmittingContact || !newContactName || !newContactPhone}
+                            >
+                                {isSubmittingContact ? <Loader2 className="w-3 h-3 animate-spin mr-2" /> : null}
+                                Guardar y Seleccionar
+                            </Button>
+                        </div>
+                    )}
 
                     {/* Title */}
                     <div className="space-y-2">
