@@ -119,37 +119,76 @@ export default async function DashboardPage() {
                         </div>
                     </CardHeader>
                     <CardContent>
-                        <div className="space-y-6">
-                            {stats.dealsByStage.map((stage) => {
-                                const stageValue = stage.deals.reduce((v, d) => v + d.value, 0);
-                                const maxDeals = Math.max(...stats.dealsByStage.map(s => s._count.deals), 1);
-                                const width = Math.max((stage._count.deals / maxDeals) * 100, 2); // Min 2% visibility
+                        {(() => {
+                            const stageData = stats.dealsByStage.map((stage) => ({
+                                name: stage.name,
+                                color: stage.color,
+                                value: stage.deals.reduce((v, d) => v + d.value, 0),
+                                count: stage._count.deals,
+                            }));
+                            const maxValue = Math.max(...stageData.map(s => s.value), 1);
+                            // Round up to a nice number for the Y-axis
+                            const magnitude = Math.pow(10, Math.floor(Math.log10(maxValue || 1)));
+                            const niceMax = Math.ceil(maxValue / magnitude) * magnitude || 100;
+                            const yTicks = Array.from({ length: 5 }, (_, i) => Math.round((niceMax / 4) * (4 - i)));
 
-                                return (
-                                    <div key={stage.id} className="space-y-2">
-                                        <div className="flex items-center justify-between text-base">
-                                            <span className="font-medium text-foreground">{stage.name}</span>
-                                            <span className="font-bold text-foreground">
-                                                ${stageValue.toLocaleString("es-MX")}
-                                            </span>
-                                        </div>
-                                        <div className="grid grid-cols-[1fr_auto] gap-4 items-center">
-                                            <div className="h-3 w-full bg-muted/40 rounded-full overflow-hidden">
-                                                <div
-                                                    className="h-full rounded-full transition-all duration-500 ease-out"
-                                                    style={{
-                                                        width: `${width}%`,
-                                                        backgroundColor: stage.color,
-                                                    }}
-                                                />
-                                            </div>
-                                            <span className="text-sm font-bold text-muted-foreground w-8 text-right">
-                                                {stage._count.deals}
-                                            </span>
+                            return (
+                                <div className="flex gap-0">
+                                    {/* Y-axis labels */}
+                                    <div className="flex flex-col justify-between pr-2 py-1 text-[11px] text-muted-foreground font-medium" style={{ height: 220 }}>
+                                        {yTicks.map((tick) => (
+                                            <span key={tick} className="text-right leading-none">${tick.toLocaleString("es-MX")}</span>
+                                        ))}
+                                    </div>
+                                    {/* Chart area */}
+                                    <div className="flex-1 relative" style={{ height: 220 }}>
+                                        {/* Gridlines */}
+                                        {yTicks.map((tick, i) => (
+                                            <div
+                                                key={tick}
+                                                className="absolute left-0 right-0 border-t border-dashed border-border/50"
+                                                style={{ top: `${(i / (yTicks.length - 1)) * 100}%` }}
+                                            />
+                                        ))}
+                                        {/* Bars */}
+                                        <div className="relative flex items-end justify-around h-full gap-1 px-1">
+                                            {stageData.map((stage) => {
+                                                const heightPct = Math.max((stage.value / niceMax) * 100, 3);
+                                                return (
+                                                    <div key={stage.name} className="flex flex-col items-center flex-1 min-w-0 z-10">
+                                                        {/* Value label on top */}
+                                                        <span className="text-[11px] font-bold text-foreground mb-1 whitespace-nowrap">
+                                                            ${stage.value.toLocaleString("es-MX")}
+                                                        </span>
+                                                        {/* Bar */}
+                                                        <div
+                                                            className="w-full max-w-[48px] rounded-t-md transition-all duration-700 ease-out shadow-sm"
+                                                            style={{
+                                                                height: `${heightPct}%`,
+                                                                backgroundColor: stage.color,
+                                                                minHeight: 6,
+                                                            }}
+                                                        />
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
-                                );
-                            })}
+                                </div>
+                            );
+                        })()}
+                        {/* Stage labels below the chart */}
+                        <div className="flex justify-around mt-2 px-1">
+                            {stats.dealsByStage.map((stage) => (
+                                <div key={stage.id} className="flex flex-col items-center flex-1 min-w-0">
+                                    <span className="text-[11px] font-semibold text-foreground truncate max-w-full text-center leading-tight">
+                                        {stage.name}
+                                    </span>
+                                    <span className="text-[10px] text-muted-foreground">
+                                        ({stage._count.deals} op.)
+                                    </span>
+                                </div>
+                            ))}
                         </div>
                     </CardContent>
                 </Card>
