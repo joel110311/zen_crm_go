@@ -524,7 +524,7 @@ export default function InboxPage() {
         url: string; fileName: string; mimeType: string; mediaCategory: string; previewUrl?: string;
     } | null>(null);
     const [showContactInfo, setShowContactInfo] = useState(false);
-    const [activeTab, setActiveTab] = useState<"all" | "favorites" | "groups">("all");
+    const [searchQuery, setSearchQuery] = useState("");
     const [confirmAction, setConfirmAction] = useState<{ type: string; title: string; desc: string } | null>(null);
     const [viewerMessageId, setViewerMessageId] = useState<string | null>(null);
     const [isWindowOpen, setIsWindowOpen] = useState(true);
@@ -801,11 +801,14 @@ export default function InboxPage() {
         }
     };
 
-    // ──── Filter conversations by tab ────
+    // ──── Filter conversations by search ────
     const filteredConversations = conversations.filter(conv => {
-        if (activeTab === "favorites") return conv.isFavorite;
-        if (activeTab === "groups") return conv.isGroup;
-        return !conv.isGroup; // "all" shows non-group chats
+        if (!searchQuery.trim()) return true;
+        const q = searchQuery.toLowerCase();
+        const name = (conv.contact?.name || "").toLowerCase();
+        const phone = (conv.contact?.phone || "").toLowerCase();
+        const lastMsg = (conv.messages[0]?.content || "").toLowerCase();
+        return name.includes(q) || phone.includes(q) || lastMsg.includes(q);
     });
 
     // ──── Voice Recording ────
@@ -1068,48 +1071,15 @@ export default function InboxPage() {
                 {/* ──── Sidebar ──── */}
                 <div className={cn("w-full md:w-72 2xl:w-80 border-r flex flex-col bg-muted/10", selectedChat ? "hidden md:flex" : "flex")}>
                     <div className="p-4 border-b space-y-3">
-                        <div className="flex items-center justify-between">
-                            <h2 className="font-semibold text-lg">Chats</h2>
-                            <Button variant="ghost" size="icon">
-                                <MoreVertical className="h-4 w-4" />
-                            </Button>
-                        </div>
+                        <h2 className="font-semibold text-lg">Chats</h2>
                         <div className="relative">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input placeholder="Buscar chats..." className="pl-8 bg-background" />
-                        </div>
-                        {/* Tabs: All / Favorites / Groups */}
-                        <div className="flex gap-1 bg-muted/50 rounded-lg p-1">
-                            <button
-                                onClick={() => setActiveTab("all")}
-                                className={cn(
-                                    "flex-1 text-xs font-medium py-1.5 rounded-md transition-colors",
-                                    activeTab === "all" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-                                )}
-                            >
-                                <MessageSquare className="h-3.5 w-3.5 inline mr-1" />
-                                Todos
-                            </button>
-                            <button
-                                onClick={() => setActiveTab("favorites")}
-                                className={cn(
-                                    "flex-1 text-xs font-medium py-1.5 rounded-md transition-colors",
-                                    activeTab === "favorites" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-                                )}
-                            >
-                                <Star className="h-3.5 w-3.5 inline mr-1" />
-                                Favoritos
-                            </button>
-                            <button
-                                onClick={() => setActiveTab("groups")}
-                                className={cn(
-                                    "flex-1 text-xs font-medium py-1.5 rounded-md transition-colors",
-                                    activeTab === "groups" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-                                )}
-                            >
-                                <Users className="h-3.5 w-3.5 inline mr-1" />
-                                Grupos
-                            </button>
+                            <Input
+                                placeholder="Buscar chats..."
+                                className="pl-8 bg-background"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
                         </div>
                     </div>
 
@@ -1117,7 +1087,7 @@ export default function InboxPage() {
                         <div className="flex flex-col">
                             {filteredConversations.length === 0 && (
                                 <div className="p-8 text-center text-muted-foreground text-sm">
-                                    {activeTab === "favorites" ? "No hay favoritos" : activeTab === "groups" ? "No hay grupos" : "Sin conversaciones"}
+                                    {searchQuery ? "No se encontraron chats" : "Sin conversaciones"}
                                 </div>
                             )}
                             {filteredConversations.map((chat) => (
