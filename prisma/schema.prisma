@@ -72,6 +72,7 @@ model Message {
   mediaUrl       String?      // URL to media file
   mediaType      String?      // MIME type (image/jpeg, audio/ogg, etc.)
   mediaFileName  String?      // Original filename for documents
+  reaction       String?      // Emoji reaction (e.g., '👍', '❤️')
   createdAt      DateTime     @default(now())
 }
 

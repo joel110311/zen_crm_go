@@ -35,6 +35,7 @@ export type Message = {
     mediaUrl?: string | null;
     mediaType?: string | null;
     mediaFileName?: string | null;
+    reaction?: string | null;
 };
 
 export type Conversation = {
@@ -235,7 +236,7 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
                 className={cn(
                     "w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-colors",
                     isOutbound
-                        ? "bg-white/20 hover:bg-white/30 text-white"
+                        ? "bg-[#075e54]/20 hover:bg-[#075e54]/30 text-[#075e54] dark:bg-white/20 dark:hover:bg-white/30 dark:text-white"
                         : "bg-primary/10 hover:bg-primary/20 text-primary"
                 )}
             >
@@ -260,8 +261,8 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
                                 style={{
                                     height: `${h}%`,
                                     backgroundColor: active
-                                        ? (isOutbound ? "rgba(255,255,255,1)" : "rgba(37,99,235,1)")
-                                        : (isOutbound ? "rgba(255,255,255,0.2)" : "rgba(100,116,139,0.25)")
+                                        ? (isOutbound ? "var(--audio-bar-active, rgba(7,94,84,0.9))" : "rgba(37,99,235,1)")
+                                        : (isOutbound ? "var(--audio-bar-inactive, rgba(7,94,84,0.2))" : "rgba(100,116,139,0.25)")
                                 }}
                             />
                         );
@@ -272,13 +273,13 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
                             className="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full shadow-sm"
                             style={{
                                 left: `${Math.min(progress, 100)}%`,
-                                backgroundColor: isOutbound ? "#fff" : "#2563EB",
+                                backgroundColor: isOutbound ? "var(--audio-dot, #075e54)" : "#2563EB",
                                 transform: `translateX(-50%) translateY(-50%)`,
                             }}
                         />
                     )}
                 </div>
-                <span className={cn("text-[10px] tabular-nums", isOutbound ? "text-white/70" : "text-muted-foreground")}>
+                <span className={cn("text-[10px] tabular-nums", isOutbound ? "text-[#075e54]/70 dark:text-white/70" : "text-muted-foreground")}>
                     {isPlaying ? formatTime(currentTime) : formatTime(duration)}
                 </span>
             </div>
@@ -570,9 +571,28 @@ export default function InboxPage() {
 
     // Reply, React & Forward state
     const [replyingTo, setReplyingTo] = useState<Message | null>(null);
-    const [reactions, setReactions] = useState<Record<string, string>>({}); // msgId -> emoji
     const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
     const [forwardMsg, setForwardMsg] = useState<Message | null>(null);
+
+    // Build reactions map from loaded messages
+    const reactions: Record<string, string> = {};
+    for (const m of messages) {
+        if (m.reaction) reactions[m.id] = m.reaction;
+    }
+
+    const setReaction = async (msgId: string, emoji: string | null) => {
+        // Optimistic update
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, reaction: emoji } : m));
+        try {
+            await fetch("/api/chat/reaction", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ messageId: msgId, reaction: emoji }),
+            });
+        } catch (error) {
+            console.error("Reaction error:", error);
+        }
+    };
 
     const handleWindowChange = useCallback((open: boolean) => {
         setIsWindowOpen(open);
@@ -1299,8 +1319,8 @@ export default function InboxPage() {
                                     className="h-full overflow-y-auto p-4 sm:px-8 bg-background"
                                     style={{ scrollBehavior: "auto" }}
                                 >
-                                    {/* Extra padding at bottom to account for the floating input area on desktop */}
-                                    <div className="flex flex-col gap-4 max-w-3xl mx-auto pb-32 sm:pb-40">
+                                    {/* Padding at bottom for scroll space */}
+                                    <div className="flex flex-col gap-4 max-w-3xl mx-auto pb-4">
                                         {messages.map((msg, idx) => {
                                             // Dynamic date separators
                                             const msgDate = new Date(msg.createdAt);
@@ -1355,7 +1375,7 @@ export default function InboxPage() {
                                                             {reactions[msg.id] && (
                                                                 <span
                                                                     className="absolute -bottom-3 right-2 text-base bg-card border border-border/40 rounded-full px-1 shadow-sm cursor-pointer hover:scale-110 transition-transform"
-                                                                    onClick={() => setReactions(prev => { const n = { ...prev }; delete n[msg.id]; return n; })}
+                                                                    onClick={() => setReaction(msg.id, null)}
                                                                     title="Quitar reacción"
                                                                 >
                                                                     {reactions[msg.id]}
@@ -1411,7 +1431,7 @@ export default function InboxPage() {
                                                                             key={emoji}
                                                                             className="text-xl hover:scale-125 transition-transform p-0.5"
                                                                             onClick={() => {
-                                                                                setReactions(prev => ({ ...prev, [msg.id]: emoji }));
+                                                                                setReaction(msg.id, emoji);
                                                                                 setEmojiPickerMsgId(null);
                                                                             }}
                                                                         >
@@ -1494,10 +1514,9 @@ export default function InboxPage() {
                                 </div>
                             ) : (
                                 /* ═══ UNLOCKED: Normal input area ═══ */
-                                <div className="p-4 sm:p-6 sm:pb-8 sm:absolute sm:bottom-0 sm:left-0 sm:right-0 shrink-0 pointer-events-none">
-                                    {/* Reply quote bar */}
+                                <div className="p-4 shrink-0">
                                     {replyingTo && (
-                                        <div className="px-4 sm:px-6 sm:absolute sm:bottom-[72px] sm:left-0 sm:right-0 z-10">
+                                        <div className="mb-2">
                                             <div className="max-w-3xl mx-auto flex items-center gap-2 px-4 py-2 rounded-t-xl bg-muted/60 border border-b-0 border-border/40">
                                                 <div className="w-1 h-8 rounded-full bg-primary shrink-0" />
                                                 <div className="flex-1 min-w-0">
@@ -1512,7 +1531,7 @@ export default function InboxPage() {
                                     )}
 
                                     {isRecording ? (
-                                        <div className="flex items-center gap-3 max-w-3xl mx-auto glass-input p-2 rounded-full pointer-events-auto">
+                                        <div className="flex items-center gap-3 max-w-3xl mx-auto glass-input p-2 rounded-full">
                                             <Button variant="ghost" size="icon" className="h-12 w-12 rounded-full text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0" onClick={cancelRecording} title="Cancelar">
                                                 <X className="h-6 w-6" />
                                             </Button>
@@ -1526,7 +1545,7 @@ export default function InboxPage() {
                                             </Button>
                                         </div>
                                     ) : (
-                                        <div className="flex items-end gap-2 max-w-3xl mx-auto glass-input p-2 rounded-3xl pointer-events-auto">
+                                        <div className="flex items-end gap-2 max-w-3xl mx-auto glass-input p-2 rounded-3xl">
                                             <input ref={fileInputRef} type="file" className="hidden"
                                                 accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar"
                                                 onChange={handleFileSelect}

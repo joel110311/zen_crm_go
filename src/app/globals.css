@@ -81,6 +81,19 @@
   background-position: center;
 }
 
+/* Audio player outbound colors — dark green in light mode, white in dark mode */
+:root {
+  --audio-bar-active: rgba(7, 94, 84, 0.9);
+  --audio-bar-inactive: rgba(7, 94, 84, 0.2);
+  --audio-dot: #075e54;
+}
+
+.dark {
+  --audio-bar-active: rgba(255, 255, 255, 1);
+  --audio-bar-inactive: rgba(255, 255, 255, 0.2);
+  --audio-dot: #fff;
+}
+
 /* Chat bubble tails using CSS borders */
 @layer utilities {
   .chat-bubble-tail-right {
