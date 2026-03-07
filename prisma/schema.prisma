@@ -58,6 +58,9 @@ model Conversation {
   sessionExpiresAt DateTime? // Tracks the 24h WhatsApp Business API window
   
   messages   Message[]
+
+  @@index([updatedAt(sort: Desc)])
+  @@index([contactId])
 }
 
 model Message {
@@ -74,6 +77,8 @@ model Message {
   mediaFileName  String?      // Original filename for documents
   reaction       String?      // Emoji reaction (e.g., '👍', '❤️')
   createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt(sort: Desc)])
 }
 
 model Appointment {
@@ -92,6 +97,9 @@ model Appointment {
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([startTime])
+  @@index([contactId])
 }
 
 model Document {
@@ -145,6 +153,9 @@ model Deal {
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
   dealTags   DealTag[]
+
+  @@index([stageId])
+  @@index([contactId])
 }
 
 model Tag {

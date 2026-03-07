@@ -38,6 +38,16 @@ async function startup() {
             ALTER TABLE "Message" ADD COLUMN IF NOT EXISTS "reaction" TEXT
         `).catch(() => { });
 
+        // Add performance indexes
+        console.log("[Startup] Creating database indexes...");
+        await pool.query(`CREATE INDEX IF NOT EXISTS "Message_conversationId_createdAt_idx" ON "Message"("conversationId", "createdAt" DESC)`).catch(() => { });
+        await pool.query(`CREATE INDEX IF NOT EXISTS "Conversation_updatedAt_idx" ON "Conversation"("updatedAt" DESC)`).catch(() => { });
+        await pool.query(`CREATE INDEX IF NOT EXISTS "Conversation_contactId_idx" ON "Conversation"("contactId")`).catch(() => { });
+        await pool.query(`CREATE INDEX IF NOT EXISTS "Deal_stageId_idx" ON "Deal"("stageId")`).catch(() => { });
+        await pool.query(`CREATE INDEX IF NOT EXISTS "Deal_contactId_idx" ON "Deal"("contactId")`).catch(() => { });
+        await pool.query(`CREATE INDEX IF NOT EXISTS "Appointment_startTime_idx" ON "Appointment"("startTime")`).catch(() => { });
+        await pool.query(`CREATE INDEX IF NOT EXISTS "Appointment_contactId_idx" ON "Appointment"("contactId")`).catch(() => { });
+
         console.log("[Startup] ✓ Schema up to date");
 
         // ── 2. Auto-seed if empty ──
