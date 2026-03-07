@@ -14,7 +14,10 @@ export async function GET(request: NextRequest) {
             // Get messages for a specific conversation
             const whereClause: any = { conversationId };
             if (since) {
-                whereClause.createdAt = { gt: new Date(since) };
+                // Subtract 1 second to handle Postgres millisecond truncation race conditions
+                const sinceDate = new Date(since);
+                sinceDate.setSeconds(sinceDate.getSeconds() - 1);
+                whereClause.createdAt = { gt: sinceDate };
             }
 
             const messages = await prisma.message.findMany({
@@ -48,6 +51,7 @@ export async function GET(request: NextRequest) {
                 lastMessage: conv.messages[0]?.content || "",
                 lastMessageTime: conv.messages[0]?.createdAt || conv.updatedAt,
                 lastMessageType: conv.messages[0]?.type || "text",
+                lastMessageDirection: conv.messages[0]?.direction || "inbound",
                 status: conv.status,
                 isMuted: conv.isMuted,
                 isFavorite: conv.isFavorite,

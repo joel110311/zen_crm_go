@@ -650,7 +650,7 @@ export default function InboxPage() {
                         content: conv.lastMessage,
                         createdAt: conv.lastMessageTime,
                         senderId: null,
-                        direction: "inbound",
+                        direction: conv.lastMessageDirection || "inbound",
                         type: conv.lastMessageType || "text"
                     }] : [],
                     updatedAt: conv.lastMessageTime || new Date(),
@@ -671,6 +671,7 @@ export default function InboxPage() {
                     const prevTimestamps = prevConvTimestampsRef.current;
                     setUnreadCounts(prev => {
                         const next = { ...prev };
+                        let playedSound = false;
                         for (const conv of transformed) {
                             // Skip the currently selected chat (user is viewing it)
                             if (conv.id === currentId) continue;
@@ -679,6 +680,12 @@ export default function InboxPage() {
                             if (prevTime && newTime !== prevTime) {
                                 // Conversation has new activity
                                 next[conv.id] = (next[conv.id] || 0) + 1;
+
+                                // Play sound if it was an INBOUND message from the customer
+                                if (!playedSound && conv.messages[0]?.direction === "inbound") {
+                                    maybePlayNotification(conv.isMuted);
+                                    playedSound = true;
+                                }
                             }
                         }
                         return next;
@@ -743,11 +750,31 @@ export default function InboxPage() {
                     if (isInitial) {
                         setMessages(newMessages);
                     } else {
-                        // Only append genuinely new messages
+                        // Deduplicate: Because the API looks back 1 second to handle Postgres truncation, 
+                        // it will return some messages we already have. Filter them out by ID.
                         setMessages((prev) => {
                             const existingIds = new Set(prev.map(m => m.id));
                             const uniqueNew = newMessages.filter((m: any) => !existingIds.has(m.id));
+
                             if (uniqueNew.length === 0) return prev;
+
+                            // If there are genuinely new messages, show notifications or auto-scroll
+                            if (prev.length > 0 && uniqueNew.some((m: any) => m.direction === "inbound")) {
+                                // Play sound for incoming message in the active chat
+                                maybePlayNotification(selectedChat.isMuted);
+
+                                const el = messagesContainerRef.current;
+                                if (el) {
+                                    const threshold = 150;
+                                    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+                                    if (!atBottom) {
+                                        setNewMessageCount((c) => c + uniqueNew.filter((m: any) => m.direction === "inbound").length);
+                                    } else {
+                                        setTimeout(() => scrollToBottom("smooth"), 100);
+                                    }
+                                }
+                            }
+
                             return [...prev, ...uniqueNew];
                         });
                     }
