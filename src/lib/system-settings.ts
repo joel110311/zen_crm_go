@@ -45,10 +45,16 @@ export type AppSystemSettings = SystemSettings & typeof SYSTEM_SETTINGS_DEFAULTS
 export function withSettingsDefaults(
     settings: SystemSettings | null | undefined,
 ): AppSystemSettings {
+    const sanitizedSettings = settings
+        ? Object.fromEntries(
+              Object.entries(settings).filter(([, value]) => value !== null && value !== undefined),
+          )
+        : {};
+
     return {
         ...(settings ?? { id: "default", updatedAt: new Date() }),
         ...SYSTEM_SETTINGS_DEFAULTS,
-        ...settings,
+        ...sanitizedSettings,
     } as AppSystemSettings;
 }
 
