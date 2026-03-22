@@ -57,7 +57,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.db
-    image: ghcr.io/joel110311/zen_crm_db:latest
+    image: ghcr.io/joel110311/zen_crm_go_db:latest
     environment:
       - POSTGRES_USER=zencrm
       - POSTGRES_PASSWORD=950b719a13e682e057b42c7b11dd2213

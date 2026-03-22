@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   zen-crm:
-    image: ghcr.io/joel110311/zen_crm:latest
+    image: ghcr.io/joel110311/zen_crm_go:latest
     environment:
       - DATABASE_URL=postgresql://zencrm:${POSTGRES_PASSWORD}@zen-crm-db:5432/${POSTGRES_DB}
       - WHATSAPP_GATEWAY_URL=http://whatsapp-gateway:8080
@@ -64,7 +64,7 @@ services:
         condition: on-failure
 
   zen-crm-db:
-    image: ghcr.io/joel110311/zen_crm_db:latest
+    image: ghcr.io/joel110311/zen_crm_go_db:latest
     environment:
       - POSTGRES_USER=zencrm
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
