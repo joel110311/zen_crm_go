@@ -47,44 +47,33 @@ function getHostMeta(contact: any) {
         };
     }
 
-    if (conversation.assignedUser?.name) {
-        return {
-            label: conversation.assignedUser.name,
-            detail: conversation.botActive ? "IA activa" : "Atencion manual",
-            classes: conversation.botActive ? "bg-emerald-50 text-emerald-700" : "bg-blue-100 text-blue-700",
-        };
-    }
-
-    return {
-        label: "Sin asignar",
-        detail: conversation.botActive ? "IA sin responsable" : "Asignacion manual",
-        classes: "bg-slate-100 text-slate-600",
-    };
-}
-
-function getAttendanceMeta(contact: any) {
-    const conversation = contact.conversations?.[0];
-
-    if (!conversation) {
-        return {
-            label: "Sin asignar",
-            detail: "Sin conversacion",
-            classes: "bg-slate-100 text-slate-600",
-        };
-    }
-
     if (conversation.botActive) {
         return {
             label: "IA",
-            detail: "Atencion automatica",
+            detail: conversation.assignedUser?.name || "Atencion automatica",
             classes: "bg-emerald-100 text-emerald-700",
         };
     }
 
     return {
         label: "Humano",
-        detail: conversation.assignedUser?.name || "Atencion manual",
+        detail: conversation.assignedUser?.name || "Asignacion manual",
         classes: "bg-amber-50 text-amber-700",
+    };
+}
+
+function getStatusMeta(contact: any) {
+    const stage = contact.deals?.[0]?.stage;
+    const fallbackMap: Record<string, { label: string; color: string }> = {
+        lead: { label: "Nuevo lead", color: "#94A3B8" },
+        qualified: { label: "Calificado", color: "#10B981" },
+        customer: { label: "Cliente", color: "#2563EB" },
+    };
+    const fallback = fallbackMap[contact.status] || fallbackMap.lead;
+
+    return {
+        label: stage?.name || fallback.label,
+        color: stage?.color || fallback.color,
     };
 }
 
@@ -131,7 +120,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
     const handleExport = () => {
         const rows = contacts.map((contact) => {
             const host = getHostMeta(contact);
-            const attendance = getAttendanceMeta(contact);
+            const status = getStatusMeta(contact);
             const score = getScoreMeta(contact);
 
             return [
@@ -139,14 +128,14 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                 contact.email || "",
                 contact.phone || "",
                 host.label,
-                attendance.label,
+                status.label,
                 String(score.score),
                 new Date(contact.createdAt).toISOString(),
             ];
         });
 
         const csv = [
-            ["Nombre", "Email", "Telefono", "Anfitrion", "Atiende", "Calidad", "Creado"].join(","),
+            ["Nombre", "Email", "Telefono", "Anfitrion", "Estado", "Calidad", "Creado"].join(","),
             ...rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")),
         ].join("\n");
 
@@ -222,7 +211,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                             <TableHead className="hidden lg:table-cell text-muted-foreground">Email</TableHead>
                             <TableHead className="text-muted-foreground">Telefono</TableHead>
                             <TableHead className="hidden md:table-cell text-muted-foreground">Anfitrion</TableHead>
-                            <TableHead className="hidden md:table-cell text-muted-foreground">Atiende</TableHead>
+                            <TableHead className="hidden md:table-cell text-muted-foreground">Estado</TableHead>
                             <TableHead className="hidden xl:table-cell text-muted-foreground">Creado</TableHead>
                             <TableHead className="text-muted-foreground">Calidad</TableHead>
                             <TableHead className="w-[56px]"></TableHead>
@@ -239,7 +228,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                             pagedContacts.map((contact) => {
                                 const fullName = getContactFullName(contact, "Sin nombre");
                                 const host = getHostMeta(contact);
-                                const attendance = getAttendanceMeta(contact);
+                                const status = getStatusMeta(contact);
                                 const score = getScoreMeta(contact);
 
                                 return (
@@ -282,14 +271,15 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                                             </div>
                                         </TableCell>
                                         <TableCell className="hidden md:table-cell">
-                                            <div className="flex flex-col gap-1">
-                                                <span className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-xs font-medium ${attendance.classes}`}>
-                                                    {attendance.label}
-                                                </span>
-                                                <span className="truncate text-[11px] text-muted-foreground">
-                                                    {attendance.detail}
-                                                </span>
-                                            </div>
+                                            <span
+                                                className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium"
+                                                style={{
+                                                    backgroundColor: `${status.color}22`,
+                                                    color: status.color,
+                                                }}
+                                            >
+                                                {status.label}
+                                            </span>
                                         </TableCell>
                                         <TableCell className="hidden xl:table-cell whitespace-nowrap text-sm text-muted-foreground">
                                             {formatDistanceToNow(new Date(contact.createdAt), { addSuffix: true, locale: es })}
