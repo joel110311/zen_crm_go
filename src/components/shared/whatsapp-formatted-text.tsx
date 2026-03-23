@@ -80,7 +80,7 @@ export function WhatsAppFormattedText({
     const lines = text.split("\n");
 
     return (
-        <div className={cn("break-words", className)}>
+        <div className={cn("min-w-0 max-w-full break-words [overflow-wrap:anywhere] [word-break:break-word]", className)}>
             {lines.map((line, lineIndex) => (
                 <React.Fragment key={`line-${lineIndex}`}>
                     {renderInlineSegments(line, `line-${lineIndex}`, variableClassName)}
