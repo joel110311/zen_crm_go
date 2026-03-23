@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import {
     completeGoogleCalendarOAuth,
+    getGoogleCalendarRedirectUri,
     syncGoogleCalendarToCrm,
 } from "@/lib/google-calendar";
 
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
     const error = request.nextUrl.searchParams.get("error");
     const state = request.nextUrl.searchParams.get("state");
     const expectedState = request.cookies.get("google_calendar_oauth_state")?.value;
-    const redirectUri = new URL("/api/google-calendar/callback", request.nextUrl.origin).toString();
+    const redirectUri = getGoogleCalendarRedirectUri(request.nextUrl.origin);
     const settingsUrl = new URL("/dashboard/settings?section=calendar", request.nextUrl.origin);
 
     const clearStateCookie = (response: NextResponse) => {

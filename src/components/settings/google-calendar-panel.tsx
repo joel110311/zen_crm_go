@@ -26,6 +26,7 @@ type GoogleCalendarStatus = {
     connectedEmail?: string | null;
     calendarId?: string | null;
     lastSyncedAt?: string | null;
+    redirectUri?: string;
     sync?: {
         synced: boolean;
         imported: number;
@@ -45,7 +46,11 @@ export function GoogleCalendarPanel(props: Props) {
         try {
             const response = await fetch("/api/google-calendar/status", { cache: "no-store" });
             if (!response.ok) throw new Error("No se pudo consultar el estado.");
-            setStatus(await response.json());
+            const payload = (await response.json()) as GoogleCalendarStatus;
+            setStatus(payload);
+            if (payload.redirectUri) {
+                setRedirectUri(payload.redirectUri);
+            }
         } catch (error) {
             toast({
                 title: "No se pudo cargar Google Calendar",
@@ -57,11 +62,6 @@ export function GoogleCalendarPanel(props: Props) {
 
     useEffect(() => {
         loadStatus();
-    }, []);
-
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        setRedirectUri(`${window.location.origin}/api/google-calendar/callback`);
     }, []);
 
     const handleConnect = async () => {

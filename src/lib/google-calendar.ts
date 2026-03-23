@@ -41,6 +41,25 @@ type GoogleCalendarStatus = {
     lastSyncedAt?: string | null;
 };
 
+function resolveGoogleOAuthBaseUrl(fallbackOrigin?: string) {
+    const candidates = [process.env.APP_BASE_URL, process.env.AUTH_URL, fallbackOrigin];
+
+    for (const candidate of candidates) {
+        if (!candidate) continue;
+        try {
+            return new URL(candidate).toString();
+        } catch {
+            continue;
+        }
+    }
+
+    throw new Error("No se pudo resolver la URL publica del CRM para Google Calendar.");
+}
+
+export function getGoogleCalendarRedirectUri(fallbackOrigin?: string) {
+    return new URL("/api/google-calendar/callback", resolveGoogleOAuthBaseUrl(fallbackOrigin)).toString();
+}
+
 function getCalendarId(value?: string | null) {
     return (value || "primary").trim() || "primary";
 }

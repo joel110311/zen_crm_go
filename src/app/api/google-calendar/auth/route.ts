@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { auth } from "@/lib/auth";
-import { getGoogleCalendarAuthUrl } from "@/lib/google-calendar";
+import { getGoogleCalendarAuthUrl, getGoogleCalendarRedirectUri } from "@/lib/google-calendar";
 
 export async function GET(request: NextRequest) {
     const session = await auth();
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.redirect(new URL("/login", request.url));
     }
 
-    const redirectUri = new URL("/api/google-calendar/callback", request.nextUrl.origin).toString();
+    const redirectUri = getGoogleCalendarRedirectUri(request.nextUrl.origin);
     const state = randomUUID();
     const url = await getGoogleCalendarAuthUrl(redirectUri, state);
     const response = NextResponse.redirect(url);
