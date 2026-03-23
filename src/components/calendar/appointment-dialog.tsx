@@ -18,6 +18,7 @@ import { createAppointment, updateAppointment, deleteAppointment } from "@/app/a
 import { createContact, getContacts } from "@/app/actions/contacts"; // Need a search function for contacts
 import { useToast } from "@/components/ui/use-toast";
 import { getContactFullName } from "@/lib/contact-name";
+import type { GoogleCalendarSourceSummary } from "@/lib/google-calendar";
 import {
     formatTimeLabel,
     getBusinessDayScheduleForDate,
@@ -36,6 +37,10 @@ interface AppointmentDialogProps {
     businessHours: BusinessHoursConfig;
 }
 
+type GoogleCalendarStatusPayload = {
+    sources: GoogleCalendarSourceSummary[];
+};
+
 export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedSlot, onSuccess, businessHours }: AppointmentDialogProps) {
     const [isPending, startTransition] = useTransition();
     const { toast } = useToast();
@@ -47,6 +52,8 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
     const [time, setTime] = useState("09:00");
     const [duration, setDuration] = useState("30"); // minutes
     const [notes, setNotes] = useState("");
+    const [calendarSources, setCalendarSources] = useState<GoogleCalendarSourceSummary[]>([]);
+    const [selectedCalendarId, setSelectedCalendarId] = useState<string>("general");
 
     // Contact Search State
     const [contacts, setContacts] = useState<any[]>([]);
@@ -106,6 +113,45 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
         }
     }, [businessHours, open, selectedEvent, selectedSlot]);
 
+    useEffect(() => {
+        if (!open) return;
+
+        const loadGoogleCalendars = async () => {
+            try {
+                const response = await fetch("/api/google-calendar/status", { cache: "no-store" });
+                if (!response.ok) return;
+                const payload = (await response.json()) as GoogleCalendarStatusPayload;
+                const sources = (payload.sources || []).filter((source) => source.isSelected);
+                setCalendarSources(sources);
+
+                const selectedFromEvent = selectedEvent?.resource?.googleCalendarId as string | undefined;
+                const specialistCalendars = sources.filter((source) => source.isSpecialist && source.writable);
+                const defaultWriteTarget = sources.find((source) => source.isWriteTarget && source.writable);
+
+                if (selectedFromEvent && sources.some((source) => source.calendarId === selectedFromEvent)) {
+                    setSelectedCalendarId(selectedFromEvent);
+                    return;
+                }
+
+                if (specialistCalendars.length === 1) {
+                    setSelectedCalendarId(specialistCalendars[0].calendarId);
+                    return;
+                }
+
+                if (defaultWriteTarget) {
+                    setSelectedCalendarId(defaultWriteTarget.calendarId);
+                    return;
+                }
+
+                setSelectedCalendarId("general");
+            } catch (error) {
+                console.error("Failed to load Google calendars for dialog:", error);
+            }
+        };
+
+        void loadGoogleCalendars();
+    }, [open, selectedEvent]);
+
     // Fetch contacts on query change (simple debounce could be added)
     useEffect(() => {
         const fetchContacts = async () => {
@@ -131,6 +177,12 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
         : null;
     const selectedDayStart = selectedDaySchedule?.enabled ? selectedDaySchedule.start : businessHours.start;
     const selectedDayEnd = selectedDaySchedule?.enabled ? selectedDaySchedule.end : businessHours.end;
+    const writableSources = calendarSources.filter((source) => source.writable);
+    const specialistSources = writableSources.filter((source) => source.isSpecialist);
+    const selectedCalendar =
+        writableSources.find((source) => source.calendarId === selectedCalendarId) ||
+        writableSources.find((source) => source.isWriteTarget) ||
+        null;
 
 
     const handleSubmit = () => {
@@ -154,6 +206,10 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
         startTime.setHours(hours, minutes);
 
         const endTime = new Date(startTime.getTime() + parseInt(duration) * 60000);
+        const blockingCalendarIds = selectedCalendar?.calendarId ? [selectedCalendar.calendarId] : undefined;
+        const specialistName = selectedCalendar?.isSpecialist
+            ? (selectedCalendar.specialistName || selectedCalendar.summary)
+            : undefined;
 
         startTransition(async () => {
             try {
@@ -164,6 +220,11 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                         endTime,
                         notes,
                         contactId: contactId || undefined,
+                        googleCalendarId: selectedCalendar?.calendarId,
+                        googleCalendarName: selectedCalendar?.summary,
+                        googleCalendarColor: selectedCalendar?.backgroundColor || undefined,
+                        specialistName,
+                        blockingCalendarIds,
                     });
                     if (!result.success) {
                         throw new Error(result.error || "No se pudo actualizar la cita.");
@@ -176,6 +237,11 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                         endTime,
                         notes,
                         contactId: contactId || undefined,
+                        googleCalendarId: selectedCalendar?.calendarId,
+                        googleCalendarName: selectedCalendar?.summary,
+                        googleCalendarColor: selectedCalendar?.backgroundColor || undefined,
+                        specialistName,
+                        blockingCalendarIds,
                     });
                     if (!result.success) {
                         throw new Error(result.error || "No se pudo agendar la cita.");
@@ -372,6 +438,31 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                             placeholder="Ej. Demo de producto"
                         />
                     </div>
+
+                    {writableSources.length > 0 ? (
+                        <div className="space-y-2">
+                            <Label>Calendario / Especialista</Label>
+                            <Select value={selectedCalendarId} onValueChange={setSelectedCalendarId}>
+                                <SelectTrigger className="bg-background h-11">
+                                    <SelectValue placeholder="Selecciona donde guardar la cita" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {writableSources.map((source) => (
+                                        <SelectItem key={source.calendarId} value={source.calendarId}>
+                                            {source.isSpecialist
+                                                ? `${source.specialistName || source.summary} · Especialista`
+                                                : source.summary}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">
+                                {specialistSources.length > 0
+                                    ? `Especialistas activos: ${specialistSources.map((source) => source.specialistName || source.summary).join(", ")}.`
+                                    : "Si eliges un calendario de escritura, la cita se sincronizara directamente ahi."}
+                            </p>
+                        </div>
+                    ) : null}
 
                     {/* Date and Time Row */}
                     <div className="grid grid-cols-2 gap-4">

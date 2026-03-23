@@ -1,53 +1,68 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CalendarSync, CheckCircle2, Link2, Loader2, RefreshCw, Save, Unlink } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+    CalendarSync,
+    Check,
+    CheckCircle2,
+    Link2,
+    Loader2,
+    RefreshCw,
+    Save,
+    ShieldCheck,
+    Sparkles,
+    Unlink,
+    Users,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
+import type { GoogleCalendarSourceInput, GoogleCalendarSourceSummary, GoogleCalendarStatus } from "@/lib/google-calendar";
 
 type Props = {
     googleClientId: string;
     googleClientSecret: string;
-    googleCalendarId: string;
     onChange: (
-        field: "googleClientId" | "googleClientSecret" | "googleCalendarId",
+        field: "googleClientId" | "googleClientSecret",
         value: string,
     ) => void;
     onSave: () => Promise<boolean>;
     isSaving: boolean;
 };
 
-type GoogleCalendarStatus = {
-    configured: boolean;
-    connected: boolean;
-    connectedEmail?: string | null;
-    calendarId?: string | null;
-    lastSyncedAt?: string | null;
-    redirectUri?: string;
-    sync?: {
-        synced: boolean;
-        imported: number;
-    };
-};
+function sortSources(sources: GoogleCalendarSourceSummary[]) {
+    return [...sources].sort((a, b) => a.sortOrder - b.sortOrder || a.summary.localeCompare(b.summary, "es"));
+}
 
 export function GoogleCalendarPanel(props: Props) {
     const { toast } = useToast();
     const [status, setStatus] = useState<GoogleCalendarStatus>({
         configured: false,
         connected: false,
+        sources: [],
+        specialistCount: 0,
+        maxSpecialists: 8,
     });
+    const [draftSources, setDraftSources] = useState<GoogleCalendarSourceSummary[]>([]);
     const [isWorking, setIsWorking] = useState(false);
     const [redirectUri, setRedirectUri] = useState("https://tu-dominio/api/google-calendar/callback");
+
+    const selectedSpecialists = useMemo(
+        () => draftSources.filter((source) => source.isSelected && source.isSpecialist).length,
+        [draftSources],
+    );
 
     const loadStatus = async () => {
         try {
             const response = await fetch("/api/google-calendar/status", { cache: "no-store" });
             if (!response.ok) throw new Error("No se pudo consultar el estado.");
-            const payload = (await response.json()) as GoogleCalendarStatus;
+            const payload = (await response.json()) as GoogleCalendarStatus & { redirectUri?: string };
             setStatus(payload);
+            setDraftSources(sortSources(payload.sources || []));
             if (payload.redirectUri) {
                 setRedirectUri(payload.redirectUri);
             }
@@ -64,6 +79,12 @@ export function GoogleCalendarPanel(props: Props) {
         loadStatus();
     }, []);
 
+    const mutateSource = (calendarId: string, updater: (source: GoogleCalendarSourceSummary) => GoogleCalendarSourceSummary) => {
+        setDraftSources((current) => sortSources(current.map((source) => (
+            source.calendarId === calendarId ? updater(source) : source
+        ))));
+    };
+
     const handleConnect = async () => {
         setIsWorking(true);
         try {
@@ -75,22 +96,28 @@ export function GoogleCalendarPanel(props: Props) {
         }
     };
 
+    const postStatusAction = async (action: string, body?: Record<string, unknown>) => {
+        const response = await fetch("/api/google-calendar/status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action, ...(body || {}) }),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+            throw new Error(payload.error || "No se pudo completar la accion.");
+        }
+        return payload as GoogleCalendarStatus;
+    };
+
     const handleSync = async () => {
         setIsWorking(true);
         try {
-            const response = await fetch("/api/google-calendar/status", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "sync" }),
-            });
-            const payload = await response.json();
-            if (!response.ok) {
-                throw new Error(payload.error || "No se pudo sincronizar.");
-            }
+            const payload = await postStatusAction("sync");
             setStatus(payload);
+            setDraftSources(sortSources(payload.sources || []));
             toast({
                 title: "Sincronizacion completada",
-                description: `Google Calendar importo ${payload.sync?.imported || 0} cambios.`,
+                description: "Se actualizaron las citas importadas desde Google Calendar.",
             });
         } catch (error) {
             toast({
@@ -106,16 +133,9 @@ export function GoogleCalendarPanel(props: Props) {
     const handleDisconnect = async () => {
         setIsWorking(true);
         try {
-            const response = await fetch("/api/google-calendar/status", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "disconnect" }),
-            });
-            const payload = await response.json();
-            if (!response.ok) {
-                throw new Error(payload.error || "No se pudo desconectar.");
-            }
+            const payload = await postStatusAction("disconnect");
             setStatus(payload);
+            setDraftSources(sortSources(payload.sources || []));
             toast({
                 title: "Google Calendar desconectado",
                 description: "La cuenta quedo desvinculada del CRM.",
@@ -131,122 +151,376 @@ export function GoogleCalendarPanel(props: Props) {
         }
     };
 
+    const handleDiscover = async () => {
+        setIsWorking(true);
+        try {
+            const payload = await postStatusAction("discover");
+            setStatus(payload);
+            setDraftSources(sortSources(payload.sources || []));
+            toast({
+                title: "Calendarios cargados",
+                description: "Ya puedes elegir que calendarios usar en el CRM.",
+            });
+        } catch (error) {
+            toast({
+                title: "No se pudieron cargar los calendarios",
+                description: error instanceof Error ? error.message : "No se pudieron descubrir los calendarios.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsWorking(false);
+        }
+    };
+
+    const handleSaveSources = async () => {
+        setIsWorking(true);
+        try {
+            const payload = await postStatusAction("save_sources", {
+                sources: draftSources.map<GoogleCalendarSourceInput>((source, index) => ({
+                    calendarId: source.calendarId,
+                    isSelected: source.isSelected,
+                    blocksAvailability: source.blocksAvailability,
+                    importToCrm: source.importToCrm,
+                    isWriteTarget: source.isWriteTarget,
+                    isSpecialist: source.isSpecialist,
+                    specialistName: source.specialistName || source.summary,
+                    sortOrder: index,
+                })),
+            });
+            setStatus(payload);
+            setDraftSources(sortSources(payload.sources || []));
+            toast({
+                title: "Calendarios guardados",
+                description: "La configuracion de especialistas y disponibilidad ya quedo aplicada.",
+            });
+        } catch (error) {
+            toast({
+                title: "No se pudo guardar",
+                description: error instanceof Error ? error.message : "Fallo al guardar la configuracion.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsWorking(false);
+        }
+    };
+
     return (
-        <div className="space-y-5">
+        <div className="space-y-6">
             <div>
                 <h3 className="font-semibold text-base text-foreground">Google Calendar</h3>
                 <p className="text-sm text-muted-foreground">
-                    Conecta una cuenta de Google para que las citas del CRM se reflejen en Google Calendar y los cambios de Google se importen al CRM.
+                    Conecta una cuenta Google y luego elige que calendarios se ven en el CRM, cuales bloquean disponibilidad y cuales representan especialistas.
                 </p>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-2">
-                <div className="space-y-4">
-                    <div className="space-y-2">
-                        <Label>Google Client ID</Label>
-                        <Input
-                            value={props.googleClientId}
-                            onChange={(event) => props.onChange("googleClientId", event.target.value)}
-                            placeholder="Client ID del OAuth Web Application"
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Google Client Secret</Label>
-                        <Input
-                            type="password"
-                            value={props.googleClientSecret}
-                            onChange={(event) => props.onChange("googleClientSecret", event.target.value)}
-                            placeholder="Client Secret de Google"
-                        />
-                        <p className="text-xs text-muted-foreground">
-                            En Google Cloud configura un OAuth Web Application y agrega como redirect URI:
-                            <br />
-                            <span className="font-mono break-all">{redirectUri}</span>
-                        </p>
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Calendar ID</Label>
-                        <Input
-                            value={props.googleCalendarId}
-                            onChange={(event) => props.onChange("googleCalendarId", event.target.value)}
-                            placeholder="primary"
-                        />
-                        <p className="text-xs text-muted-foreground">
-                            Usa `primary` o el ID exacto del calendario de Google que quieres sincronizar. No pongas el nombre visible del calendario.
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                            Si solo quieres conectar rapido, deja este campo en <span className="font-mono">primary</span>.
-                        </p>
-                    </div>
-
-                    <div className="rounded-xl border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
-                        Al conectar, Google ya debe mostrarte el selector de cuentas. Si aun bloquea el acceso, revisa que la cuenta elegida este autorizada en tu pantalla de consentimiento de Google y que la redirect URI coincida exactamente con la de arriba.
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                        <Button onClick={props.onSave} disabled={props.isSaving || isWorking} variant="outline">
-                            {props.isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                            Guardar
-                        </Button>
-                        <Button onClick={handleConnect} disabled={props.isSaving || isWorking}>
-                            {isWorking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link2 className="mr-2 h-4 w-4" />}
-                            Conectar Google
-                        </Button>
-                        <Button onClick={handleSync} disabled={props.isSaving || isWorking} variant="secondary">
-                            <RefreshCw className="mr-2 h-4 w-4" />
-                            Sincronizar ahora
-                        </Button>
-                        <Button onClick={handleDisconnect} disabled={props.isSaving || isWorking} variant="ghost" className="text-destructive hover:text-destructive">
-                            <Unlink className="mr-2 h-4 w-4" />
-                            Desconectar
-                        </Button>
-                    </div>
-                </div>
-
-                <Card className="border-primary/20">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <CalendarSync className="h-5 w-5 text-primary" />
-                            Estado de la sincronizacion
-                        </CardTitle>
-                        <CardDescription>
-                            Aqui veras la cuenta conectada y el ultimo jalado de eventos desde Google Calendar.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="flex items-center justify-between rounded-xl border px-4 py-3">
-                            <div>
-                                <p className="text-sm font-medium">Conexion</p>
+            <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+                <div className="space-y-5">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Credenciales OAuth</CardTitle>
+                            <CardDescription>
+                                Usa un cliente OAuth Web Application de Google Cloud.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="space-y-2">
+                                <Label>Google Client ID</Label>
+                                <Input
+                                    value={props.googleClientId}
+                                    onChange={(event) => props.onChange("googleClientId", event.target.value)}
+                                    placeholder="Client ID del OAuth Web Application"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Google Client Secret</Label>
+                                <Input
+                                    type="password"
+                                    value={props.googleClientSecret}
+                                    onChange={(event) => props.onChange("googleClientSecret", event.target.value)}
+                                    placeholder="Client Secret de Google"
+                                />
                                 <p className="text-xs text-muted-foreground">
-                                    {status.connected ? "Activa" : status.configured ? "Lista para conectar" : "Faltan credenciales"}
+                                    Agrega esta redirect URI en Google Cloud:
+                                    <br />
+                                    <span className="font-mono break-all">{redirectUri}</span>
                                 </p>
                             </div>
-                            {status.connected ? (
-                                <div className="inline-flex items-center gap-2 text-emerald-600 text-sm font-medium">
-                                    <CheckCircle2 className="h-4 w-4" />
-                                    Conectado
+
+                            <div className="flex flex-wrap gap-2">
+                                <Button onClick={props.onSave} disabled={props.isSaving || isWorking} variant="outline">
+                                    {props.isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                                    Guardar
+                                </Button>
+                                <Button onClick={handleConnect} disabled={props.isSaving || isWorking}>
+                                    {isWorking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link2 className="mr-2 h-4 w-4" />}
+                                    Conectar Google
+                                </Button>
+                                <Button onClick={handleDiscover} disabled={!status.connected || isWorking} variant="secondary">
+                                    <RefreshCw className="mr-2 h-4 w-4" />
+                                    Cargar calendarios
+                                </Button>
+                                <Button onClick={handleSync} disabled={!status.connected || isWorking} variant="secondary">
+                                    <CalendarSync className="mr-2 h-4 w-4" />
+                                    Sincronizar
+                                </Button>
+                                <Button onClick={handleDisconnect} disabled={isWorking} variant="ghost" className="text-destructive hover:text-destructive">
+                                    <Unlink className="mr-2 h-4 w-4" />
+                                    Desconectar
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Users className="h-5 w-5 text-primary" />
+                                Calendarios disponibles
+                            </CardTitle>
+                            <CardDescription>
+                                Marca con su casilla los calendarios que quieres usar. Solo los marcados se tendran en cuenta en el CRM.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {!status.connected ? (
+                                <div className="rounded-xl border border-dashed px-4 py-6 text-sm text-muted-foreground">
+                                    Conecta Google primero para cargar la lista de calendarios.
                                 </div>
+                            ) : draftSources.length === 0 ? (
+                                <div className="rounded-xl border border-dashed px-4 py-6 text-sm text-muted-foreground">
+                                    Tu cuenta ya esta conectada. Pulsa <span className="font-medium">Cargar calendarios</span> para traerlos al CRM.
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {draftSources.map((source) => {
+                                        const specialistLimitReached =
+                                            !source.isSpecialist &&
+                                            selectedSpecialists >= status.maxSpecialists;
+
+                                        return (
+                                            <div key={source.calendarId} className="rounded-2xl border border-border/60 bg-card/60 p-4">
+                                                <div className="flex items-start gap-3">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => mutateSource(source.calendarId, (current) => ({
+                                                            ...current,
+                                                            isSelected: !current.isSelected,
+                                                            blocksAvailability: !current.isSelected ? true : false,
+                                                            importToCrm: !current.isSelected ? true : false,
+                                                            isWriteTarget: !current.isSelected ? current.isWriteTarget : false,
+                                                            isSpecialist: !current.isSelected ? current.isSpecialist : false,
+                                                            specialistName: !current.isSelected ? current.specialistName : null,
+                                                        }))}
+                                                        className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 transition"
+                                                        style={{
+                                                            borderColor: source.backgroundColor || "#94A3B8",
+                                                            backgroundColor: source.isSelected ? (source.backgroundColor || "#3B82F6") : "transparent",
+                                                        }}
+                                                    >
+                                                        {source.isSelected ? <Check className="h-4 w-4 text-white" /> : null}
+                                                    </button>
+
+                                                    <div className="min-w-0 flex-1 space-y-3">
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <span className="font-medium text-sm text-foreground">{source.summary}</span>
+                                                            {source.isPrimary ? <Badge variant="secondary">Principal</Badge> : null}
+                                                            <Badge variant={source.writable ? "default" : "outline"}>
+                                                                {source.accessRole || "reader"}
+                                                            </Badge>
+                                                            {source.isWriteTarget ? <Badge variant="outline">Escritura</Badge> : null}
+                                                            {source.isSpecialist ? <Badge variant="outline">Especialista</Badge> : null}
+                                                        </div>
+
+                                                        {source.description ? (
+                                                            <p className="text-xs text-muted-foreground">{source.description}</p>
+                                                        ) : null}
+
+                                                        {source.isSelected ? (
+                                                            <div className="grid gap-3 md:grid-cols-2">
+                                                                <div className="flex items-center justify-between rounded-xl border px-3 py-2">
+                                                                    <div>
+                                                                        <p className="text-sm font-medium">Bloquea disponibilidad</p>
+                                                                        <p className="text-xs text-muted-foreground">Se toma en cuenta para ofrecer horarios.</p>
+                                                                    </div>
+                                                                    <Switch
+                                                                        checked={source.blocksAvailability}
+                                                                        onCheckedChange={(checked) => mutateSource(source.calendarId, (current) => ({
+                                                                            ...current,
+                                                                            blocksAvailability: checked,
+                                                                        }))}
+                                                                    />
+                                                                </div>
+
+                                                                <div className="flex items-center justify-between rounded-xl border px-3 py-2">
+                                                                    <div>
+                                                                        <p className="text-sm font-medium">Importar al CRM</p>
+                                                                        <p className="text-xs text-muted-foreground">Muestra sus eventos dentro del calendario del CRM.</p>
+                                                                    </div>
+                                                                    <Switch
+                                                                        checked={source.importToCrm}
+                                                                        onCheckedChange={(checked) => mutateSource(source.calendarId, (current) => ({
+                                                                            ...current,
+                                                                            importToCrm: checked,
+                                                                        }))}
+                                                                    />
+                                                                </div>
+
+                                                                <div className="flex items-center justify-between rounded-xl border px-3 py-2">
+                                                                    <div>
+                                                                        <p className="text-sm font-medium">Calendario de escritura</p>
+                                                                        <p className="text-xs text-muted-foreground">Es donde el CRM crea o actualiza citas.</p>
+                                                                    </div>
+                                                                    <Switch
+                                                                        checked={source.isWriteTarget}
+                                                                        disabled={!source.writable}
+                                                                        onCheckedChange={(checked) => {
+                                                                            setDraftSources((current) => sortSources(current.map((entry) => ({
+                                                                                ...entry,
+                                                                                isWriteTarget: entry.calendarId === source.calendarId ? checked : false,
+                                                                            }))));
+                                                                        }}
+                                                                    />
+                                                                </div>
+
+                                                                <div className="flex items-center justify-between rounded-xl border px-3 py-2">
+                                                                    <div>
+                                                                        <p className="text-sm font-medium">Es especialista</p>
+                                                                        <p className="text-xs text-muted-foreground">Disponible para que la IA agende directamente con esa persona.</p>
+                                                                    </div>
+                                                                    <Switch
+                                                                        checked={source.isSpecialist}
+                                                                        disabled={!source.writable || specialistLimitReached}
+                                                                        onCheckedChange={(checked) => mutateSource(source.calendarId, (current) => ({
+                                                                            ...current,
+                                                                            isSpecialist: checked,
+                                                                            specialistName: checked ? (current.specialistName || current.summary) : null,
+                                                                        }))}
+                                                                    />
+                                                                </div>
+
+                                                                {source.isSpecialist ? (
+                                                                    <div className="md:col-span-2 space-y-2">
+                                                                        <Label>Nombre visible del especialista</Label>
+                                                                        <Input
+                                                                            value={source.specialistName || ""}
+                                                                            onChange={(event) => mutateSource(source.calendarId, (current) => ({
+                                                                                ...current,
+                                                                                specialistName: event.target.value,
+                                                                            }))}
+                                                                            placeholder="Ej. Patricia"
+                                                                        />
+                                                                    </div>
+                                                                ) : null}
+                                                            </div>
+                                                        ) : (
+                                                            <p className="text-xs text-muted-foreground">
+                                                                Marca su casilla para activar este calendario dentro del CRM.
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {draftSources.length > 0 ? (
+                                <Button onClick={handleSaveSources} disabled={!status.connected || isWorking}>
+                                    {isWorking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                                    Guardar configuracion de calendarios
+                                </Button>
                             ) : null}
-                        </div>
+                        </CardContent>
+                    </Card>
+                </div>
 
-                        <div className="rounded-xl border bg-muted/30 px-4 py-3">
-                            <p className="text-xs text-muted-foreground">Cuenta enlazada</p>
-                            <p className="text-sm font-medium break-all">{status.connectedEmail || "Todavia no hay una cuenta conectada."}</p>
-                        </div>
+                <div className="space-y-5">
+                    <Card className="border-primary/20">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <CalendarSync className="h-5 w-5 text-primary" />
+                                Estado de la sincronizacion
+                            </CardTitle>
+                            <CardDescription>
+                                Aqui veras la cuenta enlazada, el calendario principal y el uso actual de especialistas.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex items-center justify-between rounded-xl border px-4 py-3">
+                                <div>
+                                    <p className="text-sm font-medium">Conexion</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        {status.connected ? "Activa" : status.configured ? "Lista para conectar" : "Faltan credenciales"}
+                                    </p>
+                                </div>
+                                {status.connected ? (
+                                    <div className="inline-flex items-center gap-2 text-emerald-600 text-sm font-medium">
+                                        <CheckCircle2 className="h-4 w-4" />
+                                        Conectado
+                                    </div>
+                                ) : null}
+                            </div>
 
-                        <div className="rounded-xl border bg-muted/30 px-4 py-3">
-                            <p className="text-xs text-muted-foreground">Calendar ID activo</p>
-                            <p className="text-sm font-medium break-all">{status.calendarId || "primary"}</p>
-                        </div>
+                            <div className="rounded-xl border bg-muted/30 px-4 py-3">
+                                <p className="text-xs text-muted-foreground">Cuenta enlazada</p>
+                                <p className="text-sm font-medium break-all">{status.connectedEmail || "Todavia no hay una cuenta conectada."}</p>
+                            </div>
 
-                        <div className="rounded-xl border bg-muted/30 px-4 py-3">
-                            <p className="text-xs text-muted-foreground">Ultima sincronizacion</p>
-                            <p className="text-sm font-medium">
-                                {status.lastSyncedAt ? new Date(status.lastSyncedAt).toLocaleString("es-MX") : "Aun no se ha sincronizado"}
-                            </p>
-                        </div>
-                    </CardContent>
-                </Card>
+                            <div className="rounded-xl border bg-muted/30 px-4 py-3">
+                                <p className="text-xs text-muted-foreground">Calendario actual de escritura</p>
+                                <p className="text-sm font-medium break-all">{status.calendarId || "Sin calendario activo"}</p>
+                            </div>
+
+                            <div className="rounded-xl border bg-muted/30 px-4 py-3">
+                                <p className="text-xs text-muted-foreground">Especialistas activos</p>
+                                <p className="text-sm font-medium">{selectedSpecialists}/{status.maxSpecialists}</p>
+                            </div>
+
+                            <div className="rounded-xl border bg-muted/30 px-4 py-3">
+                                <p className="text-xs text-muted-foreground">Ultima sincronizacion</p>
+                                <p className="text-sm font-medium">
+                                    {status.lastSyncedAt ? new Date(status.lastSyncedAt).toLocaleString("es-MX") : "Aun no se ha sincronizado"}
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Sparkles className="h-5 w-5 text-primary" />
+                                Como lo usara la IA
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3 text-sm text-muted-foreground">
+                            <div className="rounded-xl border px-4 py-3">
+                                <p className="font-medium text-foreground">1. Calendarios marcados</p>
+                                <p>Solo los calendarios chuleados se toman en cuenta dentro del CRM.</p>
+                            </div>
+                            <div className="rounded-xl border px-4 py-3">
+                                <p className="font-medium text-foreground">2. Bloquea disponibilidad</p>
+                                <p>Si un calendario lo tiene activo, sus eventos ocupados tambien bloquean horarios al ofrecer citas.</p>
+                            </div>
+                            <div className="rounded-xl border px-4 py-3">
+                                <p className="font-medium text-foreground">3. Especialistas</p>
+                                <p>Hasta 8 calendarios pueden actuar como especialistas para que la IA agende con Juan, Luis, Patricia, etc.</p>
+                            </div>
+                            <div className="rounded-xl border px-4 py-3">
+                                <p className="font-medium text-foreground">4. Calendario de escritura</p>
+                                <p>Solo uno queda como destino principal para crear citas cuando no se haya elegido un especialista concreto.</p>
+                            </div>
+                            <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+                                <div className="flex items-start gap-2">
+                                    <ShieldCheck className="mt-0.5 h-4 w-4 text-primary" />
+                                    <p>
+                                        Si un calendario solo tiene permiso <span className="font-medium text-foreground">reader</span>, el CRM puede verlo pero no usarlo como especialista ni escribir citas nuevas ahi.
+                                    </p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
             </div>
         </div>
     );

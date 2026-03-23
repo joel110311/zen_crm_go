@@ -70,7 +70,6 @@ export default function SettingsPage() {
     const [whatsappInstanceName, setWhatsappInstanceName] = useState("zen-crm");
     const [googleClientId, setGoogleClientId] = useState("");
     const [googleClientSecret, setGoogleClientSecret] = useState("");
-    const [googleCalendarId, setGoogleCalendarId] = useState("primary");
     const [isSaving, setIsSaving] = useState(false);
     const [users, setUsers] = useState<UserRow[]>([]);
     const [showAddForm, setShowAddForm] = useState(false);
@@ -106,7 +105,6 @@ export default function SettingsPage() {
                 setWhatsappInstanceName(settings.whatsappInstanceName || "zen-crm");
                 setGoogleClientId(settings.googleClientId || "");
                 setGoogleClientSecret(settings.googleClientSecret || "");
-                setGoogleCalendarId(settings.googleCalendarId || "primary");
             } catch (error) {
                 console.error("Failed to load settings:", error);
             }
@@ -170,7 +168,6 @@ export default function SettingsPage() {
                     whatsappInstanceName,
                     googleClientId,
                     googleClientSecret,
-                    googleCalendarId,
                 }),
             });
             if (!response.ok) throw new Error("No se pudo guardar la configuracion");
@@ -351,11 +348,9 @@ export default function SettingsPage() {
                     <GoogleCalendarPanel
                         googleClientId={googleClientId}
                         googleClientSecret={googleClientSecret}
-                        googleCalendarId={googleCalendarId}
                         onChange={(field, value) => {
                             if (field === "googleClientId") setGoogleClientId(value);
                             if (field === "googleClientSecret") setGoogleClientSecret(value);
-                            if (field === "googleCalendarId") setGoogleCalendarId(value);
                         }}
                         onSave={handleSave}
                         isSaving={isSaving}

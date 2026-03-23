@@ -9,6 +9,10 @@ import {
     validateManagedAppointment,
 } from "@/lib/calendar/appointments";
 import {
+    findGoogleSpecialistByMention,
+    getGoogleCalendarBookingContext,
+} from "@/lib/google-calendar";
+import {
     formatBusinessScheduleLines,
     formatDateTimeInZone,
     getBusinessDateKey,
@@ -144,16 +148,32 @@ function buildMissingInfoReply(
     ].join("\n");
 }
 
+function buildSpecialistReply(
+    specialists: Array<{ specialistName?: string | null; summary: string }>,
+) {
+    const names = specialists
+        .map((specialist) => specialist.specialistName || specialist.summary)
+        .filter(Boolean);
+
+    return [
+        "*Claro, puedo ayudarte a agendarla.*",
+        "",
+        `Solo necesito saber *con quien* prefieres la cita: ${names.join(", ")}.`,
+    ].join("\n");
+}
+
 function buildSuccessReply(
     title: string,
     startTime: Date,
     durationMinutes: number,
     timeZone: string,
+    specialistName?: string | null,
 ) {
     return [
         "*Tu cita quedo agendada*",
         "",
         `*Motivo:* ${title}`,
+        ...(specialistName ? [`*Especialista:* ${specialistName}`] : []),
         `*Fecha:* ${formatDateTimeInZone(startTime, timeZone, "es-MX", {
             weekday: "long",
             day: "numeric",
@@ -324,6 +344,29 @@ export async function maybeHandleAppointmentBooking(
         Math.max(planner.durationMinutes || config.defaultDurationMinutes, 15),
         180,
     );
+    const bookingContext = await getGoogleCalendarBookingContext();
+    const specialistContextText = [
+        latestUserMessage,
+        ...conversation.messages.map((message) => message.content),
+    ].join("\n");
+    let selectedSpecialist = await findGoogleSpecialistByMention(specialistContextText);
+
+    if (!selectedSpecialist && bookingContext.specialists.length === 1) {
+        selectedSpecialist = bookingContext.specialists[0];
+    }
+
+    if (!selectedSpecialist && bookingContext.specialists.length > 1) {
+        return {
+            kind: "missing",
+            reply: buildSpecialistReply(bookingContext.specialists),
+        };
+    }
+
+    const targetCalendar = selectedSpecialist || bookingContext.writeTarget;
+    const blockingCalendarIds =
+        selectedSpecialist?.calendarId
+            ? [selectedSpecialist.calendarId]
+            : bookingContext.availabilitySources.map((source) => source.calendarId);
 
     if (planner.action === "ask_missing" || !planner.localDate || !planner.localTime) {
         return {
@@ -344,7 +387,12 @@ export async function maybeHandleAppointmentBooking(
             `Cita con ${getContactFullName(conversation.contact, conversation.contact?.phone || "cliente")}`;
 
         if (mode === "validate") {
-            await validateManagedAppointment({ startTime, endTime });
+            await validateManagedAppointment({
+                startTime,
+                endTime,
+                googleCalendarId: targetCalendar?.calendarId || undefined,
+                blockingCalendarIds,
+            });
 
             return {
                 kind: "validated",
@@ -368,6 +416,11 @@ export async function maybeHandleAppointmentBooking(
             notes: planner.notes?.trim() || latestUserMessage,
             contactId: conversation.contactId,
             userId: conversation.assignedUserId || undefined,
+            googleCalendarId: targetCalendar?.calendarId || undefined,
+            googleCalendarName: targetCalendar?.summary || undefined,
+            googleCalendarColor: targetCalendar?.backgroundColor || undefined,
+            specialistName: selectedSpecialist?.specialistName || selectedSpecialist?.summary || undefined,
+            blockingCalendarIds,
         });
 
         revalidatePath("/dashboard/calendar");
@@ -375,7 +428,13 @@ export async function maybeHandleAppointmentBooking(
 
         return {
             kind: "created",
-            reply: buildSuccessReply(title, startTime, durationMinutes, config.timeZone),
+            reply: buildSuccessReply(
+                title,
+                startTime,
+                durationMinutes,
+                config.timeZone,
+                selectedSpecialist?.specialistName || selectedSpecialist?.summary || null,
+            ),
         };
     } catch (error) {
         if (error instanceof AppointmentSchedulingError) {

@@ -71,7 +71,13 @@ export default function CalendarPage() {
             start: new Date(apt.startTime),
             end: new Date(apt.endTime),
             notes: apt.notes,
-            resource: { contact: apt.contact }
+            resource: {
+                contact: apt.contact,
+                googleCalendarId: apt.googleCalendarId,
+                googleCalendarName: apt.googleCalendarName,
+                googleCalendarColor: apt.googleCalendarColor,
+                specialistName: apt.specialistName,
+            }
         };
         setSelectedEvent(event);
         setSelectedSlot(null);
@@ -145,7 +151,11 @@ export default function CalendarPage() {
         resource: {
             contact: apt.contact,
             user: apt.user,
-            status: apt.status
+            status: apt.status,
+            googleCalendarId: apt.googleCalendarId,
+            googleCalendarName: apt.googleCalendarName,
+            googleCalendarColor: apt.googleCalendarColor,
+            specialistName: apt.specialistName,
         }
     }));
 

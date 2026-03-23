@@ -17,7 +17,25 @@ export async function getAppointments() {
         } catch (syncError) {
             console.error("[Google Calendar] Background sync failed while loading appointments:", syncError);
         }
+
+        const settings = await prisma.systemSettings.findFirst({
+            include: {
+                googleCalendars: true,
+            },
+        });
+        const visibleCalendarIds = settings?.googleCalendars
+            .filter((source) => source.isSelected)
+            .map((source) => source.calendarId) || [];
+
         return await prisma.appointment.findMany({
+            where: {
+                OR: [
+                    { googleCalendarId: null },
+                    ...(visibleCalendarIds.length > 0
+                        ? [{ googleCalendarId: { in: visibleCalendarIds } }]
+                        : []),
+                ],
+            },
             orderBy: { startTime: "asc" },
             include: { user: true, contact: true }
         });
@@ -34,6 +52,11 @@ export async function createAppointment(data: {
     notes?: string;
     contactId?: string;
     userId?: string;
+    googleCalendarId?: string;
+    googleCalendarName?: string;
+    googleCalendarColor?: string;
+    specialistName?: string;
+    blockingCalendarIds?: string[];
 }) {
     try {
         await createManagedAppointment(data);
@@ -55,6 +78,11 @@ export async function updateAppointment(id: string, data: {
     notes?: string;
     contactId?: string;
     userId?: string;
+    googleCalendarId?: string;
+    googleCalendarName?: string;
+    googleCalendarColor?: string;
+    specialistName?: string;
+    blockingCalendarIds?: string[];
 }) {
     try {
         await updateManagedAppointment(id, data);

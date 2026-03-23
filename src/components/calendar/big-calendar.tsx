@@ -43,6 +43,10 @@ interface CalendarEvent {
         contact?: unknown;
         user?: unknown;
         status?: string;
+        googleCalendarColor?: string;
+        googleCalendarName?: string;
+        specialistName?: string;
+        googleCalendarId?: string;
     };
 }
 
@@ -153,22 +157,29 @@ export function BigCalendar({
     const CustomEvent = ({ event }: EventProps<CalendarEvent>) => {
         const isPast = new Date(event.end) < new Date();
         const isCompleted = event.resource?.status === "completed";
-        const isRed = isCompleted || isPast;
-
+        const calendarColor = event.resource?.googleCalendarColor || "#0EA5E9";
         const baseClasses =
             "flex h-full w-full items-start gap-2 overflow-hidden rounded-r-md border-l-[6px] px-1.5 py-0.5 leading-tight shadow-sm transition-all";
-        const colorClasses = isRed
-            ? "border-red-500 bg-red-500/10 text-red-400 hover:bg-red-500/15"
-            : "border-sky-500 bg-sky-500/10 text-sky-400 hover:bg-sky-500/15";
-
-        const dotColor = isRed ? "bg-red-500" : "bg-sky-500";
-        const dotShadow = isRed
-            ? "shadow-[0_0_6px_rgba(239,68,68,0.6)]"
-            : "shadow-[0_0_6px_rgba(14,165,233,0.6)]";
+        const backgroundColor = isCompleted || isPast ? `${calendarColor}14` : `${calendarColor}1F`;
+        const textColor = calendarColor;
 
         return (
-            <div className={`${baseClasses} ${colorClasses}`}>
-                <div className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${dotColor} ${dotShadow}`} />
+            <div
+                className={baseClasses}
+                style={{
+                    borderLeftColor: calendarColor,
+                    backgroundColor,
+                    color: textColor,
+                    opacity: isCompleted || isPast ? 0.8 : 1,
+                }}
+            >
+                <div
+                    className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{
+                        backgroundColor: calendarColor,
+                        boxShadow: `0 0 6px ${calendarColor}`,
+                    }}
+                />
                 <div className="flex min-w-0 flex-col justify-start overflow-hidden">
                     <div className="truncate text-xs font-semibold leading-snug">{event.title}</div>
                     <div className="truncate text-[10px] leading-tight opacity-85">

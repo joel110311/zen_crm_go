@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import {
     deleteAppointmentFromGoogleCalendar,
+    getGoogleCalendarBookingContext,
     syncAppointmentToGoogleCalendar,
     syncGoogleCalendarToCrm,
 } from "@/lib/google-calendar";
@@ -24,18 +25,26 @@ type AppointmentInput = {
     contactId?: string;
     userId?: string;
     status?: string;
+    googleCalendarId?: string | null;
+    googleCalendarName?: string | null;
+    googleCalendarColor?: string | null;
+    specialistName?: string | null;
+    blockingCalendarIds?: string[];
 };
 
 type ConflictCheckInput = {
     startTime: Date;
     endTime: Date;
     excludeAppointmentId?: string;
+    googleCalendarId?: string | null;
+    blockingCalendarIds?: string[];
 };
 
 type AvailableSlotOptions = {
     from?: Date;
     limit?: number;
     excludeAppointmentId?: string;
+    calendarIds?: string[];
 };
 
 export class AppointmentSchedulingError extends Error {
@@ -62,11 +71,15 @@ export async function findConflictingAppointments({
     startTime,
     endTime,
     excludeAppointmentId,
+    blockingCalendarIds,
 }: ConflictCheckInput) {
     return prisma.appointment.findMany({
         where: {
             ...(excludeAppointmentId
                 ? { id: { not: excludeAppointmentId } }
+                : {}),
+            ...(blockingCalendarIds && blockingCalendarIds.length > 0
+                ? { googleCalendarId: { in: blockingCalendarIds } }
                 : {}),
             startTime: { lt: endTime },
             endTime: { gt: startTime },
@@ -98,6 +111,7 @@ async function ensureAppointmentIsSchedulable(
     endTime: Date,
     config: BusinessHoursConfig,
     excludeAppointmentId?: string,
+    blockingCalendarIds?: string[],
 ) {
     if (!(startTime instanceof Date) || Number.isNaN(startTime.getTime()) || !(endTime instanceof Date) || Number.isNaN(endTime.getTime())) {
         throw new AppointmentSchedulingError("INVALID_RANGE", "La fecha u hora de la cita no son validas.");
@@ -134,6 +148,7 @@ async function ensureAppointmentIsSchedulable(
         startTime,
         endTime,
         excludeAppointmentId,
+        blockingCalendarIds,
     });
 
     if (conflicts.length > 0) {
@@ -141,6 +156,7 @@ async function ensureAppointmentIsSchedulable(
             from: startTime,
             limit: 3,
             excludeAppointmentId,
+            calendarIds: blockingCalendarIds,
         });
         throw new AppointmentSchedulingError(
             "TIME_CONFLICT",
@@ -154,6 +170,12 @@ export async function validateManagedAppointment(
     input: ConflictCheckInput,
 ) {
     const config = await getBusinessHoursConfig();
+    const blockingCalendarIds =
+        input.blockingCalendarIds && input.blockingCalendarIds.length > 0
+            ? input.blockingCalendarIds
+            : input.googleCalendarId
+                ? [input.googleCalendarId]
+                : undefined;
     try {
         await syncGoogleCalendarToCrm(false);
     } catch (syncError) {
@@ -165,6 +187,7 @@ export async function validateManagedAppointment(
         input.endTime,
         config,
         input.excludeAppointmentId,
+        blockingCalendarIds,
     );
 
     return config;
@@ -196,6 +219,9 @@ export async function suggestAvailableSlots(
             where: {
                 ...(options.excludeAppointmentId
                     ? { id: { not: options.excludeAppointmentId } }
+                    : {}),
+                ...(options.calendarIds && options.calendarIds.length > 0
+                    ? { googleCalendarId: { in: options.calendarIds } }
                     : {}),
                 startTime: { lt: dayEnd },
                 endTime: { gt: dayStart },
@@ -235,7 +261,26 @@ export async function createManagedAppointment(input: AppointmentInput) {
     } catch (syncError) {
         console.error("[Google Calendar] Pre-sync failed before create:", syncError);
     }
-    await ensureAppointmentIsSchedulable(input.startTime, input.endTime, config);
+    const bookingContext = await getGoogleCalendarBookingContext();
+    const resolvedWriteTarget =
+        (input.googleCalendarId
+            ? bookingContext.allSources.find((source) => source.calendarId === input.googleCalendarId)
+            : null) ||
+        bookingContext.writeTarget;
+    const blockingCalendarIds =
+        input.blockingCalendarIds && input.blockingCalendarIds.length > 0
+            ? input.blockingCalendarIds
+            : resolvedWriteTarget?.calendarId
+                ? [resolvedWriteTarget.calendarId]
+                : undefined;
+
+    await ensureAppointmentIsSchedulable(
+        input.startTime,
+        input.endTime,
+        config,
+        undefined,
+        blockingCalendarIds,
+    );
 
     const appointment = await prisma.appointment.create({
         data: {
@@ -246,6 +291,10 @@ export async function createManagedAppointment(input: AppointmentInput) {
             contactId: input.contactId,
             userId: input.userId,
             status: input.status || "scheduled",
+            googleCalendarId: input.googleCalendarId || resolvedWriteTarget?.calendarId || null,
+            googleCalendarName: input.googleCalendarName || resolvedWriteTarget?.summary || null,
+            googleCalendarColor: input.googleCalendarColor || resolvedWriteTarget?.backgroundColor || null,
+            specialistName: input.specialistName || resolvedWriteTarget?.specialistName || null,
         },
         include: {
             contact: true,
@@ -272,13 +321,25 @@ export async function updateManagedAppointment(id: string, input: Partial<Appoin
 
     const startTime = input.startTime || existing.startTime;
     const endTime = input.endTime || existing.endTime;
+    const blockingCalendarIds =
+        input.blockingCalendarIds && input.blockingCalendarIds.length > 0
+            ? input.blockingCalendarIds
+            : existing.googleCalendarId
+                ? [existing.googleCalendarId]
+                : undefined;
     const config = await getBusinessHoursConfig();
     try {
         await syncGoogleCalendarToCrm(false);
     } catch (syncError) {
         console.error("[Google Calendar] Pre-sync failed before update:", syncError);
     }
-    await ensureAppointmentIsSchedulable(startTime, endTime, config, id);
+    await ensureAppointmentIsSchedulable(
+        startTime,
+        endTime,
+        config,
+        id,
+        blockingCalendarIds,
+    );
 
     const appointment = await prisma.appointment.update({
         where: { id },
