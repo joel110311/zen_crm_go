@@ -192,6 +192,54 @@ function extractAvailabilityHintTokens(query: string) {
     );
 }
 
+function resolveAvailabilityLocationHint(
+    hintTokens: string[],
+    developments: Array<{ development: string; location: string | null }>,
+) {
+    const locationScores = new Map<string, { label: string; score: number }>();
+
+    for (const development of developments) {
+        if (!development.location) continue;
+
+        const normalizedLocation = normalizeSearchText(development.location);
+        let score = 0;
+
+        for (const token of hintTokens) {
+            if (normalizedLocation.includes(token)) {
+                score += Math.max(1, token.length);
+            }
+        }
+
+        if (score <= 0) continue;
+
+        const current = locationScores.get(normalizedLocation);
+        if (!current || score > current.score) {
+            locationScores.set(normalizedLocation, {
+                label: development.location,
+                score,
+            });
+        }
+    }
+
+    const bestLocation = [...locationScores.values()]
+        .sort((left, right) => {
+            if (right.score !== left.score) return right.score - left.score;
+            return left.label.localeCompare(right.label, "es", { sensitivity: "base" });
+        })[0];
+
+    if (bestLocation) {
+        return bestLocation.label;
+    }
+
+    const uniqueLocations = [...new Set(
+        developments
+            .map((development) => development.location?.trim())
+            .filter((location): location is string => Boolean(location)),
+    )];
+
+    return uniqueLocations.length === 1 ? uniqueLocations[0] : null;
+}
+
 function countMatches(source: string, pattern: RegExp) {
     return (source.match(pattern) || []).length;
 }
@@ -808,7 +856,7 @@ export async function findCatalogAvailabilitySummary(query: string): Promise<Cat
     }
 
     return {
-        locationHint: hintTokens.length > 0 ? hintTokens.join(" ") : null,
+        locationHint: resolveAvailabilityLocationHint(hintTokens, developments),
         developments,
     };
 }

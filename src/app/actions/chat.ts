@@ -172,25 +172,35 @@ function buildCatalogLinkMessage(
 function buildCatalogAvailabilityReply(summary: Awaited<ReturnType<typeof findCatalogAvailabilitySummary>>) {
     if (!summary) return null;
 
-    const locationLabel = summary.locationHint ? `*${summary.locationHint}*` : "esta zona";
-    const header =
-        summary.developments.length === 1
-            ? "Sí, tengo información de este desarrollo disponible:"
-            : summary.locationHint
-                ? `Sí, tengo opciones disponibles en ${locationLabel}:`
-                : "Sí, tengo opciones disponibles en esta zona:";
-
     const lines = summary.developments.map((item) =>
         item.location
             ? `- *${item.development}* (${item.location})`
             : `- *${item.development}*`,
     );
 
+    if (summary.developments.length === 1) {
+        const onlyDevelopment = summary.developments[0];
+        const locationFragment = onlyDevelopment.location
+            ? ` en *${onlyDevelopment.location}*`
+            : "";
+
+        return [
+            `Sí, claro que sí. Tengo información disponible de *${onlyDevelopment.development}*${locationFragment}.`,
+            "Si quieres, te platico más sobre este desarrollo y te comparto lo más importante.",
+            "¿Qué te gustaría conocer primero: ubicación, características, amenidades o imágenes?",
+        ].join("\n\n");
+    }
+
+    const intro = summary.locationHint
+        ? `Sí, claro que sí. Tenemos varios desarrollos en *${summary.locationHint}*.`
+        : "Sí, claro que sí. Tenemos varios desarrollos disponibles en esta zona.";
+
     return [
-        header,
+        intro,
+        "Algunos de ellos son:",
         lines.join("\n"),
-        "Si quieres, te platico más de alguno en particular y te comparto la información más importante.",
-        "Solo dime el nombre del desarrollo que te interese.",
+        "Si quieres, te ayudo a encontrar la opción que mejor se ajuste a lo que buscas.",
+        "¿Te interesa conocer alguno en particular o prefieres que te recomiende una opción según ubicación, recámaras o tipo de propiedad?",
     ].join("\n\n");
 }
 
@@ -623,7 +633,13 @@ async function maybeSendAutomatedReply(
                 })),
                 latestUserMessage,
             );
-            const catalogAvailabilitySummary = await findCatalogAvailabilitySummary(catalogLookupQuery);
+            const catalogAvailabilitySummary =
+                await findCatalogAvailabilitySummary(latestUserMessage) ||
+                (
+                    catalogLookupQuery !== latestUserMessage
+                        ? await findCatalogAvailabilitySummary(catalogLookupQuery)
+                        : null
+                );
             catalogItem = await findBestCatalogItem(catalogLookupQuery);
             const catalogIntent = parseCatalogAssetIntent(latestUserMessage);
             const catalogInstruction = catalogItem
