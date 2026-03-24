@@ -51,6 +51,64 @@ function normalizeCell(value: string | undefined) {
     return (value || "").trim();
 }
 
+function countMatches(source: string, pattern: RegExp) {
+    return (source.match(pattern) || []).length;
+}
+
+function scoreDecodedCatalogText(source: string) {
+    const replacementChars = countMatches(source, /\uFFFD/g);
+    const mojibakeHints = countMatches(source, /Ã.|Â.|â€¦|â€œ|â€|â€"|â€™|â€“|â€”/g);
+    const controlChars = countMatches(source, /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g);
+    const spanishChars = countMatches(source, /[áéíóúÁÉÍÓÚñÑ¿¡]/g);
+    const printableChars = countMatches(source, /[A-Za-z0-9áéíóúÁÉÍÓÚñÑ¿¡.,;:()_\-\/"'@\s]/g);
+
+    return (
+        printableChars +
+        spanishChars * 6 -
+        replacementChars * 120 -
+        mojibakeHints * 50 -
+        controlChars * 120
+    );
+}
+
+function decodeCatalogCsvBuffer(buffer: Buffer) {
+    if (buffer.length === 0) {
+        return "";
+    }
+
+    if (buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
+        return new TextDecoder("utf-8").decode(buffer);
+    }
+
+    if (buffer[0] === 0xff && buffer[1] === 0xfe) {
+        return new TextDecoder("utf-16le").decode(buffer);
+    }
+
+    if (buffer[0] === 0xfe && buffer[1] === 0xff) {
+        return new TextDecoder("utf-16be").decode(buffer);
+    }
+
+    const looksLikeUtf16 =
+        buffer.subarray(0, Math.min(buffer.length, 512)).some((byte, index) =>
+            index % 2 === 1 ? byte === 0 : false,
+        );
+
+    if (looksLikeUtf16) {
+        const utf16le = new TextDecoder("utf-16le").decode(buffer);
+        const utf16be = new TextDecoder("utf-16be").decode(buffer);
+        return scoreDecodedCatalogText(utf16le) >= scoreDecodedCatalogText(utf16be)
+            ? utf16le
+            : utf16be;
+    }
+
+    const utf8 = new TextDecoder("utf-8").decode(buffer);
+    const windows1252 = new TextDecoder("windows-1252").decode(buffer);
+
+    return scoreDecodedCatalogText(utf8) >= scoreDecodedCatalogText(windows1252)
+        ? utf8
+        : windows1252;
+}
+
 function parseBooleanCell(value: string | undefined, fallback = true) {
     const normalized = normalizeCell(value).toLowerCase();
     if (!normalized) return fallback;
@@ -284,7 +342,7 @@ function deduplicateImportRows(rows: CatalogImportRow[]): DeduplicatedCatalogRow
 }
 
 export async function importCatalogCsv(buffer: Buffer) {
-    const source = buffer.toString("utf-8");
+    const source = decodeCatalogCsvBuffer(buffer);
     const mappedRows = mapCsvRows(source);
     const { rows, duplicateExternalIds } = deduplicateImportRows(mappedRows);
 
