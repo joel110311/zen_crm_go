@@ -389,8 +389,6 @@ function resolvePhoneCandidatesFromInfo(info: JsonObject, isFromMe: boolean) {
             info["chat"],
             info["RemoteJid"],
             info["remoteJid"],
-            info["SenderAlt"],
-            info["senderAlt"],
         ]
         : [
             info["Chat"],
@@ -583,26 +581,44 @@ async function storeOutboundEcho(
     media: MediaPayload,
     providerMessageId?: string,
 ) {
+    if (providerMessageId) {
+        const existingMessage = await prisma.message.findFirst({
+            where: { providerMessageId },
+            include: { conversation: true },
+        });
+
+        if (existingMessage) {
+            await prisma.message.update({
+                where: { id: existingMessage.id },
+                data: {
+                    status: existingMessage.status === "sent" ? existingMessage.status : "sent",
+                },
+            });
+
+            await prisma.conversation.update({
+                where: { id: existingMessage.conversationId },
+                data: {
+                    updatedAt: new Date(),
+                    botActive: false,
+                },
+            });
+
+            revalidatePath("/dashboard/inbox");
+            return;
+        }
+    }
+
     const normalizedCandidates = uniquePhoneCandidates(phoneCandidates);
     if (normalizedCandidates.length === 0) return;
 
     let contact = await findContactByPhoneCandidates(normalizedCandidates);
 
     if (!contact) {
-        if (normalizedCandidates.length > 1) {
-            console.warn("[Webhook] Ignoring ambiguous outbound echo without matched contact", {
-                providerMessageId,
-                phoneCandidates: normalizedCandidates,
-            });
-            return;
-        }
-
-        contact = await prisma.contact.create({
-            data: {
-                phone: normalizedCandidates[0],
-                status: "lead",
-            },
+        console.warn("[Webhook] Ignoring outbound echo without matched contact", {
+            providerMessageId,
+            phoneCandidates: normalizedCandidates,
         });
+        return;
     }
 
     let conversation = await prisma.conversation.findFirst({
