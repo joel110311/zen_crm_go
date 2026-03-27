@@ -468,23 +468,23 @@ export function BulkCampaignManagerPanel() {
                 form={form}
             />
 
-            <div className="space-y-5">
-                <div className="grid gap-4 md:grid-cols-4">
-                    <div className="rounded-[1.6rem] border bg-card p-4 shadow-[0_22px_48px_-40px_rgba(15,23,42,0.5)]">
+            <div className="min-w-0 space-y-5">
+                <div className="grid gap-4 sm:grid-cols-2 min-[1800px]:grid-cols-4">
+                    <div className="min-w-0 rounded-[1.6rem] border bg-card p-4 shadow-[0_22px_48px_-40px_rgba(15,23,42,0.5)]">
                         <div className="flex items-center gap-2 text-muted-foreground">
                             <Users className="h-4 w-4" />
                             <span className="text-sm">Audiencia final</span>
                         </div>
                         <p className="mt-3 text-2xl font-semibold">{totalPreviewRecipients}</p>
                     </div>
-                    <div className="rounded-[1.6rem] border bg-card p-4 shadow-[0_22px_48px_-40px_rgba(15,23,42,0.5)]">
+                    <div className="min-w-0 rounded-[1.6rem] border bg-card p-4 shadow-[0_22px_48px_-40px_rgba(15,23,42,0.5)]">
                         <div className="flex items-center gap-2 text-muted-foreground">
                             <Clock3 className="h-4 w-4" />
                             <span className="text-sm">Delay aleatorio</span>
                         </div>
                         <p className="mt-3 text-2xl font-semibold">{form.randomDelayMinSeconds}-{form.randomDelayMaxSeconds}s</p>
                     </div>
-                    <div className="rounded-[1.6rem] border bg-card p-4 shadow-[0_22px_48px_-40px_rgba(15,23,42,0.5)]">
+                    <div className="min-w-0 rounded-[1.6rem] border bg-card p-4 shadow-[0_22px_48px_-40px_rgba(15,23,42,0.5)]">
                         <div className="flex items-center gap-2 text-muted-foreground">
                             <CalendarClock className="h-4 w-4" />
                             <span className="text-sm">Inicio</span>
@@ -493,7 +493,7 @@ export function BulkCampaignManagerPanel() {
                             {form.scheduledStartAt ? formatDateTime(new Date(form.scheduledStartAt).toISOString()) : "Inmediato"}
                         </p>
                     </div>
-                    <div className="rounded-[1.6rem] border bg-card p-4 shadow-[0_22px_48px_-40px_rgba(15,23,42,0.5)]">
+                    <div className="min-w-0 rounded-[1.6rem] border bg-card p-4 shadow-[0_22px_48px_-40px_rgba(15,23,42,0.5)]">
                         <div className="flex items-center gap-2 text-muted-foreground">
                             <BarChart3 className="h-4 w-4" />
                             <span className="text-sm">Duración estimada</span>
@@ -502,7 +502,7 @@ export function BulkCampaignManagerPanel() {
                     </div>
                 </div>
 
-                <div className="rounded-[1.9rem] border bg-card p-5 shadow-[0_28px_70px_-48px_rgba(15,23,42,0.55)]">
+                <div className="min-w-0 rounded-[1.9rem] border bg-card p-5 shadow-[0_28px_70px_-48px_rgba(15,23,42,0.55)]">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                         <div>
                             <div className="flex items-center gap-2">
@@ -558,7 +558,7 @@ export function BulkCampaignManagerPanel() {
                         )}
                     </div>
 
-                    <div className="mt-6 grid gap-4 md:grid-cols-2">
+                    <div className="mt-6 grid gap-4 lg:grid-cols-2">
                         <div className="space-y-2">
                             <Label>Nombre de la acción</Label>
                             <Input
@@ -585,14 +585,17 @@ export function BulkCampaignManagerPanel() {
                         </div>
                     </div>
 
-                    <Tabs defaultValue="message" className="mt-6 space-y-6">
-                        <TabsList variant="line" className="rounded-2xl border bg-muted/20 p-1">
-                            <TabsTrigger value="message" className="rounded-xl px-4">Mensaje</TabsTrigger>
-                            <TabsTrigger value="audience" className="rounded-xl px-4">Audiencia</TabsTrigger>
-                            <TabsTrigger value="schedule" className="rounded-xl px-4">Programación</TabsTrigger>
+                    <Tabs defaultValue="message" className="mt-6 min-w-0 space-y-6">
+                        <TabsList
+                            variant="line"
+                            className="h-auto w-full flex-wrap justify-start rounded-2xl border bg-muted/20 p-1"
+                        >
+                            <TabsTrigger value="message" className="min-h-10 rounded-xl px-4">Mensaje</TabsTrigger>
+                            <TabsTrigger value="audience" className="min-h-10 rounded-xl px-4">Audiencia</TabsTrigger>
+                            <TabsTrigger value="schedule" className="min-h-10 rounded-xl px-4">Programación</TabsTrigger>
                         </TabsList>
 
-                        <TabsContent value="message">
+                        <TabsContent value="message" className="min-w-0">
                             <BulkCampaignMessageTab
                                 form={form}
                                 activeVariantIndex={activeVariantIndex}
@@ -609,7 +612,7 @@ export function BulkCampaignManagerPanel() {
                             />
                         </TabsContent>
 
-                        <TabsContent value="audience">
+                        <TabsContent value="audience" className="min-w-0">
                             <BulkCampaignAudienceTab
                                 form={form}
                                 audiencePreview={audiencePreview}
@@ -650,7 +653,7 @@ export function BulkCampaignManagerPanel() {
                             />
                         </TabsContent>
 
-                        <TabsContent value="schedule">
+                        <TabsContent value="schedule" className="min-w-0">
                             <BulkCampaignScheduleTab
                                 form={form}
                                 totalPreviewRecipients={totalPreviewRecipients}

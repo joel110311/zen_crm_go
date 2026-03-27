@@ -213,10 +213,10 @@ export function GoogleCalendarPanel(props: Props) {
                 </p>
             </div>
 
-            <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-                <div className="space-y-5">
-                    <Card>
-                        <CardHeader>
+            <div className="grid gap-5 min-[1450px]:grid-cols-[1.15fr_0.85fr]">
+                <div className="min-w-0 space-y-5">
+                    <Card className="min-w-0">
+                        <CardHeader className="min-w-0">
                             <CardTitle>Credenciales OAuth</CardTitle>
                             <CardDescription>
                                 Usa un cliente OAuth tipo Web Application creado en Google Cloud.
@@ -271,8 +271,8 @@ export function GoogleCalendarPanel(props: Props) {
                         </CardContent>
                     </Card>
 
-                    <Card>
-                        <CardHeader>
+                    <Card className="min-w-0">
+                        <CardHeader className="min-w-0">
                             <CardTitle className="flex items-center gap-2">
                                 <Users className="h-5 w-5 text-primary" />
                                 Calendarios disponibles
@@ -298,7 +298,7 @@ export function GoogleCalendarPanel(props: Props) {
                                             selectedSpecialists >= status.maxSpecialists;
 
                                         return (
-                                            <div key={source.calendarId} className="rounded-2xl border border-border/60 bg-card/60 p-4">
+                                            <div key={source.calendarId} className="min-w-0 rounded-2xl border border-border/60 bg-card/60 p-4">
                                                 <div className="flex items-start gap-3">
                                                     <button
                                                         type="button"
@@ -336,8 +336,8 @@ export function GoogleCalendarPanel(props: Props) {
                                                         ) : null}
 
                                                         {source.isSelected ? (
-                                                            <div className="grid gap-3 md:grid-cols-2">
-                                                                <div className="flex items-center justify-between rounded-xl border px-3 py-2">
+                                                            <div className="grid gap-3 lg:grid-cols-2">
+                                                                <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border px-3 py-2">
                                                                     <div>
                                                                         <p className="text-sm font-medium">Bloquea disponibilidad</p>
                                                                         <p className="text-xs text-muted-foreground">Se toma en cuenta para ofrecer horarios.</p>
@@ -351,7 +351,7 @@ export function GoogleCalendarPanel(props: Props) {
                                                                     />
                                                                 </div>
 
-                                                                <div className="flex items-center justify-between rounded-xl border px-3 py-2">
+                                                                <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border px-3 py-2">
                                                                     <div>
                                                                         <p className="text-sm font-medium">Importar al CRM</p>
                                                                         <p className="text-xs text-muted-foreground">Muestra sus eventos dentro del calendario del CRM.</p>
@@ -365,7 +365,7 @@ export function GoogleCalendarPanel(props: Props) {
                                                                     />
                                                                 </div>
 
-                                                                <div className="flex items-center justify-between rounded-xl border px-3 py-2">
+                                                                <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border px-3 py-2">
                                                                     <div>
                                                                         <p className="text-sm font-medium">Calendario de escritura</p>
                                                                         <p className="text-xs text-muted-foreground">Es donde el CRM crea o actualiza citas.</p>
@@ -382,7 +382,7 @@ export function GoogleCalendarPanel(props: Props) {
                                                                     />
                                                                 </div>
 
-                                                                <div className="flex items-center justify-between rounded-xl border px-3 py-2">
+                                                                <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border px-3 py-2">
                                                                     <div>
                                                                         <p className="text-sm font-medium">Es especialista</p>
                                                                         <p className="text-xs text-muted-foreground">Disponible para que la IA agende directamente con esa persona.</p>
@@ -435,19 +435,19 @@ export function GoogleCalendarPanel(props: Props) {
                     </Card>
                 </div>
 
-                <div className="space-y-5">
-                    <Card className="border-primary/20">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
+                <div className="min-w-0 space-y-5">
+                    <Card className="min-w-0 border-primary/20">
+                        <CardHeader className="min-w-0 space-y-3">
+                            <CardTitle className="flex items-start gap-2 leading-snug">
                                 <CalendarSync className="h-5 w-5 text-primary" />
-                                Estado de la conexion
+                                <span className="min-w-0">Estado de la conexion</span>
                             </CardTitle>
-                            <CardDescription>
+                            <CardDescription className="max-w-none leading-relaxed">
                                 Aqui veras la cuenta enlazada, el calendario principal y el uso actual de especialistas.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="flex items-center justify-between rounded-xl border px-4 py-3">
+                            <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border px-4 py-3">
                                 <div>
                                     <p className="text-sm font-medium">Conexion</p>
                                     <p className="text-xs text-muted-foreground">
@@ -486,11 +486,11 @@ export function GoogleCalendarPanel(props: Props) {
                         </CardContent>
                     </Card>
 
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
+                    <Card className="min-w-0">
+                        <CardHeader className="min-w-0">
+                            <CardTitle className="flex items-start gap-2 leading-snug">
                                 <Sparkles className="h-5 w-5 text-primary" />
-                                Como lo usa el CRM
+                                <span className="min-w-0">Como lo usa el CRM</span>
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-3 text-sm text-muted-foreground">

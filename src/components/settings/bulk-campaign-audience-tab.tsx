@@ -139,9 +139,9 @@ export function BulkCampaignAudienceTab({
                 </div>
             </div>
 
-            <div className="grid gap-5 xl:grid-cols-[1.08fr_0.92fr]">
-                <div className="space-y-5">
-                    <div className="rounded-[1.5rem] border bg-muted/15 p-4">
+            <div className="grid gap-5 min-[1800px]:grid-cols-[1.08fr_0.92fr]">
+                <div className="min-w-0 space-y-5">
+                    <div className="min-w-0 rounded-[1.5rem] border bg-muted/15 p-4">
                         <div className="flex items-start justify-between gap-3">
                             <div>
                                 <p className="font-medium">Filtros del CRM</p>
@@ -212,7 +212,7 @@ export function BulkCampaignAudienceTab({
                             </div>
                         </div>
 
-                        <div className="mt-4 rounded-[1.3rem] border bg-background/85">
+                        <div className="mt-4 min-w-0 overflow-hidden rounded-[1.3rem] border bg-background/85">
                             <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
                                 <div>
                                     <p className="text-sm font-medium">Contactos visibles para agregar</p>
@@ -230,7 +230,7 @@ export function BulkCampaignAudienceTab({
                                 </div>
                             </div>
 
-                            <Table>
+                            <Table className="min-w-[720px]">
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead className="w-12">Sel.</TableHead>
@@ -283,7 +283,7 @@ export function BulkCampaignAudienceTab({
                         </div>
                     </div>
 
-                    <div className="rounded-[1.5rem] border bg-muted/15 p-4">
+                    <div className="min-w-0 rounded-[1.5rem] border bg-muted/15 p-4">
                         <div className="flex items-center gap-2">
                             <Phone className="h-4 w-4 text-primary" />
                             <p className="font-medium">Números agregados manualmente</p>
@@ -304,7 +304,7 @@ export function BulkCampaignAudienceTab({
                         </p>
                     </div>
 
-                    <div className="rounded-[1.5rem] border bg-muted/15 p-4">
+                    <div className="min-w-0 rounded-[1.5rem] border bg-muted/15 p-4">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
                                 <p className="font-medium">Importar datos por CSV</p>
@@ -357,8 +357,8 @@ export function BulkCampaignAudienceTab({
                     </div>
                 </div>
 
-                <div className="space-y-5">
-                    <div className="rounded-[1.5rem] border bg-muted/15 p-4">
+                <div className="min-w-0 space-y-5">
+                    <div className="min-w-0 rounded-[1.5rem] border bg-muted/15 p-4">
                         <div className="flex items-center justify-between gap-3">
                             <div>
                                 <p className="font-medium">Resumen gráfico</p>
@@ -369,8 +369,8 @@ export function BulkCampaignAudienceTab({
                             {isPreviewLoading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
                         </div>
 
-                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                            <div className="rounded-[1.2rem] border bg-background/85 p-4">
+                        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                            <div className="min-w-0 rounded-[1.2rem] border bg-background/85 p-4">
                                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                                     Fuentes
                                 </p>
@@ -378,7 +378,7 @@ export function BulkCampaignAudienceTab({
                                     <AudienceBreakdownBars items={audiencePreview?.sourceBreakdown || []} />
                                 </div>
                             </div>
-                            <div className="rounded-[1.2rem] border bg-background/85 p-4">
+                            <div className="min-w-0 rounded-[1.2rem] border bg-background/85 p-4">
                                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                                     Estados
                                 </p>
@@ -395,7 +395,7 @@ export function BulkCampaignAudienceTab({
                         </div>
                     </div>
 
-                    <div className="rounded-[1.5rem] border bg-muted/15 p-4">
+                    <div className="min-w-0 rounded-[1.5rem] border bg-muted/15 p-4">
                         <div className="flex items-center gap-2">
                             <BarChart3 className="h-4 w-4 text-primary" />
                             <p className="font-medium">Contactos a los que se les va a enviar</p>
@@ -404,8 +404,8 @@ export function BulkCampaignAudienceTab({
                             Vista previa de la audiencia final ya mezclada y deduplicada.
                         </p>
 
-                        <div className="mt-4 overflow-hidden rounded-[1.3rem] border bg-background/85">
-                            <Table>
+                        <div className="mt-4 min-w-0 overflow-hidden rounded-[1.3rem] border bg-background/85">
+                            <Table className="min-w-[640px]">
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Contacto</TableHead>

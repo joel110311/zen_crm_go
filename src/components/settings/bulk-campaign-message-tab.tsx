@@ -110,8 +110,8 @@ export function BulkCampaignMessageTab({
                 </div>
             ) : null}
 
-            <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
-                <div className="space-y-4 rounded-[1.5rem] border bg-muted/15 p-4">
+            <div className="grid gap-5 min-[1800px]:grid-cols-[0.95fr_1.05fr]">
+                <div className="min-w-0 space-y-4 rounded-[1.5rem] border bg-muted/15 p-4">
                     <div className="flex items-center justify-between gap-3">
                         <div>
                             <h3 className="font-medium">Variaciones del mensaje</h3>
@@ -144,7 +144,7 @@ export function BulkCampaignMessageTab({
                     </div>
 
                     <div className="space-y-3 rounded-[1.3rem] border bg-background/90 p-4">
-                        <div className="grid gap-3 md:grid-cols-[0.8fr_0.7fr_auto]">
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,0.8fr)_minmax(120px,0.7fr)_auto]">
                             <div className="space-y-2">
                                 <Label>Etiqueta</Label>
                                 <Input
@@ -244,8 +244,8 @@ export function BulkCampaignMessageTab({
                     </div>
                 </div>
 
-                <div className="space-y-4">
-                    <div className="rounded-[1.5rem] border bg-muted/15 p-4">
+                <div className="min-w-0 space-y-4">
+                    <div className="min-w-0 rounded-[1.5rem] border bg-muted/15 p-4">
                         <div className="flex items-center gap-2">
                             <WandSparkles className="h-4 w-4 text-primary" />
                             <p className="font-medium">Vista previa de WhatsApp</p>
@@ -266,7 +266,7 @@ export function BulkCampaignMessageTab({
                         </div>
                     </div>
 
-                    <div className="rounded-[1.5rem] border bg-muted/15 p-4">
+                    <div className="min-w-0 rounded-[1.5rem] border bg-muted/15 p-4">
                         <p className="font-medium">Estrategia aplicada</p>
                         <div className="mt-3 space-y-3 text-sm text-muted-foreground">
                             <div className="rounded-xl border bg-background/80 p-3">
@@ -284,7 +284,7 @@ export function BulkCampaignMessageTab({
                         </div>
                     </div>
 
-                    <div className="rounded-[1.5rem] border bg-muted/15 p-4">
+                    <div className="min-w-0 rounded-[1.5rem] border bg-muted/15 p-4">
                         <p className="font-medium">Borrador</p>
                         <div className="mt-3 grid gap-3 sm:grid-cols-2">
                             <div className="rounded-xl border bg-background/80 p-3 text-sm">
