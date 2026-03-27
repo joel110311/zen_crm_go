@@ -4,6 +4,9 @@ import { SYSTEM_SETTINGS_DEFAULTS } from "@/lib/system-settings";
 import { resolveChatModelSelection } from "@/lib/ai/models";
 import { resolveAiProviderKey } from "@/lib/ai/provider-keys";
 
+const DEFAULT_IMAGE_OCR_PROMPT =
+    "Extrae en espanol todo el texto legible de esta imagen. Conserva titulos, precios, ubicaciones, bullets y datos comerciales. Si una seccion no se alcanza a leer completa, transcribe lo visible y no inventes nada.";
+
 export async function getOpenAIClient() {
     const apiKey = await resolveAiProviderKey("openai");
 
@@ -64,6 +67,111 @@ export async function transcribeAudioBuffer(
     } catch (error) {
         console.error("Error transcribing audio:", error);
         throw error;
+    }
+}
+
+async function runGeminiInlineMediaPrompt(
+    prompt: string,
+    buffer: Buffer,
+    mimeType: string,
+) {
+    const settings = await prisma.systemSettings.findFirst();
+    const apiKey = await resolveAiProviderKey("gemini");
+
+    if (!apiKey) {
+        throw new Error(
+            "Gemini API Key not configured. Guardala en Configuracion > IA o habilita ALLOW_ENV_AI_FALLBACK.",
+        );
+    }
+
+    const selectedModel = resolveChatModelSelection(settings?.openaiModel);
+    const model =
+        selectedModel.provider === "gemini"
+            ? selectedModel.model
+            : "gemini-2.5-flash";
+
+    const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                contents: [
+                    {
+                        parts: [
+                            { text: prompt },
+                            {
+                                inline_data: {
+                                    mime_type: mimeType,
+                                    data: buffer.toString("base64"),
+                                },
+                            },
+                        ],
+                    },
+                ],
+                generationConfig: {
+                    temperature: 0.1,
+                },
+            }),
+        },
+    );
+
+    if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Gemini API error (${response.status}): ${errorBody}`);
+    }
+
+    const data = await response.json();
+    return (
+        data.candidates?.[0]?.content?.parts
+            ?.map((part: { text?: string }) => part.text || "")
+            .join("")
+            .trim() || ""
+    );
+}
+
+export async function extractTextFromImageBuffer(
+    buffer: Buffer,
+    mimeType: string,
+    prompt: string = DEFAULT_IMAGE_OCR_PROMPT,
+) {
+    const openai = await getOpenAIClient();
+    const dataUrl = `data:${mimeType || "image/png"};base64,${buffer.toString("base64")}`;
+    const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        temperature: 0.1,
+        messages: [
+            {
+                role: "user",
+                content: [
+                    {
+                        type: "text",
+                        text: prompt,
+                    },
+                    {
+                        type: "image_url",
+                        image_url: {
+                            url: dataUrl,
+                        },
+                    },
+                ],
+            },
+        ],
+    });
+
+    return response.choices[0]?.message?.content?.trim() || "";
+}
+
+export async function extractTextFromImageBufferWithFallback(
+    buffer: Buffer,
+    mimeType: string,
+    prompt: string = DEFAULT_IMAGE_OCR_PROMPT,
+) {
+    try {
+        return await extractTextFromImageBuffer(buffer, mimeType, prompt);
+    } catch (error) {
+        console.warn("[AI OCR] OpenAI image OCR failed, trying Gemini fallback:", error);
+        return runGeminiInlineMediaPrompt(prompt, buffer, mimeType || "image/png");
     }
 }
 

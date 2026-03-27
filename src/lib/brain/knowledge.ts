@@ -1,7 +1,12 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { prisma } from "@/lib/db";
-import { generateEmbedding, generateEmbeddings, transcribeAudioBuffer } from "@/lib/ai/openai";
+import {
+    extractTextFromImageBufferWithFallback,
+    generateEmbedding,
+    generateEmbeddings,
+    transcribeAudioBuffer,
+} from "@/lib/ai/openai";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 
 class SimpleDOMMatrix {
@@ -60,6 +65,8 @@ const DEFAULT_CHUNK_OVERLAP = 200;
 const BOT_USER_AGENT = "ZenCRMBot/1.0 (+https://zen-crm.local)";
 const BROWSER_USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
+const MAX_PDF_OCR_PAGES = 6;
+const PDF_OCR_RENDER_WIDTH = 1500;
 const PDF_PARSE_CJS_PATH = path.join(
     process.cwd(),
     "node_modules",
@@ -126,6 +133,18 @@ type RetrievedChunk = {
     sourceUri: string | null;
 };
 
+type PdfParseConstructor = new (options: { data: Buffer }) => {
+    getText: () => Promise<{ text?: string }>;
+    getInfo: (params?: { parsePageInfo?: boolean }) => Promise<{ total: number }>;
+    getScreenshot: (params?: {
+        first?: number;
+        imageBuffer?: boolean;
+        imageDataUrl?: boolean;
+        desiredWidth?: number;
+    }) => Promise<{ pages: Array<{ pageNumber: number; data: Uint8Array }> }>;
+    destroy: () => Promise<void>;
+};
+
 function normalizeWhitespace(text: string) {
     return text
         .replace(/\r/g, "\n")
@@ -140,6 +159,23 @@ function trimContent(text: string) {
     return normalized.length > MAX_SOURCE_CHARS
         ? normalized.slice(0, MAX_SOURCE_CHARS)
         : normalized;
+}
+
+function stripPdfPageArtifacts(text: string) {
+    return text
+        .replace(/--\s*\d+\s+of\s+\d+\s*--/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function hasMeaningfulPdfText(text: string) {
+    const normalized = stripPdfPageArtifacts(text);
+    if (normalized.length < 40) {
+        return false;
+    }
+
+    const wordMatches = normalized.match(/[A-Za-zÁÉÍÓÚÑáéíóúñ0-9]{3,}/g) || [];
+    return wordMatches.length >= 6;
 }
 
 function asMetadataRecord(metadata: unknown) {
@@ -283,8 +319,7 @@ async function fetchSourceResponse(url: string, metadata?: SourceFetchMetadata) 
     });
 }
 
-async function extractPdf(buffer: Buffer) {
-    ensurePdfPolyfills();
+async function loadPdfParseConstructor(): Promise<PdfParseConstructor> {
     const pdfParseModuleUrl = pathToFileURL(PDF_PARSE_CJS_PATH).href;
     const pdfParseModule = await import(pdfParseModuleUrl);
     const PDFParse =
@@ -296,10 +331,73 @@ async function extractPdf(buffer: Buffer) {
         throw new Error("No pude inicializar el lector de PDF.");
     }
 
+    return PDFParse as PdfParseConstructor;
+}
+
+async function extractPdfViaOcr(
+    parser: InstanceType<PdfParseConstructor>,
+    totalPagesHint?: number,
+) {
+    const totalPages = Math.max(1, Math.min(totalPagesHint || 1, MAX_PDF_OCR_PAGES));
+    const screenshots = await parser.getScreenshot({
+        first: totalPages,
+        imageBuffer: true,
+        imageDataUrl: false,
+        desiredWidth: PDF_OCR_RENDER_WIDTH,
+    });
+
+    const pageTexts: string[] = [];
+
+    for (const page of screenshots.pages) {
+        const ocrText = await extractTextFromImageBufferWithFallback(
+            Buffer.from(page.data),
+            "image/png",
+            [
+                `Esta es la pagina ${page.pageNumber} de un documento PDF.`,
+                "Extrae en espanol todo el texto visible y util.",
+                "Conserva encabezados, precio, ubicacion, caracteristicas, descripcion, datos de contacto y listas.",
+                "No inventes texto faltante. Si algo no se lee bien, deja fuera lo ilegible.",
+                "Devuelve solo el contenido extraido, limpio y listo para indexarse.",
+            ].join(" "),
+        );
+
+        const cleanedText = trimContent(ocrText);
+        if (cleanedText) {
+            pageTexts.push(`[PAGINA ${page.pageNumber}]\n${cleanedText}`);
+        }
+    }
+
+    return trimContent(pageTexts.join("\n\n"));
+}
+
+async function extractPdf(buffer: Buffer) {
+    ensurePdfPolyfills();
+    const PDFParse = await loadPdfParseConstructor();
     const parser = new PDFParse({ data: buffer });
     try {
         const result = await parser.getText();
-        return trimContent(result.text || "");
+        const extractedText = trimContent(result.text || "");
+
+        if (hasMeaningfulPdfText(extractedText)) {
+            return extractedText;
+        }
+
+        let totalPagesHint = 1;
+        try {
+            const info = await parser.getInfo({ parsePageInfo: false });
+            totalPagesHint = info.total || 1;
+        } catch {
+            // Best effort only.
+        }
+
+        const ocrText = await extractPdfViaOcr(parser, totalPagesHint);
+        if (hasMeaningfulPdfText(ocrText)) {
+            return ocrText;
+        }
+
+        throw new Error(
+            "El PDF no trae texto seleccionable y no pude extraer contenido legible por OCR.",
+        );
     } finally {
         await parser.destroy();
     }
