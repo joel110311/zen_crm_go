@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Loader2, Phone, Upload, Users } from "lucide-react";
+import { BarChart3, Download, Loader2, Phone, Upload, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -312,20 +312,32 @@ export function BulkCampaignAudienceTab({
                                     Sube contactos al CRM para incorporarlos a esta audiencia.
                                 </p>
                             </div>
-                            <label className="inline-flex cursor-pointer items-center rounded-xl border px-4 py-2 text-sm font-medium hover:bg-muted/40">
-                                {isImportingCsv ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
-                                Subir CSV
-                                <input
-                                    type="file"
-                                    className="hidden"
-                                    accept=".csv,text/csv"
-                                    onChange={(event) => {
-                                        const file = event.target.files?.[0];
-                                        if (file) void onCsvImport(file);
-                                        event.currentTarget.value = "";
-                                    }}
-                                />
-                            </label>
+                            <div className="flex flex-wrap gap-2">
+                                <Button asChild variant="outline" size="sm">
+                                    <a href="/examples/contactos-campana-ejemplo.csv" download>
+                                        <Download className="mr-2 h-4 w-4" />
+                                        Descargar ejemplo
+                                    </a>
+                                </Button>
+                                <label className="inline-flex cursor-pointer items-center rounded-xl border px-4 py-2 text-sm font-medium hover:bg-muted/40">
+                                    {isImportingCsv ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                                    Subir CSV
+                                    <input
+                                        type="file"
+                                        className="hidden"
+                                        accept=".csv,text/csv"
+                                        onChange={(event) => {
+                                            const file = event.target.files?.[0];
+                                            if (file) void onCsvImport(file);
+                                            event.currentTarget.value = "";
+                                        }}
+                                    />
+                                </label>
+                            </div>
+                        </div>
+
+                        <div className="mt-3 rounded-xl border bg-background/80 px-3 py-2 text-xs text-muted-foreground">
+                            Columnas sugeridas: <span className="font-medium text-foreground">phone, name, last_name, email, company, role, status, tags</span>.
                         </div>
 
                         <div className="mt-4 grid gap-4 md:grid-cols-2">
