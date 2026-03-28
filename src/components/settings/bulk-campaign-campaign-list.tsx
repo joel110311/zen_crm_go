@@ -35,15 +35,15 @@ export function BulkCampaignCampaignList({
     form,
 }: BulkCampaignCampaignListProps) {
     return (
-        <div className="space-y-4 rounded-[1.9rem] border bg-card p-5 shadow-[0_24px_55px_-42px_rgba(15,23,42,0.55)]">
-            <div className="flex items-center justify-between gap-3">
-                <div>
+        <div className="space-y-5 rounded-[1.9rem] border bg-card p-6 shadow-[0_24px_55px_-42px_rgba(15,23,42,0.55)]">
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 space-y-1">
                     <h2 className="font-semibold">Suite de envíos masivos</h2>
                     <p className="text-sm text-muted-foreground">
                         Campañas con audiencia visible, goteo y programación.
                     </p>
                 </div>
-                <Button variant="outline" size="sm" onClick={onCreateCampaign}>
+                <Button variant="outline" size="sm" onClick={onCreateCampaign} className="shrink-0">
                     <Plus className="mr-2 h-4 w-4" />
                     Nueva
                 </Button>

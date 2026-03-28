@@ -502,9 +502,9 @@ export function BulkCampaignManagerPanel() {
                     </div>
                 </div>
 
-                <div className="min-w-0 rounded-[1.9rem] border bg-card p-5 shadow-[0_28px_70px_-48px_rgba(15,23,42,0.55)]">
+                <div className="min-w-0 rounded-[1.9rem] border bg-card p-6 shadow-[0_28px_70px_-48px_rgba(15,23,42,0.55)]">
                     <div className="flex flex-wrap items-start justify-between gap-4">
-                        <div>
+                        <div className="min-w-0">
                             <div className="flex items-center gap-2">
                                 <Megaphone className="h-5 w-5 text-primary" />
                                 <h2 className="text-xl font-semibold">Constructor de campaña</h2>

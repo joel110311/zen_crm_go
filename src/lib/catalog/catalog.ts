@@ -102,6 +102,22 @@ const MAX_CATALOG_BULK_IMPORT_ITEMS = 30;
 const CATALOG_BOT_USER_AGENT = "ZenCRMCatalog/1.0 (+https://zen-crm.local)";
 const CATALOG_BROWSER_USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
+const TRACKING_QUERY_PARAM_PREFIXES = ["utm_"];
+const TRACKING_QUERY_PARAM_KEYS = new Set([
+    "fbclid",
+    "gclid",
+    "gclsrc",
+    "mc_cid",
+    "mc_eid",
+    "n_src",
+    "n_pg",
+    "n_pos",
+    "from",
+    "source",
+    "search",
+    "searchorder",
+]);
+const CLEAN_PATH_PORTALS = new Set(["zonaprop.com.ar", "argenprop.com"]);
 const CATALOG_QUERY_STOPWORDS = new Set([
     "a", "ahi", "alli", "algun", "alguna", "algunas", "algunos", "ando", "asi", "ayuda",
     "busca", "buscar", "como", "con", "cual", "cuales", "de", "del", "dime", "donde",
@@ -621,7 +637,7 @@ function dedupeCatalogStrings(values: string[]) {
 
 function toAbsoluteCatalogUrl(baseUrl: string, maybeRelativeUrl: string) {
     try {
-        return new URL(maybeRelativeUrl, baseUrl).toString();
+        return normalizeCatalogPageUrl(new URL(maybeRelativeUrl, baseUrl).toString());
     } catch {
         return null;
     }
@@ -842,10 +858,17 @@ async function fetchCatalogResponse(url: string, options?: CatalogFetchOptions) 
     });
 }
 
-function buildCatalogFetchErrorMessage(status: number, options?: CatalogFetchOptions) {
+function buildCatalogFetchErrorMessage(status: number, options?: CatalogFetchOptions, targetUrl?: string) {
     const normalizedOptions = normalizeCatalogFetchOptions(options);
+    const normalizedHost = targetUrl ? normalizeCatalogHost(new URL(targetUrl).hostname) : "";
 
     if (status === 403) {
+        if (CLEAN_PATH_PORTALS.has(normalizedHost)) {
+            return normalizedOptions.cookieHeader || normalizedOptions.authorizationHeader
+                ? "Ese portal devolvio 403 incluso con la sesion proporcionada. Revisa que la cookie siga vigente, copia una nueva desde el navegador o prueba otra URL de origen."
+                : "Ese portal bloqueo el acceso directo del servidor. La URL es valida, pero para importarla necesitas una cookie de sesion activa o un header Authorization.";
+        }
+
         return normalizedOptions.cookieHeader || normalizedOptions.authorizationHeader
             ? "La pagina devolvio 403 incluso con la sesion proporcionada. Revisa que la cookie siga vigente o usa otra URL de origen."
             : "La pagina devolvio 403 y no se pudo leer automaticamente. Ese sitio parece bloquear el acceso del servidor; para sitios privados prueba con cookie de sesion o sigue usando la ficha manual.";
@@ -885,6 +908,36 @@ function looksLikeCatalogLoginPage(pageText: string) {
 
 function normalizeCatalogHost(hostname: string) {
     return hostname.trim().toLowerCase().replace(/^www\./, "");
+}
+
+function normalizeCatalogPageUrl(rawUrl: string) {
+    try {
+        const parsedUrl = new URL(rawUrl);
+        const host = normalizeCatalogHost(parsedUrl.hostname);
+        const nextParams = new URLSearchParams(parsedUrl.search);
+
+        parsedUrl.hash = "";
+
+        if (CLEAN_PATH_PORTALS.has(host)) {
+            parsedUrl.search = "";
+            return parsedUrl.toString();
+        }
+
+        for (const key of [...nextParams.keys()]) {
+            const normalizedKey = key.trim().toLowerCase();
+            if (
+                TRACKING_QUERY_PARAM_KEYS.has(normalizedKey) ||
+                TRACKING_QUERY_PARAM_PREFIXES.some((prefix) => normalizedKey.startsWith(prefix))
+            ) {
+                nextParams.delete(key);
+            }
+        }
+
+        parsedUrl.search = nextParams.toString() ? `?${nextParams.toString()}` : "";
+        return parsedUrl.toString();
+    } catch {
+        return rawUrl;
+    }
 }
 
 function scoreCatalogCandidateUrl(url: string, label: string, filterText: string) {
@@ -1022,7 +1075,7 @@ export async function previewCatalogEntryFromUrl(
     url: string,
     options?: CatalogFetchOptions,
 ): Promise<CatalogUrlPreview> {
-    const normalizedUrl = normalizeCell(url);
+    const normalizedUrl = normalizeCatalogPageUrl(normalizeCell(url));
     if (!normalizedUrl) {
         throw new Error("Necesitas escribir una URL para autocompletar la ficha.");
     }
@@ -1037,7 +1090,7 @@ export async function previewCatalogEntryFromUrl(
     const response = await fetchCatalogResponse(parsedUrl.toString(), options);
 
     if (!response.ok) {
-        throw new Error(buildCatalogFetchErrorMessage(response.status, options));
+        throw new Error(buildCatalogFetchErrorMessage(response.status, options, parsedUrl.toString()));
     }
 
     const contentType = response.headers.get("content-type") || "";
@@ -1393,7 +1446,7 @@ async function upsertCatalogRows(
 export async function importCatalogEntriesFromIndex(
     input: CatalogBulkImportInput,
 ): Promise<CatalogBulkImportResult> {
-    const indexUrl = normalizeCell(input.indexUrl);
+    const indexUrl = normalizeCatalogPageUrl(normalizeCell(input.indexUrl));
     if (!indexUrl) {
         throw new Error("Necesitas pegar una URL de listado o cuenta para importar varias fichas.");
     }
@@ -1420,7 +1473,7 @@ export async function importCatalogEntriesFromIndex(
     const response = await fetchCatalogResponse(parsedIndexUrl.toString(), fetchOptions);
 
     if (!response.ok) {
-        throw new Error(buildCatalogFetchErrorMessage(response.status, fetchOptions));
+        throw new Error(buildCatalogFetchErrorMessage(response.status, fetchOptions, parsedIndexUrl.toString()));
     }
 
     const contentType = response.headers.get("content-type") || "";

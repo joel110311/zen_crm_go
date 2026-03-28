@@ -46,6 +46,22 @@ function isProtectedPortalUrl(url: string) {
     return host === "zonaprop.com.ar" || host === "argenprop.com";
 }
 
+function normalizeProtectedPortalUrl(url: string) {
+    const normalized = url.trim();
+    if (!normalized) return normalized;
+
+    try {
+        const parsedUrl = new URL(normalized);
+        if (isProtectedPortalUrl(normalized)) {
+            parsedUrl.search = "";
+            parsedUrl.hash = "";
+        }
+        return parsedUrl.toString();
+    } catch {
+        return normalized;
+    }
+}
+
 export function CatalogBase() {
     const [entries, setEntries] = useState<CatalogEntry[]>([]);
     const [isPending, startTransition] = useTransition();
@@ -181,12 +197,25 @@ export function CatalogBase() {
 
     const handleProtectedImport = () => {
         startTransition(async () => {
+            const normalizedIndexUrl = normalizeProtectedPortalUrl(protectedImport.indexUrl);
+            const cookieHeader = protectedImport.cookieHeader.trim();
+            const authorizationHeader = protectedImport.authorizationHeader.trim();
+
+            if (isProtectedPortalUrl(normalizedIndexUrl) && !cookieHeader && !authorizationHeader) {
+                toast({
+                    title: "Falta una sesion activa",
+                    description: "Ese portal no deja importar solo con la URL. Pega una cookie de sesion activa o un header Authorization antes de continuar.",
+                    variant: "destructive",
+                });
+                return;
+            }
+
             const result = await importCatalogFromProtectedSource({
-                indexUrl: protectedImport.indexUrl.trim(),
+                indexUrl: normalizedIndexUrl,
                 urlFilterText: protectedImport.urlFilterText.trim() || undefined,
                 maxItems: Number(protectedImport.maxItems) || 12,
-                authorizationHeader: protectedImport.authorizationHeader.trim() || undefined,
-                cookieHeader: protectedImport.cookieHeader.trim() || undefined,
+                authorizationHeader: authorizationHeader || undefined,
+                cookieHeader: cookieHeader || undefined,
                 refererUrl: protectedImport.refererUrl.trim() || undefined,
             });
 
@@ -208,7 +237,7 @@ export function CatalogBase() {
 
     const handleAutofillFromUrl = () => {
         startTransition(async () => {
-            const normalizedUrl = autofillUrl.trim();
+            const normalizedUrl = normalizeProtectedPortalUrl(autofillUrl);
             const result = await autofillCatalogEntryFromUrl(normalizedUrl);
 
             if (result.success && result.preview) {
@@ -223,7 +252,7 @@ export function CatalogBase() {
                     pdfUrl: result.preview.pdfUrl || "",
                     linkUrl: result.preview.linkUrl || current.linkUrl,
                 }));
-                setAutofillUrl(result.preview.linkUrl || autofillUrl);
+                setAutofillUrl(result.preview.linkUrl || normalizedUrl);
                 toast({
                     title: "Ficha detectada",
                     description: `Se cargaron ${result.preview.imageUrls.length} imagenes detectadas desde la URL. Revisa y ajusta antes de guardar.`,
