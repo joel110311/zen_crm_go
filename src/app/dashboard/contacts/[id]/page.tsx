@@ -52,6 +52,10 @@ export default async function ContactDetailsPage(props: { params: Promise<{ id: 
                     <Card>
                         <CardContent className="pt-6 flex flex-col items-center text-center">
                             <Avatar className="h-24 w-24 mb-4 ring-2 ring-offset-2 ring-blue-100">
+                                <AvatarImage
+                                    src={contact.whatsappAvatarUrl || undefined}
+                                    alt={fullName}
+                                />
                                 <AvatarFallback className="text-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white">
                                     {getContactInitial(contact)}
                                 </AvatarFallback>

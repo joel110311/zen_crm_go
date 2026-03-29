@@ -239,10 +239,13 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                                         <TableCell>
                                             <Link href={`/dashboard/contacts/${contact.id}`} className="flex items-center gap-3">
                                                 <Avatar className="h-10 w-10 border border-primary/10 shadow-sm">
+                                                    <AvatarImage
+                                                        src={contact.whatsappAvatarUrl || undefined}
+                                                        alt={fullName}
+                                                    />
                                                     <AvatarFallback className="bg-primary/10 font-semibold text-primary">
                                                         {getContactInitial(contact)}
                                                     </AvatarFallback>
-                                                    <AvatarImage src="" alt={fullName} />
                                                 </Avatar>
                                                 <div className="min-w-0">
                                                     <div className="truncate font-semibold text-foreground transition-colors group-hover:text-primary">

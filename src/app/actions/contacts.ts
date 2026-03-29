@@ -2,6 +2,10 @@
 
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
+import {
+    refreshWhatsAppAvatarForContact,
+    refreshWhatsAppAvatarForContactsInBackground,
+} from "@/lib/whatsapp-avatar";
 
 export async function getContacts(query?: string) {
     try {
@@ -57,6 +61,12 @@ export async function getContacts(query?: string) {
                 },
             },
         });
+
+        refreshWhatsAppAvatarForContactsInBackground(
+            contacts.map((contact) => contact.id).slice(0, 20),
+            { limit: 6, concurrency: 2 },
+        );
+
         return contacts;
     } catch (error) {
         console.error("Failed to fetch contacts:", error);
@@ -66,6 +76,10 @@ export async function getContacts(query?: string) {
 
 export async function getContact(id: string) {
     try {
+        await refreshWhatsAppAvatarForContact(id).catch((error) => {
+            console.warn("[Contacts] Could not refresh WhatsApp avatar for contact details", error);
+        });
+
         const contact = await prisma.contact.findUnique({
             where: { id },
             include: {

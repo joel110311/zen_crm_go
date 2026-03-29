@@ -44,7 +44,7 @@ export async function searchGlobal(term: string): Promise<SearchResult> {
                     lastName: true,
                     email: true,
                     company: true,
-                    // No avatar field in schema, so we'll omit it or handle default on frontend
+                    whatsappAvatarUrl: true,
                 },
                 take: 5,
             }),
@@ -69,7 +69,7 @@ export async function searchGlobal(term: string): Promise<SearchResult> {
         return {
             contacts: contacts.map((c: any) => ({
                 ...c,
-                avatar: undefined, // placeholder
+                avatar: c.whatsappAvatarUrl || undefined,
             })),
             deals: deals.map((d: any) => ({
                 id: d.id,

@@ -20,6 +20,7 @@ import { maybeHandleAppointmentBooking } from "@/lib/ai/appointment-booking";
 import { processLeadAutomationTurn } from "@/lib/ai/lead-intelligence";
 import { buildPhoneMatchClauses, normalizePhoneDigits } from "@/lib/phone";
 import { markBulkCampaignReplyForContact } from "@/lib/bulk-campaigns";
+import { refreshWhatsAppAvatarForContact } from "@/lib/whatsapp-avatar";
 
 const CATALOG_OFFER_EXPIRY_MS = 1000 * 60 * 90;
 
@@ -54,6 +55,18 @@ function normalizeCatalogComparableText(value: string | null | undefined) {
 
 function sanitizeComparablePhone(value: string | null | undefined) {
     return (value || "").replace(/\D/g, "");
+}
+
+function queueAvatarRefreshForConversation(conversationId: string) {
+    void prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: { contactId: true },
+    }).then((conversation) => {
+        if (!conversation?.contactId) return;
+        return refreshWhatsAppAvatarForContact(conversation.contactId);
+    }).catch((error) => {
+        console.warn("[Avatar] Failed to queue conversation avatar refresh", error);
+    });
 }
 
 function buildCatalogLookupQuery(
@@ -449,6 +462,7 @@ async function sendAutomatedBotText(params: {
                 providerMessageId: transportResult?.Id || null,
             },
         });
+        queueAvatarRefreshForConversation(params.conversationId);
     } catch (error) {
         await prisma.message.create({
             data: {
@@ -499,6 +513,7 @@ async function sendAutomatedBotMedia(params: {
                 providerMessageId: result?.Id || null,
             },
         });
+        queueAvatarRefreshForConversation(params.conversationId);
 
         return true;
     } catch (error) {
@@ -1175,6 +1190,12 @@ export async function sendMessage(conversationId: string, content: string, direc
             });
         }
 
+        if (direction === "outbound" && conversation.contact?.id) {
+            void refreshWhatsAppAvatarForContact(conversation.contact.id).catch((avatarError) => {
+                console.warn("[SendMessage] Failed to refresh WhatsApp avatar", avatarError);
+            });
+        }
+
         await prisma.conversation.update({
             where: { id: conversationId },
             data: {
@@ -1256,6 +1277,10 @@ export async function processInboundMessage(
                 data: { name: normalizedCustomerName },
             });
         }
+
+        void refreshWhatsAppAvatarForContact(contact.id).catch((avatarError) => {
+            console.warn("[Inbound] Failed to refresh WhatsApp avatar", avatarError);
+        });
 
         // Find or create conversation
         let conversation = await prisma.conversation.findFirst({

@@ -8,6 +8,7 @@ import { processInboundMessage } from "@/app/actions/chat";
 import { buildPhoneMatchClauses, normalizePhoneDigits, uniquePhoneCandidates } from "@/lib/phone";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { downloadWuzapiMedia } from "@/lib/wuzapi";
+import { refreshWhatsAppAvatarForContact } from "@/lib/whatsapp-avatar";
 
 type JsonObject = Record<string, unknown>;
 
@@ -640,6 +641,10 @@ async function storeOutboundEcho(
         });
         return;
     }
+
+    void refreshWhatsAppAvatarForContact(contact.id).catch((avatarError) => {
+        console.warn("[Webhook] Failed to refresh WhatsApp avatar for outbound echo", avatarError);
+    });
 
     let conversation = await prisma.conversation.findFirst({
         where: { contactId: contact.id, status: "active" },

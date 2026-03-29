@@ -1,6 +1,18 @@
 // API route for chat operations - with robust error handling
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { refreshWhatsAppAvatarForContactsInBackground } from "@/lib/whatsapp-avatar";
+
+let lastAvatarRefreshKickAt = 0;
+
+function shouldKickAvatarRefresh() {
+    const now = Date.now();
+    if (now - lastAvatarRefreshKickAt < 60_000) {
+        return false;
+    }
+    lastAvatarRefreshKickAt = now;
+    return true;
+}
 
 function formatPhone(phone: string | null | undefined) {
     if (!phone) return null;
@@ -121,6 +133,7 @@ export async function GET(request: NextRequest) {
                 contactEmail: conv.contact?.email,
                 contactCompany: conv.contact?.company,
                 contactStatus: conv.contact?.status,
+                contactAvatarUrl: conv.contact?.whatsappAvatarUrl || null,
                 lastMessage: conv.messages[0]?.content || "",
                 lastMessageTime: conv.messages[0]?.createdAt || conv.updatedAt,
                 updatedAt: conv.updatedAt,
@@ -146,6 +159,17 @@ export async function GET(request: NextRequest) {
                     }
                     : null,
             }));
+
+            const contactIds = conversations
+                .map((conv) => conv.contact?.id)
+                .filter((id): id is string => Boolean(id))
+                .slice(0, 20);
+            if (shouldKickAvatarRefresh()) {
+                refreshWhatsAppAvatarForContactsInBackground(contactIds, {
+                    limit: 8,
+                    concurrency: 2,
+                });
+            }
 
             return NextResponse.json(result);
         }

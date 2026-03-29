@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -175,6 +175,7 @@ export type Conversation = {
         email: string | null;
         company?: string | null;
         status: string | null;
+        avatarUrl?: string | null;
     } | null;
     messages: Message[];
     updatedAt: Date;
@@ -251,6 +252,7 @@ function transformConversation(conv: any): Conversation {
             email: conv.contactEmail || null,
             company: conv.contactCompany || null,
             status: conv.contactStatus || null,
+            avatarUrl: conv.contactAvatarUrl || null,
         },
         messages: conv.lastMessage ? [{
             id: `preview-${conv.id}`,
@@ -729,6 +731,10 @@ function ContactInfoPanel({ conversation, onClose }: { conversation: Conversatio
                     {/* Avatar */}
                     <div className="rounded-[1.75rem] border border-border/50 bg-background/70 px-5 py-6 text-center shadow-[0_24px_60px_-36px_rgba(15,23,42,0.35)] dark:bg-background/40">
                     <Avatar className="mx-auto h-24 w-24 ring-4 ring-background shadow-lg">
+                        <AvatarImage
+                            src={contact?.avatarUrl || undefined}
+                            alt={contact?.name || "Contacto"}
+                        />
                         <AvatarFallback className="bg-primary/10 text-3xl text-primary">
                             {contact?.name?.charAt(0) || "?"}
                         </AvatarFallback>
@@ -2030,8 +2036,7 @@ export default function InboxPage() {
                 </div>
             )}
 
-            <div className="flex h-[calc(100dvh-3.5rem-2rem)] overflow-hidden rounded-[2rem] border border-border/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(248,250,252,0.98))] shadow-[0_28px_80px_-48px_rgba(15,23,42,0.55)] backdrop-blur-xl dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.88),rgba(2,6,23,0.98))] md:h-full"
-                style={{ contain: "layout size" }}>
+            <div className="flex h-full min-h-0 overflow-hidden rounded-[2rem] border border-border/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(248,250,252,0.98))] shadow-[0_28px_80px_-48px_rgba(15,23,42,0.55)] backdrop-blur-xl dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.88),rgba(2,6,23,0.98))]">
                 {/* ──── Sidebar ──── */}
                 <div className={cn("min-h-0 w-full md:w-[20.5rem] 2xl:w-[21.75rem] border-r border-border/50 flex flex-col bg-card/55 backdrop-blur-2xl", selectedChat ? "hidden md:flex" : "flex")}>
                     <div className="border-b border-border/50 bg-background/35 p-4 space-y-3.5">
@@ -2118,6 +2123,10 @@ export default function InboxPage() {
                                 >
                                     <div className="relative shrink-0">
                                         <Avatar className="h-9 w-9 ring-1 ring-black/5 dark:ring-white/10">
+                                            <AvatarImage
+                                                src={chat.contact?.avatarUrl || undefined}
+                                                alt={chat.contact?.name || "Contacto"}
+                                            />
                                             <AvatarFallback className={cn(getAvatarColor(chat.contact?.name), "text-white font-semibold text-[13px]")}>
                                                 {chat.isGroup ? <Users className="h-4 w-4" /> : (chat.contact?.name?.charAt(0)?.toUpperCase() || "?")}
                                             </AvatarFallback>
@@ -2167,11 +2176,11 @@ export default function InboxPage() {
                 </div>
 
                 {/* ──── Main Chat ──── */}
-                <div className={cn("flex-1 flex-col bg-transparent", selectedChat ? "flex" : "hidden md:flex")}>
+                <div className={cn("flex min-h-0 flex-1 flex-col bg-transparent", selectedChat ? "flex" : "hidden md:flex")}>
                     {selectedChat ? (
                         <>
                             {/* Header */}
-                            <div className="flex min-h-[5.4rem] flex-wrap items-center justify-between gap-3 border-b border-border/50 bg-card/70 px-4 py-4 backdrop-blur-2xl md:px-6">
+                            <div className="shrink-0 flex min-h-[5.4rem] flex-wrap items-center justify-between gap-3 border-b border-border/50 bg-card/70 px-4 py-4 backdrop-blur-2xl md:px-6">
                                 <div className="flex items-center gap-1 overflow-hidden">
                                     {/* Back button on mobile */}
                                     <button className="md:hidden flex-shrink-0 rounded-full border border-border/60 bg-background/90 p-2 shadow-sm hover:bg-muted" onClick={() => setSelectedChat(null)}>
@@ -2179,6 +2188,10 @@ export default function InboxPage() {
                                     </button>
                                     <button className="ml-1 flex items-center gap-3 overflow-hidden text-left transition hover:opacity-80 md:ml-0" onClick={() => setShowContactInfo(true)}>
                                         <Avatar className="h-11 w-11 flex-shrink-0 ring-1 ring-black/5 dark:ring-white/10">
+                                            <AvatarImage
+                                                src={selectedChat.contact?.avatarUrl || undefined}
+                                                alt={selectedChat.contact?.name || "Contacto"}
+                                            />
                                             <AvatarFallback>{selectedChat.contact?.name?.charAt(0) || "?"}</AvatarFallback>
                                         </Avatar>
                                         <div className="overflow-hidden">
@@ -2552,7 +2565,10 @@ export default function InboxPage() {
                                 </div>
                             ) : (
                                 /* ═══ UNLOCKED: Normal input area ═══ */
-                                <div className="shrink-0 border-t border-border/50 bg-card/72 p-4 backdrop-blur-2xl">
+                                <div
+                                    className="shrink-0 border-t border-border/50 bg-card/72 p-4 backdrop-blur-2xl"
+                                    style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
+                                >
                                     {shouldShowWhatsAppWarning && (
                                         <div className="mx-auto mb-3 max-w-[54rem] rounded-[1.35rem] border border-amber-200/80 bg-amber-50/95 px-4 py-3 text-amber-950 shadow-[0_18px_40px_-28px_rgba(217,119,6,0.35)]">
                                             <div className="flex items-start gap-3">
@@ -2734,6 +2750,10 @@ export default function InboxPage() {
                                             onClick={() => handleForward(conv.id)}
                                         >
                                             <Avatar className="h-9 w-9 shrink-0">
+                                                <AvatarImage
+                                                    src={conv.contact?.avatarUrl || undefined}
+                                                    alt={conv.contact?.name || "Contacto"}
+                                                />
                                                 <AvatarFallback className={cn("text-white text-sm font-bold", getAvatarColor(conv.contact?.name))}>
                                                     {(conv.contact?.name || "?").charAt(0).toUpperCase()}
                                                 </AvatarFallback>

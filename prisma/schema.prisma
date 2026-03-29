@@ -35,6 +35,10 @@ model Contact {
   email       String?
   company     String?
   role        String?
+  whatsappAvatarUrl       String?
+  whatsappAvatarPictureId String?
+  whatsappAvatarCheckedAt DateTime?
+  whatsappAvatarUpdatedAt DateTime?
   tags        String[]
   status      String   @default("lead") // lead, qualified, customer
   createdAt   DateTime @default(now())

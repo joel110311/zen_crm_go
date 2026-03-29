@@ -43,6 +43,16 @@ type DownloadMediaParams = {
     FileLength: number;
 };
 
+export type WuzapiAvatarRecord = {
+    URL?: string;
+    Url?: string;
+    url?: string;
+    ID?: string;
+    Id?: string;
+    PictureID?: string;
+    DirectPath?: string;
+};
+
 export type WuzapiContactRecord = {
     BusinessName?: string;
     FirstName?: string;
@@ -124,8 +134,15 @@ function unwrapResponse<T>(payload: unknown): T {
     return payload as T;
 }
 
-function sanitizePhone(phone: string) {
-    return phone.replace(/\D/g, "");
+function normalizeWuzapiRecipient(phone: string) {
+    const trimmed = phone.trim();
+    if (!trimmed) return "";
+
+    if (trimmed.startsWith("me:") || trimmed.includes("@")) {
+        return trimmed.replace(/\s+/g, "");
+    }
+
+    return trimmed.replace(/\D/g, "");
 }
 
 function sleep(ms: number) {
@@ -419,7 +436,7 @@ export async function sendWuzapiTextMessage(phone: string, body: string) {
         requestWuzapi<{ Id?: string; Timestamp?: string | number }>("user", "/chat/send/text", {
             method: "POST",
             body: JSON.stringify({
-                Phone: sanitizePhone(phone),
+                Phone: normalizeWuzapiRecipient(phone),
                 Body: body,
             }),
         }),
@@ -432,7 +449,7 @@ export async function sendWuzapiReaction(params: {
     providerMessageId: string;
     ownMessage?: boolean;
 }) {
-    const phone = sanitizePhone(params.phone);
+    const phone = normalizeWuzapiRecipient(params.phone);
     const messageId = params.ownMessage ? `me:${params.providerMessageId}` : params.providerMessageId;
 
     return retryWuzapiSend(() =>
@@ -448,7 +465,7 @@ export async function sendWuzapiReaction(params: {
 }
 
 export async function sendWuzapiMediaMessage(params: SendMediaParams) {
-    const phone = sanitizePhone(params.phone);
+    const phone = normalizeWuzapiRecipient(params.phone);
 
     if (params.mediaCategory === "image") {
         return retryWuzapiSend(() =>
@@ -542,6 +559,21 @@ export async function getWuzapiContacts() {
     }
 
     return contactsByJid;
+}
+
+export async function getWuzapiAvatar(phoneOrJid: string, preview = true) {
+    const target = normalizeWuzapiRecipient(phoneOrJid);
+    if (!target) {
+        throw new Error("El contacto no tiene un telefono o JID valido para consultar avatar.");
+    }
+
+    return requestWuzapi<WuzapiAvatarRecord>("user", "/user/avatar", {
+        method: "POST",
+        body: JSON.stringify({
+            Phone: target,
+            Preview: preview,
+        }),
+    });
 }
 
 export async function setWuzapiHistoryLimit(limit: number) {

@@ -11,6 +11,7 @@ import {
     type WuzapiHistoryIndexRecord,
     type WuzapiHistoryMessageRecord,
 } from "@/lib/wuzapi";
+import { refreshWhatsAppAvatarForContacts } from "@/lib/whatsapp-avatar";
 
 const HISTORY_FETCH_LIMIT_BY_MONTHS: Record<1 | 2 | 3, number> = {
     1: 1500,
@@ -227,6 +228,7 @@ async function importDirectChatHistory(params: {
     if (!phone) {
         return {
             imported: false,
+            contactId: null,
             contactsCreated: 0,
             contactsUpdated: 0,
             conversationsCreated: 0,
@@ -247,6 +249,7 @@ async function importDirectChatHistory(params: {
     if (relevantMessages.length === 0) {
         return {
             imported: false,
+            contactId: null,
             contactsCreated: 0,
             contactsUpdated: 0,
             conversationsCreated: 0,
@@ -265,6 +268,7 @@ async function importDirectChatHistory(params: {
     let conversationsCreated = 0;
     let messagesCreated = 0;
     let messagesSkipped = 0;
+    let contactId: string | null = null;
 
     await prisma.$transaction(async (tx) => {
         let contact = await tx.contact.findFirst({
@@ -291,6 +295,7 @@ async function importDirectChatHistory(params: {
             });
             contactsUpdated += 1;
         }
+        contactId = contact.id;
 
         let conversation = await tx.conversation.findFirst({
             where: {
@@ -384,6 +389,7 @@ async function importDirectChatHistory(params: {
 
     return {
         imported: true,
+        contactId,
         contactsCreated,
         contactsUpdated,
         conversationsCreated,
@@ -427,6 +433,7 @@ export async function importWhatsAppHistory(
     let conversationsCreated = 0;
     let messagesCreated = 0;
     let messagesSkipped = 0;
+    const contactsToRefresh = new Set<string>();
 
     for (const entry of historyIndex) {
         const chatJid = resolveHistoryIndexChatJid(entry);
@@ -444,11 +451,21 @@ export async function importWhatsAppHistory(
         if (result.imported) {
             chatsImported += 1;
         }
+        if (result.contactId) {
+            contactsToRefresh.add(result.contactId);
+        }
         contactsCreated += result.contactsCreated;
         contactsUpdated += result.contactsUpdated;
         conversationsCreated += result.conversationsCreated;
         messagesCreated += result.messagesCreated;
         messagesSkipped += result.messagesSkipped;
+    }
+
+    if (contactsToRefresh.size > 0) {
+        await refreshWhatsAppAvatarForContacts([...contactsToRefresh], {
+            limit: 80,
+            concurrency: 4,
+        });
     }
 
     return {
