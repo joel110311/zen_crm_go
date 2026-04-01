@@ -2,12 +2,10 @@ import { prisma } from "@/lib/db";
 import { buildPhoneMatchClauses, getPhoneSuffix, normalizePhoneDigits } from "@/lib/phone";
 import {
     getWuzapiChatHistory,
-    getWuzapiContacts,
     getWuzapiHistoryIndex,
     getWuzapiSessionStatus,
     requestWuzapiHistorySync,
     setWuzapiHistoryLimit,
-    type WuzapiContactRecord,
     type WuzapiHistoryIndexRecord,
     type WuzapiHistoryMessageRecord,
 } from "@/lib/wuzapi";
@@ -44,15 +42,6 @@ type ImportWhatsAppHistorySummary = {
 
 function sleep(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function normalizeImportedContactName(value: string | null | undefined) {
-    const normalized = (value || "").trim().replace(/\s+/g, " ");
-    if (!normalized) return null;
-    if (/^(unknown|desconocido|sin nombre|null|undefined|n\/a|na)$/i.test(normalized)) {
-        return null;
-    }
-    return normalized;
 }
 
 function normalizeHistoryMonths(value: number) {
@@ -148,35 +137,6 @@ function normalizeHistoryContent(message: WuzapiHistoryMessageRecord) {
     return "[Mensaje de WhatsApp]";
 }
 
-function getNameFromHistoryPayload(dataJson: string | undefined) {
-    if (!dataJson) return null;
-
-    try {
-        const parsed = JSON.parse(dataJson) as {
-            Info?: {
-                PushName?: string;
-                FullName?: string;
-            };
-        };
-
-        return normalizeImportedContactName(
-            parsed?.Info?.PushName || parsed?.Info?.FullName || null,
-        );
-    } catch {
-        return null;
-    }
-}
-
-function getNameFromWuzapiContact(contact: WuzapiContactRecord | undefined) {
-    return normalizeImportedContactName(
-        contact?.BusinessName ||
-        contact?.FullName ||
-        contact?.PushName ||
-        contact?.FirstName ||
-        null,
-    );
-}
-
 async function waitForHistoryIndex() {
     let latestEntries: WuzapiHistoryIndexRecord[] = [];
     let lastSignature = "";
@@ -222,7 +182,6 @@ async function importDirectChatHistory(params: {
     chatJid: string;
     cutoff: Date;
     historyLimit: number;
-    contactsByJid: Record<string, WuzapiContactRecord>;
 }) {
     const phone = getPhoneFromChatJid(params.chatJid);
     if (!phone) {
@@ -258,42 +217,22 @@ async function importDirectChatHistory(params: {
         };
     }
 
-    const fallbackName = relevantMessages
-        .map((message) => getNameFromHistoryPayload(message.data_json))
-        .find(Boolean);
-    const resolvedName = getNameFromWuzapiContact(params.contactsByJid[params.chatJid]) || fallbackName || null;
-
-    let contactsCreated = 0;
-    let contactsUpdated = 0;
     let conversationsCreated = 0;
     let messagesCreated = 0;
     let messagesSkipped = 0;
     let contactId: string | null = null;
 
     await prisma.$transaction(async (tx) => {
-        let contact = await tx.contact.findFirst({
+        const contact = await tx.contact.findFirst({
             where: {
                 OR: buildPhoneMatchClauses([phone]),
             },
         });
 
         if (!contact) {
-            contact = await tx.contact.create({
-                data: {
-                    phone,
-                    name: resolvedName,
-                    status: "lead",
-                },
-            });
-            contactsCreated += 1;
-        } else if (resolvedName && !normalizeImportedContactName(contact.name)) {
-            contact = await tx.contact.update({
-                where: { id: contact.id },
-                data: {
-                    name: resolvedName,
-                },
-            });
-            contactsUpdated += 1;
+            // Requested behavior: do not import contacts during history import.
+            messagesSkipped += relevantMessages.length;
+            return;
         }
         contactId = contact.id;
 
@@ -388,10 +327,10 @@ async function importDirectChatHistory(params: {
     });
 
     return {
-        imported: true,
+        imported: Boolean(contactId),
         contactId,
-        contactsCreated,
-        contactsUpdated,
+        contactsCreated: 0,
+        contactsUpdated: 0,
         conversationsCreated,
         messagesCreated,
         messagesSkipped,
@@ -424,7 +363,6 @@ export async function importWhatsAppHistory(
         console.warn("[WhatsAppHistoryImport] History sync request failed, continuing with cached history", error);
     }
 
-    const contactsByJid = await getWuzapiContacts().catch(() => ({}));
     const historyIndex = await waitForHistoryIndex();
 
     let chatsImported = 0;
@@ -445,7 +383,6 @@ export async function importWhatsAppHistory(
             chatJid,
             cutoff,
             historyLimit: HISTORY_FETCH_LIMIT_BY_MONTHS[months],
-            contactsByJid,
         });
 
         if (result.imported) {

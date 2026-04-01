@@ -91,14 +91,12 @@ export function WhatsAppGatewayPanel(props: Props) {
             const summary = payload.summary as {
                 chatsImported?: number;
                 messagesCreated?: number;
-                contactsCreated?: number;
-                contactsUpdated?: number;
             } | undefined;
 
             toast({
                 title: source === "connect" ? "Historial importado al vincular" : "Historial importado",
                 description: summary
-                    ? `${summary.chatsImported || 0} chats, ${summary.messagesCreated || 0} mensajes y ${((summary.contactsCreated || 0) + (summary.contactsUpdated || 0))} contactos sincronizados sin disparar pipelines.`
+                    ? `${summary.chatsImported || 0} chats y ${summary.messagesCreated || 0} mensajes importados sin disparar pipelines.`
                     : "La importacion historica termino correctamente.",
             });
         } catch (error) {
@@ -293,7 +291,7 @@ export function WhatsAppGatewayPanel(props: Props) {
                             </div>
                             <div className="rounded-xl border bg-background/80 px-4 py-3">
                                 <span className="font-medium text-foreground">4. Importacion historica opcional</span>
-                                <p className="mt-1">Si eliges 1, 2 o 3 meses, el CRM trae chats y contactos sin disparar pipelines.</p>
+                                <p className="mt-1">Si eliges 1, 2 o 3 meses, el CRM trae chats/mensajes sin disparar pipelines.</p>
                             </div>
                         </div>
                     </div>
@@ -302,7 +300,7 @@ export function WhatsAppGatewayPanel(props: Props) {
                         <div>
                             <p className="font-medium">Importacion historica opcional</p>
                             <p className="text-sm text-muted-foreground">
-                                Puedes traer hasta 3 meses de chats y contactos sin disparar pipelines ni crear automatizaciones por el historial.
+                                Puedes traer hasta 3 meses de chats y mensajes sin disparar pipelines ni crear automatizaciones por el historial.
                             </p>
                         </div>
                         <div className="grid gap-3 md:grid-cols-[1fr_auto]">
@@ -334,7 +332,7 @@ export function WhatsAppGatewayPanel(props: Props) {
                         </div>
 
                         <p className="text-xs text-muted-foreground">
-                            Si eliges 1, 2 o 3 meses antes de escanear el QR, la importacion corre sola cuando el numero quede activo.
+                            Si eliges 1, 2 o 3 meses antes de escanear el QR, la importacion corre sola cuando el numero quede activo. Solo se importan chats de contactos ya existentes en el CRM.
                         </p>
                     </div>
 
