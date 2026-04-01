@@ -51,7 +51,7 @@ const SOURCE_OPTIONS = [
     { value: "sitemap", label: "Sitemap", icon: Globe, help: "Importa URLs desde un sitemap XML." },
     { value: "github", label: "GitHub", icon: Github, help: "Lee codigo y docs de un repositorio publico." },
     { value: "youtube", label: "YouTube", icon: Youtube, help: "Usa la transcripcion del video como contexto." },
-    { value: "text", label: "Bloc de notas", icon: Bot, help: "Notas rapidas, FAQs, prompts y fichas de producto." },
+    { value: "text", label: "Texto", icon: Bot, help: "Notas, FAQs, prompts y fichas de producto con URL de imagen." },
     { value: "file", label: "Archivo", icon: FileText, help: "PDF, TXT, MD, CSV, JSON, DOCX, MP3, MP4 y mas." },
 ];
 
@@ -266,13 +266,16 @@ export function KnowledgeBase() {
 
                     {sourceType === "text" ? (
                         <div className="space-y-2">
-                            <Label>Contenido del bloc</Label>
+                            <Label>Contenido</Label>
                             <Textarea
                                 value={noteContent}
                                 onChange={(event) => setNoteContent(event.target.value)}
-                                placeholder="Pega FAQs, instrucciones o fichas cortas (producto + descripcion + URL de imagen) para respuestas rapidas."
+                                placeholder={"Ejemplo:\nPulseras Glow Sync | Pulseras LED personalizadas | https://tu-cdn.com/pulsera-glow-sync.jpg"}
                                 className="min-h-[180px]"
                             />
+                            <p className="text-xs text-muted-foreground">
+                                Puedes cargar lineas con formato <span className="font-medium">descripcion | URL</span> para que el agente tenga la imagen a mano.
+                            </p>
                         </div>
                     ) : sourceType === "file" ? (
                         <div className="space-y-2">

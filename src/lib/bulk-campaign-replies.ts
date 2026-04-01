@@ -52,11 +52,25 @@ function tokenLooksLikeKeyword(token: string, keyword: string) {
     return distance <= maxDistance;
 }
 
+function tokenLooksLikeStopKeyword(token: string, keyword: string) {
+    if (!token || !keyword) return false;
+    if (token === keyword) return true;
+    if (token.length < 5 || keyword.length < 5) return false;
+    if (Math.abs(token.length - keyword.length) > 1) return false;
+
+    // STOP commands are high-impact (opt-out + closed lost), so keep matching strict.
+    const distance = levenshteinDistance(token, keyword);
+    return distance <= 1;
+}
+
 const STOP_PHRASES = [
     "no me interesa",
     "ya no me interesa",
     "deja de mandar",
     "deja de enviar",
+    "para de mandar",
+    "para de enviar",
+    "para de escribirme",
     "no mandes",
     "no enviar",
     "no envies",
@@ -75,7 +89,6 @@ const STOP_KEYWORDS = [
     "cancelar",
     "cancela",
     "parar",
-    "para",
     "salir",
     "quitar",
     "quitame",
@@ -136,7 +149,7 @@ export function classifyBulkCampaignReplyIntent(rawText: string): BulkCampaignRe
     }
 
     const tokens = normalized.split(" ").filter(Boolean);
-    if (tokens.some((token) => STOP_KEYWORDS.some((keyword) => tokenLooksLikeKeyword(token, keyword)))) {
+    if (tokens.some((token) => STOP_KEYWORDS.some((keyword) => tokenLooksLikeStopKeyword(token, keyword)))) {
         return "stop";
     }
 

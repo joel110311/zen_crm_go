@@ -23,8 +23,51 @@ import { markBulkCampaignReplyForContact } from "@/lib/bulk-campaigns";
 import { refreshWhatsAppAvatarForContact } from "@/lib/whatsapp-avatar";
 
 const CATALOG_OFFER_EXPIRY_MS = 1000 * 60 * 90;
+const KNOWLEDGE_IMAGE_URL_REGEX = /https?:\/\/[^\s<>"']+/gi;
+const KNOWLEDGE_IMAGE_MIN_SCORE = 3;
+const KNOWLEDGE_IMAGE_TOKEN_STOPWORDS = new Set([
+    "de",
+    "del",
+    "la",
+    "el",
+    "los",
+    "las",
+    "un",
+    "una",
+    "y",
+    "o",
+    "por",
+    "para",
+    "con",
+    "sin",
+    "que",
+    "quiero",
+    "necesito",
+    "informacion",
+    "info",
+    "producto",
+    "productos",
+    "imagen",
+    "imagenes",
+    "foto",
+    "fotos",
+    "manda",
+    "mandame",
+    "enviar",
+    "enviame",
+    "tienes",
+    "tengo",
+    "puedes",
+    "puedo",
+]);
 
 type CatalogItemMatch = NonNullable<Awaited<ReturnType<typeof findBestCatalogItem>>>;
+type KnowledgeImageEntry = {
+    label: string;
+    imageUrl: string;
+    searchableText: string;
+    normalizedLabel: string;
+};
 
 function normalizeContactName(name?: string | null) {
     const normalized = name?.trim().replace(/\s+/g, " ") || "";
@@ -141,6 +184,100 @@ function isCatalogAssistantEnabled(
             settings.catalogOfferPdf ||
             settings.catalogIncludeLink,
     );
+}
+
+function cleanKnowledgeImageDescription(value: string) {
+    return normalizeCatalogComparableText(
+        value
+            .replace(/\b(producto|nombre|descripcion|desc|imagen|image|url)\b\s*:/gi, " ")
+            .replace(/[|;,]+/g, " ")
+            .trim(),
+    );
+}
+
+function extractKnowledgeImageEntries(rawContent: string | null | undefined): KnowledgeImageEntry[] {
+    if (!rawContent?.trim()) {
+        return [];
+    }
+
+    const entries: KnowledgeImageEntry[] = [];
+    let previousTextLine: string | null = null;
+
+    for (const rawLine of rawContent.split(/\r?\n/)) {
+        const line = rawLine.trim();
+        if (!line || line.startsWith("#")) {
+            continue;
+        }
+
+        const urls = [...line.matchAll(KNOWLEDGE_IMAGE_URL_REGEX)]
+            .map((match) => match[0]?.replace(/[),.;|]+$/, ""))
+            .filter(Boolean) as string[];
+
+        if (urls.length === 0) {
+            const normalizedLine = cleanKnowledgeImageDescription(line);
+            previousTextLine = normalizedLine || previousTextLine;
+            continue;
+        }
+
+        let description = line;
+        for (const url of urls) {
+            description = description.replace(url, " ");
+        }
+
+        const rawLabelCandidate = description.split("|")[0] || description;
+        const normalizedDescription = cleanKnowledgeImageDescription(description) || previousTextLine;
+        previousTextLine = null;
+
+        if (!normalizedDescription) {
+            continue;
+        }
+
+        const normalizedLabel =
+            normalizeCatalogComparableText(rawLabelCandidate) ||
+            normalizeCatalogComparableText(normalizedDescription.split(" ").slice(0, 4).join(" "));
+
+        if (!normalizedLabel) {
+            continue;
+        }
+
+        entries.push({
+            label: normalizedDescription,
+            imageUrl: urls[0],
+            searchableText: normalizedDescription,
+            normalizedLabel,
+        });
+    }
+
+    return entries;
+}
+
+function buildKnowledgeImageMatchTokens(text: string) {
+    return [...new Set(normalizeCatalogComparableText(text)
+        .split(" ")
+        .filter((token) =>
+            token.length >= 3 &&
+            !KNOWLEDGE_IMAGE_TOKEN_STOPWORDS.has(token),
+        ))];
+}
+
+function scoreKnowledgeImageEntry(
+    entry: KnowledgeImageEntry,
+    normalizedNeedle: string,
+    tokens: string[],
+) {
+    let score = 0;
+
+    if (entry.normalizedLabel.length >= 6 && normalizedNeedle.includes(entry.normalizedLabel)) {
+        score += 8;
+    }
+
+    for (const token of tokens) {
+        if (entry.searchableText.includes(token)) {
+            score += token.length >= 6 ? 2 : 1;
+        }
+    }
+
+    return score;
 }
 
 function buildCatalogInstruction(
@@ -593,6 +730,103 @@ async function sendCatalogAssets(params: {
     }
 
     return sentSomething;
+}
+
+async function maybeSendKnowledgeImageFromTextSources(params: {
+    conversationId: string;
+    phone: string;
+    latestUserMessage: string;
+    assistantReply: string;
+}) {
+    try {
+        const sources = await prisma.knowledgeSource.findMany({
+            where: {
+                type: "text",
+                rawContent: {
+                    not: null,
+                },
+            },
+            select: {
+                rawContent: true,
+            },
+            orderBy: {
+                updatedAt: "desc",
+            },
+            take: 24,
+        });
+
+        if (sources.length === 0) {
+            return false;
+        }
+
+        const entriesByUrl = new Map<string, KnowledgeImageEntry>();
+
+        for (const source of sources) {
+            for (const entry of extractKnowledgeImageEntries(source.rawContent)) {
+                if (!entriesByUrl.has(entry.imageUrl)) {
+                    entriesByUrl.set(entry.imageUrl, entry);
+                }
+            }
+        }
+
+        const entries = [...entriesByUrl.values()];
+        if (entries.length === 0) {
+            return false;
+        }
+
+        const combinedNeedle = `${params.latestUserMessage}\n${params.assistantReply}`;
+        const normalizedNeedle = normalizeCatalogComparableText(combinedNeedle);
+        const tokens = buildKnowledgeImageMatchTokens(combinedNeedle);
+
+        if (!normalizedNeedle || tokens.length === 0) {
+            return false;
+        }
+
+        let bestEntry: KnowledgeImageEntry | null = null;
+        let bestScore = 0;
+
+        for (const entry of entries) {
+            const score = scoreKnowledgeImageEntry(entry, normalizedNeedle, tokens);
+            if (score > bestScore) {
+                bestScore = score;
+                bestEntry = entry;
+            }
+        }
+
+        if (!bestEntry || bestScore < KNOWLEDGE_IMAGE_MIN_SCORE) {
+            return false;
+        }
+
+        const alreadySent = await prisma.message.findFirst({
+            where: {
+                conversationId: params.conversationId,
+                direction: "outbound",
+                senderType: "bot",
+                type: "image",
+                mediaUrl: bestEntry.imageUrl,
+                status: {
+                    not: "failed",
+                },
+            },
+            select: { id: true },
+        });
+
+        if (alreadySent) {
+            return false;
+        }
+
+        return sendAutomatedBotMedia({
+            conversationId: params.conversationId,
+            phone: params.phone,
+            mediaCategory: "image",
+            mediaUrl: bestEntry.imageUrl,
+            mediaLabel: bestEntry.label,
+            development: bestEntry.label,
+        });
+    } catch (error) {
+        console.error("[KnowledgeImage] Failed to evaluate/send image from knowledge text sources:", error);
+        return false;
+    }
 }
 
 async function maybeHandleCatalogAssetReply(params: {
@@ -1071,6 +1305,15 @@ async function maybeSendAutomatedReply(
             phone: latestConversation.contact.phone,
             content: reply,
         });
+
+        if (!shouldEscalate && !catalogItem) {
+            await maybeSendKnowledgeImageFromTextSources({
+                conversationId,
+                phone: latestConversation.contact.phone,
+                latestUserMessage,
+                assistantReply: reply,
+            });
+        }
 
         if (shouldEscalate) {
             await triggerHumanEscalation({
