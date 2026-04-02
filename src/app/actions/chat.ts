@@ -887,7 +887,6 @@ async function maybeSendKnowledgeImageFromTextSources(params: {
     conversationId: string;
     phone: string;
     latestUserMessage: string;
-    assistantReply: string;
     preferredImageUrls?: string[];
 }) {
     try {
@@ -973,9 +972,8 @@ async function maybeSendKnowledgeImageFromTextSources(params: {
             }
         }
 
-        const combinedNeedle = `${params.latestUserMessage}\n${params.assistantReply}`;
-        const normalizedNeedle = normalizeCatalogComparableText(combinedNeedle);
-        const tokens = buildKnowledgeImageMatchTokens(combinedNeedle);
+        const normalizedNeedle = normalizeCatalogComparableText(params.latestUserMessage);
+        const tokens = buildKnowledgeImageMatchTokens(params.latestUserMessage);
 
         if (!normalizedNeedle || tokens.length === 0) {
             return false;
@@ -1521,7 +1519,6 @@ async function maybeSendAutomatedReply(
                     conversationId,
                     phone: latestConversation.contact.phone,
                     latestUserMessage,
-                    assistantReply: reply,
                     preferredImageUrls: preferredKnowledgeImageUrls,
                 });
             }
