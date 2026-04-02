@@ -29,9 +29,11 @@ export function PipelineColumn({ stage, deals, onDealClick, activeDealId }: Pipe
     return (
         <div
             ref={setNodeRef}
-            className={`flex flex-col h-full transition-all duration-200 rounded-xl border w-[208px] min-w-[208px] md:w-[224px] md:min-w-[224px] 2xl:w-[256px] 2xl:min-w-[256px] ${isOver
-                ? "border-dashed ring-2 ring-primary/30 bg-accent/50"
-                : "border-border bg-card/50"
+            className={`flex h-full min-w-[214px] w-[214px] flex-col rounded-2xl border transition-all duration-200 md:w-[232px] md:min-w-[232px] 2xl:w-[262px] 2xl:min-w-[262px] ${isOver
+                ? "border-dashed border-primary/45 ring-2 ring-primary/20 bg-accent/55"
+                : hasActiveDeal
+                    ? "border-border/80 bg-card shadow-soft ring-1 ring-primary/20"
+                    : "border-border/80 bg-card shadow-soft"
                 }`}
             style={{
                 borderColor: isOver ? stage.color : undefined,
@@ -39,7 +41,7 @@ export function PipelineColumn({ stage, deals, onDealClick, activeDealId }: Pipe
         >
             {/* Column Header */}
             <div
-                className="px-4 py-3 border-b border-border rounded-t-xl bg-card"
+                className="rounded-t-2xl border-b border-border/75 bg-card px-4 py-3"
             >
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
@@ -57,7 +59,7 @@ export function PipelineColumn({ stage, deals, onDealClick, activeDealId }: Pipe
                             {stage.name}
                         </h3>
                         <span
-                            className="text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0"
+                            className="flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold"
                             style={{
                                 backgroundColor: `${stage.color}15`,
                                 color: stage.color,
@@ -84,10 +86,7 @@ export function PipelineColumn({ stage, deals, onDealClick, activeDealId }: Pipe
 
             {/* Cards Area */}
             <SortableContext items={deals.map((d) => d.id)} strategy={verticalListSortingStrategy}>
-                <div
-                    className="flex-1 overflow-y-auto px-3 py-3 space-y-2.5"
-                    style={{ minHeight: "100px" }}
-                >
+                <div className="flex-1 space-y-2.5 overflow-y-auto px-3 py-3" style={{ minHeight: "100px" }}>
                     {deals.length === 0 && isOver && (
                         /* Empty column drop placeholder */
                         <div className="rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 h-[72px] flex items-center justify-center">

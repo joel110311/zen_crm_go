@@ -66,16 +66,16 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                     className={cn(
                         "group flex items-center gap-2.5 rounded-xl border px-3.5 py-2 text-sm font-medium transition-all duration-200",
                         isActive
-                            ? "border-white/10 bg-white/10 text-white shadow-[0_16px_30px_-22px_rgba(15,23,42,0.85)]"
-                            : "border-transparent text-sidebar-foreground/74 hover:border-white/6 hover:bg-white/6 hover:text-white",
+                            ? "border-primary/35 bg-primary/18 text-white shadow-[0_12px_28px_-20px_rgba(8,31,17,0.85)]"
+                            : "border-transparent text-sidebar-foreground/78 hover:border-white/10 hover:bg-white/7 hover:text-white",
                     )}
                 >
                     <span
                         className={cn(
                             "flex h-[1.875rem] w-[1.875rem] items-center justify-center rounded-lg border transition-colors",
                             isActive
-                                ? "border-white/12 bg-white/12 text-white"
-                                : "border-white/6 bg-white/4 text-sidebar-foreground/60 group-hover:text-white",
+                                ? "border-primary/40 bg-primary/28 text-white"
+                                : "border-white/10 bg-white/5 text-sidebar-foreground/62 group-hover:text-white",
                         )}
                     >
                         <Icon className="h-[17px] w-[17px]" />
@@ -93,7 +93,7 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                 compact ? "px-3 py-2.5" : "px-3 py-3",
             )}
         >
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground shadow-[0_12px_22px_-16px_rgba(37,99,235,0.95)]">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground shadow-[0_12px_22px_-16px_rgba(10,64,35,0.95)]">
                 {!sessionLoading && userName.charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
@@ -119,10 +119,10 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
 
     return (
         <>
-            <header className="fixed left-0 right-0 top-0 z-40 flex items-center justify-between border-b border-sidebar-border/80 bg-sidebar/95 px-4 py-2.5 backdrop-blur-xl md:hidden">
+            <header className="fixed left-0 right-0 top-0 z-40 flex items-center justify-between border-b border-sidebar-border/85 bg-sidebar/95 px-4 py-2.5 backdrop-blur-xl md:hidden">
                 <button
                     onClick={() => setOpen(true)}
-                    className="rounded-xl border border-white/8 bg-white/6 p-2 text-sidebar-foreground transition-colors hover:bg-white/10"
+                    className="rounded-xl border border-white/10 bg-white/8 p-2 text-sidebar-foreground transition-colors hover:bg-white/12"
                     aria-label="Abrir menu"
                 >
                     <Menu className="h-5 w-5" />
@@ -133,7 +133,7 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                     <span className="text-base font-semibold tracking-tight text-white">Zen CRM</span>
                 </Link>
 
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground shadow-[0_12px_22px_-16px_rgba(10,64,35,0.95)]">
                     {!sessionLoading && userName.charAt(0).toUpperCase()}
                 </div>
             </header>
@@ -152,14 +152,14 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                 )}
             >
                 <div className="flex h-full flex-col">
-                    <div className="flex items-center justify-between rounded-[1.1rem] border border-white/6 bg-white/5 px-3.5 py-3">
+                    <div className="flex items-center justify-between rounded-[1.1rem] border border-white/8 bg-white/6 px-3.5 py-3 shadow-[0_20px_40px_-30px_rgba(0,0,0,0.95)]">
                         <Link href="/dashboard" className="flex items-center gap-2.5 text-sidebar-foreground" onClick={() => setOpen(false)}>
                             <ZenLogo className="h-8 w-8" />
                             <span className="text-lg font-semibold tracking-tight text-white">Zen CRM</span>
                         </Link>
                         <button
                             onClick={() => setOpen(false)}
-                            className="rounded-xl border border-white/6 bg-white/5 p-2 text-sidebar-foreground/70 transition-colors hover:bg-white/10 hover:text-white"
+                            className="rounded-xl border border-white/8 bg-white/6 p-2 text-sidebar-foreground/70 transition-colors hover:bg-white/12 hover:text-white"
                             aria-label="Cerrar menu"
                         >
                             <X className="h-4 w-4" />
@@ -169,7 +169,7 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                     <ScrollArea className="mt-4 flex-1">
                         <div className="space-y-5 px-1 py-1">
                             <div>
-                                <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-sidebar-foreground/35">
+                                <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-sidebar-foreground/38">
                                     Operacion
                                 </p>
                                 <nav className="mt-3 grid gap-1.5">
@@ -179,7 +179,7 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                         </div>
                     </ScrollArea>
 
-                    <div className="space-y-2.5 border-t border-white/6 pt-3.5">
+                    <div className="space-y-2.5 border-t border-white/8 pt-3.5">
                         {renderUserInfo(true)}
                         <button
                             onClick={() => signOut({ callbackUrl: "/login" })}
@@ -192,8 +192,8 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                 </div>
             </aside>
 
-            <aside className={cn("hidden w-[238px] shrink-0 border-r border-sidebar-border/80 bg-sidebar px-3 py-3 md:flex md:flex-col", className)}>
-                <div className="rounded-[1.1rem] border border-white/6 bg-white/5 px-4 py-4 shadow-[0_20px_40px_-28px_rgba(2,6,23,0.8)]">
+            <aside className={cn("hidden w-[244px] shrink-0 border-r border-sidebar-border/85 bg-sidebar px-3 py-3 md:flex md:flex-col", className)}>
+                <div className="rounded-[1.1rem] border border-white/8 bg-white/6 px-4 py-4 shadow-[0_20px_40px_-30px_rgba(0,0,0,0.9)]">
                     <Link href="/dashboard" className="flex items-center gap-3 text-sidebar-foreground">
                         <ZenLogo className="h-8 w-8" />
                         <div className="space-y-0.5">
@@ -206,7 +206,7 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                 <ScrollArea className="mt-5 flex-1">
                     <div className="space-y-5 px-1 py-1">
                         <div>
-                            <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-sidebar-foreground/35">
+                            <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-sidebar-foreground/38">
                                 Operacion
                             </p>
                             <nav className="mt-3 grid gap-1.5">
@@ -216,7 +216,7 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                     </div>
                 </ScrollArea>
 
-                <div className="space-y-2.5 border-t border-white/6 pt-3.5">
+                <div className="space-y-2.5 border-t border-white/8 pt-3.5">
                     {renderUserInfo()}
                     <button
                         onClick={() => signOut({ callbackUrl: "/login" })}

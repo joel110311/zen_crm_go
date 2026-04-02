@@ -59,22 +59,22 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
             onClick={() => onDealClick(deal)}
         >
             <div
-                className={`rounded-lg h-[108px] overflow-hidden px-3 py-2.5 transition-all duration-150 bg-card border border-border ${isOverlay ? "shadow-2xl scale-105 rotate-[2deg]" : "shadow-sm group-hover:shadow-md group-hover:border-primary/50"
+                className={`h-[108px] overflow-hidden rounded-xl border border-border/75 bg-card px-3 py-2.5 transition-all duration-150 ${isOverlay ? "scale-105 rotate-[2deg] shadow-soft-hover" : "shadow-soft group-hover:border-primary/35 group-hover:shadow-soft-hover"
                     }`}
             >
                 {/* Contact row: avatar + name/phone + value */}
                 <div className="flex items-center gap-2">
                     <div
-                        className="h-7 w-7 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0 bg-primary/10 text-primary"
+                        className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/12 text-xs font-semibold text-primary"
                     >
                         {contactName.charAt(0).toUpperCase()}
                     </div>
                     <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold leading-tight truncate text-foreground">
+                        <p className="truncate text-sm font-semibold leading-tight text-foreground">
                             {contactName}
                         </p>
                         {contactPhone && (
-                            <p className="text-xs leading-tight truncate text-muted-foreground">
+                            <p className="truncate text-xs leading-tight text-muted-foreground">
                                 <Phone className="h-2.5 w-2.5 inline mr-0.5" />
                                 +{contactPhone}
                             </p>

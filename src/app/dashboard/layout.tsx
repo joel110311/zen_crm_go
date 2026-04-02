@@ -18,13 +18,13 @@ export default async function DashboardLayout({
 
     return (
         <SessionProvider session={session}>
-            <div className="flex h-screen overflow-hidden bg-background w-full">
+            <div className="flex h-screen w-full overflow-hidden bg-background">
                 <InboxNotifier />
                 <UnreadTabBadge />
                 <Sidebar />
                 <div className="flex min-w-0 flex-1 flex-col overflow-hidden pt-14 md:pt-0">
                     <Header />
-                    <main className="min-h-0 flex-1 overflow-auto px-4 pb-5 pt-3.5 md:px-5 md:pb-6 md:pt-3.5 lg:px-6 xl:px-6">
+                    <main className="min-h-0 flex-1 overflow-auto px-3.5 pb-5 pt-3 md:px-5 md:pb-6 md:pt-3.5 lg:px-6 xl:px-7">
                         {children}
                     </main>
                 </div>

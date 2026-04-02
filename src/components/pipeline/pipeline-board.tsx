@@ -84,6 +84,11 @@ interface PipelineBoardProps {
     initialDeals: DealData[];
 }
 
+type DealDataFromServer = Omit<DealData, "createdAt" | "updatedAt"> & {
+    createdAt: string | Date;
+    updatedAt: string | Date;
+};
+
 // Custom collision: use pointer position first, fall back to closest center
 const customCollision: CollisionDetection = (args) => {
     const pointerCollisions = pointerWithin(args);
@@ -96,7 +101,7 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
     const [deals, setDeals] = useState<DealData[]>(initialDeals);
     const [activeDeal, setActiveDeal] = useState<DealData | null>(null);
     const [selectedDeal, setSelectedDeal] = useState<DealData | null>(null);
-    const [isPending, startTransition] = useTransition();
+    const [, startTransition] = useTransition();
 
     // Dialog states
     const [showAutomationDialog, setShowAutomationDialog] = useState(false);
@@ -107,7 +112,10 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
     const skipNextPollRef = useRef(false);
     const originalStageIdRef = useRef<string | null>(null);
     const dealsRef = useRef(deals);
-    dealsRef.current = deals;
+
+    useEffect(() => {
+        dealsRef.current = deals;
+    }, [deals]);
 
     // Refresh pipeline data from server
     const refreshPipelineData = useCallback(() => {
@@ -127,11 +135,11 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
                 setStages(data.stages as PipelineStageData[]);
             }
             if (data.deals) {
-                const mappedDeals = data.deals.map((d: any) => ({
+                const mappedDeals = (data.deals as DealDataFromServer[]).map((d) => ({
                     ...d,
-                    createdAt: d.createdAt instanceof Date ? d.createdAt.toISOString() : String(d.createdAt),
-                    updatedAt: d.updatedAt instanceof Date ? d.updatedAt.toISOString() : String(d.updatedAt),
-                }));
+                    createdAt: typeof d.createdAt === "string" ? d.createdAt : d.createdAt.toISOString(),
+                    updatedAt: typeof d.updatedAt === "string" ? d.updatedAt : d.updatedAt.toISOString(),
+                })) as DealData[];
                 setDeals(mappedDeals);
                 setSelectedDeal((prev) => prev ? mappedDeals.find((deal) => deal.id === prev.id) || prev : prev);
             }
@@ -308,7 +316,7 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
 
     return (
         <div className="flex flex-col h-full gap-3 md:gap-4">
-            <div className="flex items-center justify-between">
+            <div className="surface-panel flex items-center justify-between px-4 py-3 md:px-5">
                 <div>
                     <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
                         Pipeline
@@ -338,7 +346,7 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
                             <Button
                                 variant="outline"
                                 size="icon"
-                                className="h-9 w-9 border-input rounded-full"
+                                className="h-9 w-9 rounded-full border-border/80"
                             >
                                 <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
                             </Button>
@@ -373,7 +381,7 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
                 onDragEnd={handleDragEnd}
             >
                 <div className="flex-1 overflow-x-auto">
-                    <div className="flex gap-4 min-w-max h-full pb-4">
+                    <div className="flex h-full min-w-max gap-4 pb-4">
                         {stages.map((stage) => {
                             const stageDeals = deals.filter((d) => d.stageId === stage.id);
                             return (
