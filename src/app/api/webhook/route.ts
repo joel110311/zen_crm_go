@@ -66,7 +66,7 @@ function getBoolean(record: JsonObject | null, key: string): boolean | undefined
     return undefined;
 }
 
-function normalizeCustomerNameValue(value: string | undefined): string | undefined {
+function normalizeCustomerNameValue(value: string | null | undefined): string | undefined {
     if (!value) return undefined;
 
     const normalized = value.trim().replace(/\s+/g, " ");
