@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, MessageSquare, Phone, Mail } from "lucide-react";
+import { ArrowLeft, MessageSquare } from "lucide-react";
 import Link from "next/link";
 import { getContact } from "@/app/actions/contacts";
 import { notFound } from "next/navigation";
@@ -61,16 +61,29 @@ export default async function ContactDetailsPage(props: { params: Promise<{ id: 
                                 </AvatarFallback>
                             </Avatar>
 
-                            <div className="flex gap-2 mt-2 mb-6 w-full justify-center">
-                                <Button size="icon" variant="outline" className="rounded-full h-10 w-10 border-blue-200 text-blue-600 hover:bg-blue-50">
-                                    <MessageSquare className="h-5 w-5" />
-                                </Button>
-                                <Button size="icon" variant="outline" className="rounded-full h-10 w-10 border-sky-500/20 text-sky-400 hover:bg-sky-500/10">
-                                    <Phone className="h-5 w-5" />
-                                </Button>
-                                <Button size="icon" variant="outline" className="rounded-full h-10 w-10 border-gray-200 text-gray-600 hover:bg-gray-50">
-                                    <Mail className="h-5 w-5" />
-                                </Button>
+                            <div className="mt-2 mb-6 flex w-full justify-center">
+                                {contact.phone ? (
+                                    <Link href={`/dashboard/inbox?phone=${encodeURIComponent(contact.phone)}`}>
+                                        <Button
+                                            size="icon"
+                                            variant="outline"
+                                            className="h-10 w-10 rounded-full border-primary/30 text-primary hover:bg-primary/10"
+                                            title="Ir al chat"
+                                        >
+                                            <MessageSquare className="h-5 w-5" />
+                                        </Button>
+                                    </Link>
+                                ) : (
+                                    <Button
+                                        size="icon"
+                                        variant="outline"
+                                        disabled
+                                        className="h-10 w-10 rounded-full"
+                                        title="Este contacto no tiene telefono"
+                                    >
+                                        <MessageSquare className="h-5 w-5" />
+                                    </Button>
+                                )}
                             </div>
 
                             <div className="w-full space-y-4 text-left">
