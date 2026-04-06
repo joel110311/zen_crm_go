@@ -553,6 +553,8 @@ body {
   --audio-bar-active: rgba(28, 103, 58, 0.9);
   --audio-bar-inactive: rgba(28, 103, 58, 0.22);
   --audio-dot: #1c673a;
+  --chat-outbound-border: rgba(119, 184, 155, 0.65);
+  --chat-outbound-bg: linear-gradient(180deg, rgba(202, 233, 219, 0.98), rgba(191, 224, 209, 0.98));
 
   --scrollbar-track: hsl(132 16% 91%);
   --scrollbar-thumb: hsl(132 17% 72%);
@@ -603,6 +605,8 @@ body {
   --audio-bar-active: rgba(226, 247, 233, 0.95);
   --audio-bar-inactive: rgba(226, 247, 233, 0.22);
   --audio-dot: #e2f7e9;
+  --chat-outbound-border: rgba(95, 170, 136, 0.45);
+  --chat-outbound-bg: linear-gradient(180deg, rgba(62, 102, 84, 0.96), rgba(53, 91, 74, 0.94));
 
   --scrollbar-track: hsl(146 16% 13%);
   --scrollbar-thumb: hsl(146 13% 29%);
@@ -617,7 +621,7 @@ body {
   --card-foreground: hsl(222 47% 11%);
   --popover: hsl(0 0% 100%);
   --popover-foreground: hsl(222 47% 11%);
-  --primary: hsl(221 83% 53%);
+  --primary: hsl(195 76% 55%);
   --primary-foreground: hsl(0 0% 100%);
   --secondary: hsl(220 14% 93%);
   --secondary-foreground: hsl(222 47% 11%);
@@ -629,9 +633,9 @@ body {
   --destructive-foreground: hsl(0 0% 100%);
   --border: hsl(220 15% 84%);
   --input: hsl(220 15% 84%);
-  --ring: hsl(221 83% 53%);
+  --ring: hsl(195 76% 55%);
 
-  --chart-1: hsl(221 83% 53%);
+  --chart-1: hsl(195 76% 55%);
   --chart-2: hsl(38 92% 50%);
   --chart-3: hsl(12 76% 61%);
   --chart-4: hsl(189 94% 43%);
@@ -639,16 +643,18 @@ body {
 
   --sidebar: hsl(228 28% 9%);
   --sidebar-foreground: hsl(220 16% 86%);
-  --sidebar-primary: hsl(221 83% 53%);
+  --sidebar-primary: hsl(195 76% 55%);
   --sidebar-primary-foreground: hsl(0 0% 100%);
   --sidebar-accent: hsl(228 24% 15%);
   --sidebar-accent-foreground: hsl(220 24% 94%);
   --sidebar-border: hsl(228 20% 17%);
-  --sidebar-ring: hsl(221 83% 53%);
+  --sidebar-ring: hsl(195 76% 55%);
 
-  --audio-bar-active: rgba(37, 99, 235, 0.9);
-  --audio-bar-inactive: rgba(37, 99, 235, 0.24);
-  --audio-dot: #2563eb;
+  --audio-bar-active: rgba(50, 183, 228, 0.9);
+  --audio-bar-inactive: rgba(50, 183, 228, 0.24);
+  --audio-dot: #32b7e4;
+  --chat-outbound-border: rgba(123, 178, 213, 0.65);
+  --chat-outbound-bg: linear-gradient(180deg, rgba(199, 217, 236, 0.98), rgba(189, 209, 230, 0.98));
 
   --scrollbar-track: hsl(220 16% 90%);
   --scrollbar-thumb: hsl(220 12% 67%);
@@ -663,7 +669,7 @@ body {
   --card-foreground: hsl(210 40% 96%);
   --popover: hsl(228 18% 13%);
   --popover-foreground: hsl(210 40% 96%);
-  --primary: hsl(221 83% 53%);
+  --primary: hsl(195 76% 55%);
   --primary-foreground: hsl(0 0% 100%);
   --secondary: hsl(228 14% 17%);
   --secondary-foreground: hsl(210 40% 96%);
@@ -675,12 +681,12 @@ body {
   --destructive-foreground: hsl(0 0% 100%);
   --border: hsl(228 14% 23%);
   --input: hsl(228 14% 23%);
-  --ring: hsl(221 83% 53%);
+  --ring: hsl(195 76% 55%);
   --shadow-soft: 0 1px 2px 0 rgba(0, 0, 0, 0.22), 0 10px 24px -16px rgba(0, 0, 0, 0.45);
   --shadow-soft-hover: 0 4px 10px 0 rgba(0, 0, 0, 0.24), 0 16px 34px -20px rgba(0, 0, 0, 0.58);
   --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 
-  --chart-1: hsl(221 83% 56%);
+  --chart-1: hsl(195 76% 57%);
   --chart-2: hsl(38 92% 54%);
   --chart-3: hsl(14 82% 60%);
   --chart-4: hsl(190 92% 49%);
@@ -688,16 +694,18 @@ body {
 
   --sidebar: hsl(228 30% 8%);
   --sidebar-foreground: hsl(220 14% 80%);
-  --sidebar-primary: hsl(221 83% 53%);
+  --sidebar-primary: hsl(195 76% 55%);
   --sidebar-primary-foreground: hsl(0 0% 100%);
   --sidebar-accent: hsl(228 24% 14%);
   --sidebar-accent-foreground: hsl(220 16% 90%);
   --sidebar-border: hsl(228 18% 16%);
-  --sidebar-ring: hsl(221 83% 53%);
+  --sidebar-ring: hsl(195 76% 55%);
 
-  --audio-bar-active: rgba(219, 234, 254, 0.95);
-  --audio-bar-inactive: rgba(191, 219, 254, 0.28);
-  --audio-dot: #dbeafe;
+  --audio-bar-active: rgba(180, 233, 250, 0.96);
+  --audio-bar-inactive: rgba(132, 212, 241, 0.34);
+  --audio-dot: #b4e9fa;
+  --chat-outbound-border: rgba(97, 169, 213, 0.45);
+  --chat-outbound-bg: linear-gradient(180deg, rgba(79, 109, 136, 0.96), rgba(69, 100, 128, 0.94));
 
   --scrollbar-track: hsl(228 16% 13%);
   --scrollbar-thumb: hsl(228 12% 34%);

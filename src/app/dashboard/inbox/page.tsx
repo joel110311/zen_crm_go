@@ -577,7 +577,7 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
                 className={cn(
                     "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full transition-colors",
                     isOutbound
-                        ? "bg-[#075e54]/20 hover:bg-[#075e54]/30 text-[#075e54] dark:bg-white/20 dark:hover:bg-white/30 dark:text-white"
+                        ? "bg-primary/20 text-primary hover:bg-primary/30 dark:bg-primary/30 dark:text-primary-foreground dark:hover:bg-primary/40"
                         : "bg-primary/10 hover:bg-primary/20 text-primary"
                 )}
             >
@@ -604,8 +604,8 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
                                     style={{
                                         height: `${Math.max(18, h)}%`,
                                         backgroundColor: active
-                                            ? (isOutbound ? "var(--audio-bar-active, rgba(7,94,84,0.9))" : "rgba(37,99,235,1)")
-                                            : (isOutbound ? "var(--audio-bar-inactive, rgba(7,94,84,0.2))" : "rgba(100,116,139,0.25)")
+                                            ? (isOutbound ? "var(--audio-bar-active, rgba(50,183,228,0.9))" : "rgba(37,99,235,1)")
+                                            : (isOutbound ? "var(--audio-bar-inactive, rgba(50,183,228,0.24))" : "rgba(100,116,139,0.25)")
                                     }}
                                 />
                             );
@@ -616,14 +616,14 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
                                 className="pointer-events-none absolute bottom-0 z-10 h-2.5 w-2.5 rounded-full shadow-sm ring-2 ring-background/80"
                                 style={{
                                     left: `${dotProgress}%`,
-                                    backgroundColor: isOutbound ? "var(--audio-dot, #075e54)" : "#2563EB",
+                                    backgroundColor: isOutbound ? "var(--audio-dot, #32B7E4)" : "#2563EB",
                                     transform: "translate(-50%, 36%)",
                                 }}
                             />
                         )}
                     </div>
                 </div>
-                <span className={cn("text-[10px] tabular-nums", isOutbound ? "text-[#075e54]/70 dark:text-white/70" : "text-muted-foreground")}>
+                <span className={cn("text-[10px] tabular-nums", isOutbound ? "text-primary/70 dark:text-primary-foreground/75" : "text-muted-foreground")}>
                     {timeLabel}
                 </span>
             </div>
@@ -2400,7 +2400,7 @@ export default function InboxPage() {
                                                                 className={cn(
                                                                     "relative overflow-visible rounded-[1.45rem] border px-4 py-3 text-sm break-words [overflow-wrap:anywhere] shadow-[0_18px_40px_-30px_rgba(15,23,42,0.28)] backdrop-blur-sm",
                                                                     msg.direction === "outbound"
-                                                                        ? "border-emerald-200/70 bg-[linear-gradient(180deg,rgba(236,253,245,0.96),rgba(220,252,231,0.98))] text-foreground dark:border-emerald-400/15 dark:bg-[linear-gradient(180deg,rgba(4,47,46,0.98),rgba(6,78,59,0.92))]"
+                                                                        ? "text-foreground"
                                                                         : "border-border/50 bg-card/90 text-foreground dark:bg-card/80",
                                                                         (idx === 0 || messages[idx - 1].direction !== msg.direction)
                                                                             ? msg.direction === "outbound"
@@ -2408,6 +2408,14 @@ export default function InboxPage() {
                                                                         : "rounded-tl-sm"
                                                                     : ""
                                                             )}
+                                                                style={
+                                                                    msg.direction === "outbound"
+                                                                        ? {
+                                                                            borderColor: "var(--chat-outbound-border)",
+                                                                            background: "var(--chat-outbound-bg)",
+                                                                        }
+                                                                        : undefined
+                                                                }
                                                         >
                                                             <MediaContent msg={msg} onImageClick={setViewerMessageId} />
                                                             {/* Emoji reaction display */}

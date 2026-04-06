@@ -27,7 +27,7 @@ const COLOR_THEME_OPTIONS: Array<{
             id: "black",
             name: "Black",
             description: "Sidebar negra con acentos azules",
-            gradient: "from-[#3B82F6] to-[#05070d]",
+            gradient: "from-[#32B7E4] to-[#05070d]",
         },
     ];
 
@@ -80,4 +80,3 @@ export function ThemeCustomizer() {
         </div>
     );
 }
-
