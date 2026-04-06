@@ -604,8 +604,8 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
                                     style={{
                                         height: `${Math.max(18, h)}%`,
                                         backgroundColor: active
-                                            ? (isOutbound ? "var(--audio-bar-active, rgba(50,183,228,0.9))" : "rgba(37,99,235,1)")
-                                            : (isOutbound ? "var(--audio-bar-inactive, rgba(50,183,228,0.24))" : "rgba(100,116,139,0.25)")
+                                            ? (isOutbound ? "var(--audio-bar-active, rgba(31,147,255,0.9))" : "rgba(37,99,235,1)")
+                                            : (isOutbound ? "var(--audio-bar-inactive, rgba(31,147,255,0.24))" : "rgba(100,116,139,0.25)")
                                     }}
                                 />
                             );
@@ -616,7 +616,7 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
                                 className="pointer-events-none absolute bottom-0 z-10 h-2.5 w-2.5 rounded-full shadow-sm ring-2 ring-background/80"
                                 style={{
                                     left: `${dotProgress}%`,
-                                    backgroundColor: isOutbound ? "var(--audio-dot, #32B7E4)" : "#2563EB",
+                                    backgroundColor: isOutbound ? "var(--audio-dot, #1F93FF)" : "#2563EB",
                                     transform: "translate(-50%, 36%)",
                                 }}
                             />
