@@ -772,6 +772,38 @@ async function getAutomatedWelcomeMessage(params: {
     return params.welcomeMessage?.trim() || null;
 }
 
+function normalizeWelcomeIntentText(value: string) {
+    return value
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}\s?!]/gu, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function shouldSendWelcomeForLatestMessage(latestUserMessage: string) {
+    const normalized = normalizeWelcomeIntentText(latestUserMessage || "");
+    if (!normalized) return true;
+
+    // If user already asks for something concrete, skip generic welcome.
+    if (normalized.includes("?") || normalized.includes("¿")) {
+        return false;
+    }
+
+    if (
+        /\b(precio|cost|costo|cuanto|envio|entrega|cotizacion|informacion|info|disponible|quiero|necesito|busco|pedido|comprar|tienes|tienen|monterrey|reynosa|guadalajara|cdmx)\b/.test(
+            normalized,
+        )
+    ) {
+        return false;
+    }
+
+    return /^(hola+|hello+|hey+|saludos?|buen(?:os)?\s*dias|buenas?\s*tardes|buenas?\s*noches|que\s*tal|que\s*onda|buenas?)$/.test(
+        normalized,
+    );
+}
+
 function shouldSendAutomatedWelcome(
     currentInboundAt: Date,
     previousInboundAt: Date | null | undefined,
@@ -1322,7 +1354,8 @@ async function maybeSendAutomatedReply(
                 latestMessage.createdAt,
                 previousInboundMessage?.createdAt,
                 settings.welcomeRepeatHours || 24,
-            )
+            ) &&
+            shouldSendWelcomeForLatestMessage(latestUserMessage)
         ) {
             const welcomeMessage = await getAutomatedWelcomeMessage({
                 welcomeMessage: settings.welcomeMessage,
