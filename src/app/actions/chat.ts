@@ -489,6 +489,10 @@ function buildKnowledgeImageMatchTokens(text: string) {
         ))];
 }
 
+function compactComparableText(value: string | null | undefined) {
+    return normalizeCatalogComparableText(value).replace(/\s+/g, "");
+}
+
 function scoreKnowledgeImageEntry(
     entry: KnowledgeImageEntry,
     normalizedNeedle: string,
@@ -504,6 +508,16 @@ function scoreKnowledgeImageEntry(
         if (entry.searchableText.includes(token)) {
             score += token.length >= 6 ? 2 : 1;
         }
+    }
+
+    const compactSearchable = compactComparableText(entry.searchableText);
+    const joinedTokens = tokens.join("");
+    if (
+        tokens.length >= 2 &&
+        joinedTokens.length >= 6 &&
+        compactSearchable.includes(joinedTokens)
+    ) {
+        score += 3;
     }
 
     return score;
@@ -1010,6 +1024,7 @@ async function maybeSendKnowledgeImageFromTextSources(params: {
     conversationId: string;
     phone: string;
     latestUserMessage: string;
+    assistantReplyText?: string;
     preferredImageUrls?: string[];
 }) {
     try {
@@ -1095,8 +1110,11 @@ async function maybeSendKnowledgeImageFromTextSources(params: {
             }
         }
 
-        const normalizedNeedle = normalizeCatalogComparableText(params.latestUserMessage);
-        const tokens = buildKnowledgeImageMatchTokens(params.latestUserMessage);
+        const matchContext = [params.latestUserMessage, params.assistantReplyText]
+            .filter((value): value is string => Boolean(value && value.trim()))
+            .join(" ");
+        const normalizedNeedle = normalizeCatalogComparableText(matchContext);
+        const tokens = buildKnowledgeImageMatchTokens(matchContext);
 
         if (!normalizedNeedle || tokens.length === 0) {
             return false;
@@ -1643,6 +1661,7 @@ async function maybeSendAutomatedReply(
                     conversationId,
                     phone: latestConversation.contact.phone,
                     latestUserMessage,
+                    assistantReplyText: reply,
                     preferredImageUrls: preferredKnowledgeImageUrls,
                 });
             }
