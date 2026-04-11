@@ -367,7 +367,7 @@ export function ContactsBulkCampaignDialog({
                 </Button>
             </DialogTrigger>
 
-            <DialogContent className="max-w-[min(96vw,72rem)] rounded-2xl border-border/70 p-0">
+            <DialogContent className="flex max-h-[calc(100vh-1rem)] max-w-[min(96vw,72rem)] flex-col gap-0 overflow-hidden rounded-2xl border-border/70 p-0">
                 <div className="border-b border-border/60 px-6 py-5">
                     <DialogHeader className="text-left">
                         <DialogTitle className="flex items-center gap-2">
@@ -383,13 +383,13 @@ export function ContactsBulkCampaignDialog({
                 <div
                     ref={bodyLayoutRef}
                     className={cn(
-                        "grid max-h-[min(88vh,54rem)] gap-0 overflow-hidden",
+                        "min-h-0 flex-1 gap-0",
                         useTwoColumnBodyLayout
-                            ? "grid-cols-[minmax(0,1fr)_minmax(300px,360px)]"
-                            : "grid-cols-1",
+                            ? "grid overflow-hidden grid-cols-[minmax(0,1fr)_minmax(300px,360px)]"
+                            : "flex flex-col overflow-y-auto",
                     )}
                 >
-                    <div className="overflow-y-auto px-6 py-5">
+                    <div className={cn("px-6 py-5", useTwoColumnBodyLayout ? "overflow-y-auto" : "")}>
                         <div className="space-y-5">
                             <div className="rounded-2xl border bg-muted/20 p-4">
                                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -615,9 +615,9 @@ export function ContactsBulkCampaignDialog({
 
                     <div
                         className={cn(
-                            "overflow-y-auto bg-muted/15 px-6 py-5",
+                            "bg-muted/15 px-6 py-5",
                             useTwoColumnBodyLayout
-                                ? "border-l border-border/60"
+                                ? "overflow-y-auto border-l border-border/60"
                                 : "border-t border-border/60",
                         )}
                     >
@@ -660,7 +660,7 @@ export function ContactsBulkCampaignDialog({
                     </div>
                 </div>
 
-                <DialogFooter className="border-t border-border/60 px-6 py-4">
+                <DialogFooter className="shrink-0 border-t border-border/60 px-6 py-4">
                     <Button
                         type="button"
                         variant="outline"
