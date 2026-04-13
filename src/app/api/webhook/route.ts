@@ -1223,6 +1223,7 @@ async function storeOutboundEcho(
         });
 
         if (existingMessage) {
+            const shouldPauseBot = existingMessage.senderType !== "bot";
             await prisma.message.update({
                 where: { id: existingMessage.id },
                 data: {
@@ -1234,7 +1235,7 @@ async function storeOutboundEcho(
                 where: { id: existingMessage.conversationId },
                 data: {
                     updatedAt: new Date(),
-                    botActive: false,
+                    ...(shouldPauseBot ? { botActive: false } : {}),
                 },
             });
 
@@ -1316,6 +1317,7 @@ async function storeOutboundEcho(
     });
 
     if (duplicate) {
+        const shouldPauseBot = duplicate.senderType !== "bot";
         if (providerMessageId && !duplicate.providerMessageId) {
             await prisma.message.update({
                 where: { id: duplicate.id },
@@ -1327,7 +1329,7 @@ async function storeOutboundEcho(
             where: { id: conversation.id },
             data: {
                 updatedAt: new Date(),
-                botActive: false,
+                ...(shouldPauseBot ? { botActive: false } : {}),
             },
         });
         return;

@@ -2158,6 +2158,48 @@ export async function processInboundMessage(
             });
         }
 
+        let conversationBotActive = conversation.botActive ?? true;
+        if (!conversationBotActive) {
+            const [humanOutboundCount, latestOutboundMessage] = await Promise.all([
+                prisma.message.count({
+                    where: {
+                        conversationId: conversation.id,
+                        direction: "outbound",
+                        senderType: "human",
+                    },
+                }),
+                prisma.message.findFirst({
+                    where: {
+                        conversationId: conversation.id,
+                        direction: "outbound",
+                    },
+                    orderBy: { createdAt: "desc" },
+                    select: {
+                        senderType: true,
+                    },
+                }),
+            ]);
+
+            const shouldRecoverBotMode = humanOutboundCount === 0 && (
+                !latestOutboundMessage || latestOutboundMessage.senderType === "bot"
+            );
+
+            if (shouldRecoverBotMode) {
+                conversation = await prisma.conversation.update({
+                    where: { id: conversation.id },
+                    data: {
+                        botActive: true,
+                        updatedAt: new Date(),
+                    },
+                });
+                conversationBotActive = true;
+                console.warn("[Inbound] Auto-recovered bot mode for paused conversation without human outbound", {
+                    conversationId: conversation.id,
+                    contactId: contact.id,
+                });
+            }
+        }
+
         // Create inbound message with optional media
         const message = await prisma.message.create({
             data: {
@@ -2236,7 +2278,7 @@ export async function processInboundMessage(
             botInputText || text,
             message.createdAt,
         );
-        const conversationWasBotActive = conversation.botActive ?? true;
+        const conversationWasBotActive = conversationBotActive;
         let shouldScheduleAutomatedReply = conversationWasBotActive;
 
         if (bulkReplyResult.intent === "stop") {
