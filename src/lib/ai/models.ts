@@ -53,19 +53,24 @@ export const SUPPORTED_CHAT_MODELS: SupportedChatModelOption[] = [
         label: "Gemini 2.5 Pro",
         description: "Mas capaz para razonamiento y respuestas exigentes.",
     },
-    {
-        id: "gemini:models/gemini-3.1-flash-lite-preview",
-        provider: "gemini",
-        model: "models/gemini-3.1-flash-lite-preview",
-        label: "Gemini 3.1 Flash Lite (Preview)",
-        description: "Preview ultrarrapido para atencion de alto volumen.",
-    },
 ];
+
+const DEPRECATED_CHAT_MODEL_MAP: Record<string, string> = {
+    "gemini:models/gemini-3.1-flash-lite-preview": "gemini:gemini-2.5-flash",
+    "gemini:gemini-3.1-flash-lite-preview": "gemini:gemini-2.5-flash",
+    "models/gemini-3.1-flash-lite-preview": "gemini:gemini-2.5-flash",
+    "gemini-3.1-flash-lite-preview": "gemini:gemini-2.5-flash",
+};
 
 export function normalizeChatModelSelection(value?: string | null) {
     const trimmed = (value || "").trim();
     if (!trimmed) {
         return DEFAULT_CHAT_MODEL_ID;
+    }
+
+    const deprecatedMapping = DEPRECATED_CHAT_MODEL_MAP[trimmed];
+    if (deprecatedMapping) {
+        return deprecatedMapping;
     }
 
     const exactMatch = SUPPORTED_CHAT_MODELS.find((option) => option.id === trimmed);

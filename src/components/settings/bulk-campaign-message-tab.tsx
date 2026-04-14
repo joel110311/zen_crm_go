@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { FileImage, FileText, Loader2, Plus, Trash2, Upload, WandSparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,7 +48,31 @@ export function BulkCampaignMessageTab({
     onAddVariant,
     onRemoveVariant,
 }: BulkCampaignMessageTabProps) {
+    const variantLayoutRef = useRef<HTMLDivElement | null>(null);
+    const [variantLayoutWidth, setVariantLayoutWidth] = useState(0);
     const previewMediaUrl = getSafeMediaUrl(form.mediaUrl);
+    const useTwoColumnVariantFields = variantLayoutWidth >= 560;
+    const useInlineActiveActions = variantLayoutWidth >= 460;
+
+    useEffect(() => {
+        const node = variantLayoutRef.current;
+        if (!node) {
+            return;
+        }
+
+        const updateWidth = () => {
+            setVariantLayoutWidth(node.getBoundingClientRect().width);
+        };
+
+        updateWidth();
+
+        const observer = new ResizeObserver(() => {
+            updateWidth();
+        });
+
+        observer.observe(node);
+        return () => observer.disconnect();
+    }, []);
 
     return (
         <div className="space-y-4">
@@ -111,7 +136,7 @@ export function BulkCampaignMessageTab({
             ) : null}
 
             <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-                <div className="min-w-0 space-y-4 rounded-xl border bg-muted/15 p-4">
+                <div ref={variantLayoutRef} className="min-w-0 space-y-4 rounded-xl border bg-muted/15 p-4">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0 space-y-1">
                             <h3 className="text-base font-semibold leading-tight">Variaciones del mensaje</h3>
@@ -144,7 +169,7 @@ export function BulkCampaignMessageTab({
                     </div>
 
                     <div className="space-y-3.5 rounded-xl border bg-background/90 p-4">
-                        <div className="grid gap-3 md:grid-cols-2">
+                        <div className={cn("grid gap-3", useTwoColumnVariantFields ? "grid-cols-2" : "grid-cols-1")}>
                             <div className="space-y-2">
                                 <Label htmlFor={`bulk-campaign-variant-label-${activeVariantIndex}`} className="block">
                                     Etiqueta
@@ -184,7 +209,14 @@ export function BulkCampaignMessageTab({
 
                         <div className="space-y-2">
                             <Label className="block">Activa</Label>
-                            <div className="flex flex-col gap-2 rounded-lg border bg-muted/15 px-3 py-2 sm:min-h-10 sm:flex-row sm:items-center sm:justify-between">
+                            <div
+                                className={cn(
+                                    "rounded-lg border bg-muted/15 px-3 py-2",
+                                    useInlineActiveActions
+                                        ? "flex min-h-10 items-center justify-between gap-3"
+                                        : "space-y-2",
+                                )}
+                            >
                                 <div className="flex items-center gap-2">
                                     <Switch
                                         checked={activeVariant.isActive}
@@ -200,7 +232,10 @@ export function BulkCampaignMessageTab({
                                 <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-8 self-start rounded-md px-2 text-destructive hover:text-destructive sm:self-auto"
+                                    className={cn(
+                                        "h-8 rounded-md text-destructive hover:text-destructive",
+                                        useInlineActiveActions ? "px-2" : "w-full justify-center px-2",
+                                    )}
                                     onClick={() => onRemoveVariant(activeVariantIndex)}
                                     disabled={form.variants.length === 1}
                                 >

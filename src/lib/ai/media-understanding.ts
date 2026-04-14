@@ -1,9 +1,9 @@
 import path from "path";
 import { readFile } from "fs/promises";
 import { extractTextFromFileBuffer } from "@/lib/brain/knowledge";
-import { getOpenAIClient, transcribeAudioBuffer } from "@/lib/ai/openai";
+import { callGeminiGenerateContent, getOpenAIClient, transcribeAudioBuffer } from "@/lib/ai/openai";
 import { prisma } from "@/lib/db";
-import { resolveChatModelSelection, resolveGeminiRestModelPath } from "@/lib/ai/models";
+import { resolveChatModelSelection } from "@/lib/ai/models";
 import { resolveAiProviderKey } from "@/lib/ai/provider-keys";
 
 type InboundMediaContextInput = {
@@ -86,48 +86,28 @@ async function runGeminiInlinePrompt(
         selectedModel.provider === "gemini"
             ? selectedModel.model
             : "gemini-2.5-flash";
-    const modelPath = resolveGeminiRestModelPath(model);
-
-    const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/${modelPath}:generateContent?key=${apiKey}`,
-        {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                contents: [
-                    {
-                        parts: [
-                            { text: prompt },
-                            {
-                                inline_data: {
-                                    mime_type: mimeType,
-                                    data: buffer.toString("base64"),
-                                },
+    return callGeminiGenerateContent({
+        apiKey,
+        preferredModel: model,
+        payload: {
+            contents: [
+                {
+                    parts: [
+                        { text: prompt },
+                        {
+                            inline_data: {
+                                mime_type: mimeType,
+                                data: buffer.toString("base64"),
                             },
-                        ],
-                    },
-                ],
-                generationConfig: {
-                    temperature: 0.2,
+                        },
+                    ],
                 },
-            }),
+            ],
+            generationConfig: {
+                temperature: 0.2,
+            },
         },
-    );
-
-    if (!response.ok) {
-        const body = await response.text();
-        throw new Error(`Gemini media understanding failed (${response.status}): ${body}`);
-    }
-
-    const data = await response.json();
-    return (
-        data.candidates?.[0]?.content?.parts
-            ?.map((part: { text?: string }) => part.text || "")
-            .join("")
-            .trim() || ""
-    );
+    });
 }
 
 async function transcribeAudioWithFallback(

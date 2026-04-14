@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/db";
 import { resolveAiProviderKey } from "@/lib/ai/provider-keys";
+import { callGeminiGenerateContent } from "@/lib/ai/openai";
 
 /**
  * AI Contact Enrichment Service
@@ -60,28 +61,17 @@ Formato de respuesta:
 Si no encuentras ningún dato nuevo, responde: {}`;
 
     try {
-        const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-            {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: {
-                        temperature: 0.1,
-                        maxOutputTokens: 200,
-                    },
-                }),
-            }
-        );
-
-        if (!response.ok) {
-            console.error("[AI Enrichment] Gemini API error:", response.status);
-            return null;
-        }
-
-        const data = await response.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        const text = await callGeminiGenerateContent({
+            apiKey,
+            preferredModel: "gemini-2.5-flash",
+            payload: {
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                    temperature: 0.1,
+                    maxOutputTokens: 200,
+                },
+            },
+        });
 
         if (!text) return null;
 
