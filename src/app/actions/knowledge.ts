@@ -63,6 +63,18 @@ function toKnowledgeActionErrorMessage(error: unknown) {
 export async function getKnowledgeSources() {
     try {
         return await prisma.knowledgeSource.findMany({
+            select: {
+                id: true,
+                title: true,
+                type: true,
+                status: true,
+                sourceUri: true,
+                mimeType: true,
+                error: true,
+                chunkCount: true,
+                syncedAt: true,
+                updatedAt: true,
+            },
             orderBy: { updatedAt: "desc" },
         });
     } catch (error) {
@@ -90,7 +102,10 @@ export async function createKnowledgeSource(input: CreateKnowledgeSourceInput) {
                 title: (input.title || defaultTitle(input.type, input.sourceUri, input.rawContent)).trim(),
                 type: input.type,
                 sourceUri: input.sourceUri?.trim() || null,
-                rawContent: input.rawContent?.trim() || null,
+                rawContent:
+                    input.type === "text"
+                        ? (input.rawContent ?? null)
+                        : (input.rawContent?.trim() || null),
                 metadata: sanitizeSourceMetadata(input.metadata),
                 status: "pending",
             },
@@ -179,6 +194,43 @@ export async function deleteKnowledgeSource(sourceId: string) {
         return {
             success: false,
             error: toKnowledgeActionErrorMessage(error),
+        };
+    }
+}
+
+export async function downloadKnowledgeSourceText(sourceId: string) {
+    try {
+        const source = await prisma.knowledgeSource.findUnique({
+            where: { id: sourceId },
+            select: {
+                id: true,
+                title: true,
+                type: true,
+                rawContent: true,
+            },
+        });
+
+        if (!source) {
+            throw new Error("La fuente no existe.");
+        }
+
+        if (source.type !== "text") {
+            throw new Error("Solo las fuentes tipo Texto se pueden descargar como TXT.");
+        }
+
+        if (!source.rawContent?.length) {
+            throw new Error("Esta fuente no tiene texto original guardado.");
+        }
+
+        return {
+            success: true,
+            title: source.title,
+            rawContent: source.rawContent,
+        };
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : "No se pudo descargar el texto.",
         };
     }
 }

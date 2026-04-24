@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { formatDistanceToNow } from "date-fns";
 import {
     Bot,
+    Download,
     FileText,
     Github,
     Globe,
@@ -25,6 +26,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import {
     createKnowledgeSource,
+    downloadKnowledgeSourceText,
     deleteKnowledgeSource,
     getKnowledgeSources,
     reindexKnowledgeSource,
@@ -82,6 +84,7 @@ export function KnowledgeBase() {
     const [crawlMaxDepth, setCrawlMaxDepth] = useState("2");
     const [crawlMaxPages, setCrawlMaxPages] = useState("24");
     const [sitemapMaxPages, setSitemapMaxPages] = useState("60");
+    const [downloadingSourceId, setDownloadingSourceId] = useState<string | null>(null);
     const [isPending, startTransition] = useTransition();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { toast } = useToast();
@@ -223,6 +226,46 @@ export function KnowledgeBase() {
             }
             loadSources();
         });
+    };
+
+    const buildDownloadFileName = (sourceTitle: string) => {
+        const sanitized = sourceTitle
+            .normalize("NFKD")
+            .replace(/[^\w\s-]/g, "")
+            .trim()
+            .replace(/\s+/g, "-")
+            .toLowerCase();
+
+        return `${sanitized || "fuente-conocimiento"}.txt`;
+    };
+
+    const handleDownloadTextBackup = async (sourceId: string) => {
+        setDownloadingSourceId(sourceId);
+        try {
+            const result = await downloadKnowledgeSourceText(sourceId);
+            if (!result.success) {
+                toast({
+                    title: "No se pudo descargar el texto",
+                    description: result.error,
+                    variant: "destructive",
+                });
+                return;
+            }
+
+            const rawContent = typeof result.rawContent === "string" ? result.rawContent : "";
+            const sourceTitle = typeof result.title === "string" ? result.title : "fuente-conocimiento";
+            const blob = new Blob([rawContent], { type: "text/plain;charset=utf-8" });
+            const objectUrl = URL.createObjectURL(blob);
+            const anchor = document.createElement("a");
+            anchor.href = objectUrl;
+            anchor.download = buildDownloadFileName(sourceTitle);
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            URL.revokeObjectURL(objectUrl);
+        } finally {
+            setDownloadingSourceId(null);
+        }
     };
 
     return (
@@ -486,6 +529,21 @@ export function KnowledgeBase() {
                                             </div>
 
                                             <div className="flex items-center gap-2 shrink-0">
+                                                {source.type === "text" ? (
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => void handleDownloadTextBackup(source.id)}
+                                                        disabled={isPending || downloadingSourceId === source.id}
+                                                    >
+                                                        {downloadingSourceId === source.id ? (
+                                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                        ) : (
+                                                            <Download className="mr-2 h-4 w-4" />
+                                                        )}
+                                                        Descargar TXT
+                                                    </Button>
+                                                ) : null}
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
