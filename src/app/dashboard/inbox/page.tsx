@@ -505,6 +505,7 @@ function getCleanMediaUrl(url: string | null | undefined): string | undefined {
 function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) {
     const audioRef = useRef<HTMLAudioElement>(null);
     const waveformRef = useRef<HTMLDivElement>(null);
+    const durationProbeAttemptedRef = useRef(false);
     const [isPlaying, setIsPlaying] = useState(false);
     const [reportedDuration, setReportedDuration] = useState(0);
     const [visualDuration, setVisualDuration] = useState(0);
@@ -513,19 +514,49 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
     useEffect(() => {
         const audio = audioRef.current;
         if (!audio) return;
+        durationProbeAttemptedRef.current = false;
 
         const updateVisualDuration = (time: number, mediaDuration: number, ended = false) => {
             setVisualDuration((prev) => {
                 const hasFiniteDuration = Number.isFinite(mediaDuration) && mediaDuration > 0;
-                const base = Math.max(prev, hasFiniteDuration ? mediaDuration : 0, time + 0.25);
-
-                if (ended) return base;
-                if (!hasFiniteDuration || mediaDuration <= time + 1.25) {
-                    const extension = Math.max(8, time * 0.28);
-                    return Math.max(base, time + extension);
+                if (hasFiniteDuration) {
+                    return Math.max(prev, mediaDuration);
                 }
-                return base;
+                if (ended) {
+                    return Math.max(prev, time);
+                }
+                // Keep a small headroom for streams that initially report Infinity.
+                return Math.max(prev, time + 1.5);
             });
+        };
+
+        const probeStreamingDuration = () => {
+            if (durationProbeAttemptedRef.current) return;
+            if (audio.currentTime > 0.01) return;
+            if (audio.readyState < 1) return;
+
+            durationProbeAttemptedRef.current = true;
+            const restorePosition = () => {
+                const resolvedDuration = audio.duration;
+                if (Number.isFinite(resolvedDuration) && resolvedDuration > 0) {
+                    setReportedDuration((prev) => Math.max(prev, resolvedDuration));
+                    updateVisualDuration(audio.currentTime || 0, resolvedDuration, false);
+                }
+                try {
+                    audio.currentTime = 0;
+                } catch {
+                    // Best effort only.
+                }
+                audio.removeEventListener("timeupdate", restorePosition);
+            };
+
+            audio.addEventListener("timeupdate", restorePosition);
+            try {
+                // Some OGG/stream responses expose a finite duration only after a far seek.
+                audio.currentTime = 1e101;
+            } catch {
+                audio.removeEventListener("timeupdate", restorePosition);
+            }
         };
 
         const syncDuration = () => {
@@ -533,7 +564,9 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
             if (Number.isFinite(d) && d > 0) {
                 setReportedDuration((prev) => Math.max(prev, d));
                 updateVisualDuration(audio.currentTime || 0, d);
+                return;
             }
+            probeStreamingDuration();
         };
 
         const onTimeUpdate = () => {
@@ -546,9 +579,11 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
         const onEnded = () => {
             const t = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
             const d = Number.isFinite(audio.duration) ? audio.duration : 0;
-            updateVisualDuration(t, d, true);
+            const finalTime = d > 0 ? d : t;
+            updateVisualDuration(finalTime, finalTime, true);
+            setReportedDuration((prev) => Math.max(prev, finalTime));
             setIsPlaying(false);
-            setCurrentTime(0);
+            setCurrentTime(finalTime);
         };
 
         const onPlay = () => setIsPlaying(true);
@@ -592,6 +627,12 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
         if (isPlaying) {
             audio.pause();
         } else {
+            const rawDuration = audio.duration;
+            const finiteDuration = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : 0;
+            if (audio.ended || (finiteDuration > 0 && audio.currentTime >= finiteDuration - 0.05)) {
+                audio.currentTime = 0;
+                setCurrentTime(0);
+            }
             void audio.play();
         }
     };
@@ -601,10 +642,9 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
         return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
     };
 
-    const hasReliableReportedDuration = reportedDuration > currentTime + 1.5;
-    const duration = hasReliableReportedDuration
+    const duration = reportedDuration > 0
         ? reportedDuration
-        : Math.max(visualDuration, currentTime + (isPlaying ? 0.25 : 0));
+        : Math.max(visualDuration, currentTime + (isPlaying ? 1.5 : 0));
     const safeDuration = duration > 0 && isFinite(duration) ? duration : 0;
     const progress = safeDuration > 0 ? (currentTime / safeDuration) * 100 : 0;
     const clampedProgress = Math.min(100, Math.max(0, progress));
