@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { processInboundMessage, type InboundAttribution } from "@/app/actions/chat";
 import { buildPhoneMatchClauses, normalizePhoneDigits, uniquePhoneCandidates } from "@/lib/phone";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
+import { MESSAGE_SOURCE_WUZAPI, resolveMessageSourceId } from "@/lib/message-source";
 import { downloadWuzapiMedia } from "@/lib/wuzapi";
 import { refreshWhatsAppAvatarForContact } from "@/lib/whatsapp-avatar";
 
@@ -940,6 +941,7 @@ async function applyReactionEvent(event: ExtractedReactionEvent, phoneCandidates
 
     const scopedWhere = {
         providerMessageId: event.targetProviderMessageId,
+        sourceType: MESSAGE_SOURCE_WUZAPI,
         ...(phoneClauses.length > 0
             ? {
                 conversation: {
@@ -965,7 +967,10 @@ async function applyReactionEvent(event: ExtractedReactionEvent, phoneCandidates
 
     if (!targetMessage && phoneClauses.length > 0) {
         targetMessage = await prisma.message.findFirst({
-            where: { providerMessageId: event.targetProviderMessageId },
+            where: {
+                providerMessageId: event.targetProviderMessageId,
+                sourceType: MESSAGE_SOURCE_WUZAPI,
+            },
             select: {
                 id: true,
                 conversationId: true,
@@ -1008,6 +1013,7 @@ async function applyDeleteEvent(event: ExtractedDeleteEvent, phoneCandidates: st
 
     const scopedWhere = {
         providerMessageId: event.targetProviderMessageId,
+        sourceType: MESSAGE_SOURCE_WUZAPI,
         ...(phoneClauses.length > 0
             ? {
                 conversation: {
@@ -1032,7 +1038,10 @@ async function applyDeleteEvent(event: ExtractedDeleteEvent, phoneCandidates: st
 
     if (!targetMessage) {
         targetMessage = await prisma.message.findFirst({
-            where: { providerMessageId: event.targetProviderMessageId },
+            where: {
+                providerMessageId: event.targetProviderMessageId,
+                sourceType: MESSAGE_SOURCE_WUZAPI,
+            },
             select: {
                 id: true,
                 conversationId: true,
@@ -1268,12 +1277,16 @@ async function storeOutboundEcho(
     phoneCandidates: string[],
     text: string,
     media: MediaPayload,
+    sourceId: string | null,
     customerName?: string,
     providerMessageId?: string,
 ) {
     if (providerMessageId) {
         const existingMessage = await prisma.message.findFirst({
-            where: { providerMessageId },
+            where: {
+                providerMessageId,
+                sourceType: MESSAGE_SOURCE_WUZAPI,
+            },
             include: { conversation: true },
         });
 
@@ -1368,6 +1381,7 @@ async function storeOutboundEcho(
     const duplicate = await prisma.message.findFirst({
         where: {
             conversationId: conversation.id,
+            sourceType: MESSAGE_SOURCE_WUZAPI,
             OR: [
                 ...(providerMessageId ? [{ providerMessageId }] : []),
                 {
@@ -1411,6 +1425,8 @@ async function storeOutboundEcho(
             mediaFileName: media.mediaFileName || null,
             senderType: "human",
             providerMessageId: providerMessageId || null,
+            sourceType: MESSAGE_SOURCE_WUZAPI,
+            sourceId,
         },
     });
 
@@ -1433,6 +1449,7 @@ export async function POST(req: NextRequest) {
     try {
         const payload = normalizeIncomingPayload(await req.json());
         const settings = await getSystemSettingsOrDefaults();
+        const wuzapiSourceId = resolveMessageSourceId(MESSAGE_SOURCE_WUZAPI, settings);
 
         if (settings.whatsappUserToken && payload.token && payload.token !== settings.whatsappUserToken) {
             return new NextResponse("Forbidden", { status: 403 });
@@ -1489,6 +1506,7 @@ export async function POST(req: NextRequest) {
                 phoneCandidates,
                 messageDetails.text,
                 media || {},
+                wuzapiSourceId,
                 outboundContactName,
                 providerMessageId,
             );
@@ -1506,6 +1524,10 @@ export async function POST(req: NextRequest) {
             media,
             providerMessageId,
             inboundAttribution,
+            {
+                sourceType: MESSAGE_SOURCE_WUZAPI,
+                sourceId: wuzapiSourceId,
+            },
         );
         return new NextResponse("EVENT_RECEIVED", { status: 200 });
     } catch (error) {

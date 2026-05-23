@@ -7,8 +7,8 @@ import {
     Search, MoreVertical, Phone, Video, Paperclip, Send, Mic, X,
     FileText, Download, Square, Star, BellOff, Bell, Archive, Trash2,
     Info, Users, MessageSquare, ChevronRight, ChevronDown, Mail, Tag, Clock,
-    Eraser, Image as ImageIcon, Play, Pause, Bot, User as UserIcon, AlertTriangle,
-    Reply, Copy, SmilePlus, Forward
+    Eraser, Image as ImageIcon, Play, Pause, Bot, User as UserIcon, AlertTriangle, LayoutTemplate,
+    Reply, Copy, SmilePlus, Forward, CheckCheck, Smartphone
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,7 @@ import { getSafeMediaUrl } from "@/lib/media-url";
 import { TemplateRecord, extractTemplateSlashQuery, renderTemplateContent } from "@/lib/templates";
 import { writeUnreadCounts } from "@/lib/inbox-browser-badge";
 import { parseInboundAdPreviewMessageContent } from "@/lib/inbound-ad-preview";
+import { YCloudTemplateSendModal } from "@/components/inbox/ycloud-template-send-modal";
 
 const REACTION_EMOJIS = [
     "👍", "👎", "❤️", "🩵", "🔥", "✨", "🎉", "👏",
@@ -54,6 +55,8 @@ export type Message = {
     direction: string;
     createdAt: Date;
     type: string;
+    sourceType: "wuzapi" | "ycloud";
+    sourceId?: string | null;
     senderType?: string | null;
     mediaUrl?: string | null;
     mediaType?: string | null;
@@ -68,6 +71,8 @@ type RawMessageRecord = {
     direction: string;
     createdAt: string | Date;
     type: string;
+    sourceType?: "wuzapi" | "ycloud";
+    sourceId?: string | null;
     senderType?: string | null;
     mediaUrl?: string | null;
     mediaType?: string | null;
@@ -83,6 +88,8 @@ function normalizeMessageRecord(raw: RawMessageRecord): Message {
         direction: raw.direction,
         createdAt: raw.createdAt instanceof Date ? raw.createdAt : new Date(raw.createdAt),
         type: raw.type,
+        sourceType: raw.sourceType === "ycloud" ? "ycloud" : "wuzapi",
+        sourceId: raw.sourceId ?? null,
         senderType: raw.senderType ?? null,
         mediaUrl: raw.mediaUrl ?? null,
         mediaType: raw.mediaType ?? null,
@@ -122,6 +129,8 @@ function areLikelySameMessage(left: Message, right: Message) {
         left.direction === right.direction &&
         (left.senderType || null) === (right.senderType || null) &&
         left.type === right.type &&
+        left.sourceType === right.sourceType &&
+        (left.sourceId || null) === (right.sourceId || null) &&
         (left.content || "") === (right.content || "") &&
         (left.mediaUrl || null) === (right.mediaUrl || null) &&
         (left.mediaFileName || null) === (right.mediaFileName || null) &&
@@ -226,6 +235,7 @@ export type Conversation = {
     assignedUserId?: string | null;
     assignedUser?: TeamUser | null;
     lastMessageType: string;
+    sessionExpiresAt?: string | null;
     leadIntelligence?: LeadIntelligenceSnapshot | null;
     currentDeal?: {
         id: string;
@@ -296,6 +306,8 @@ type ConversationRecord = {
     lastMessageDirection?: string | null;
     lastMessageType?: string | null;
     lastMessageSenderType?: string | null;
+    lastMessageSourceType?: "wuzapi" | "ycloud" | null;
+    lastMessageSourceId?: string | null;
     status?: string | null;
     isMuted?: boolean;
     isFavorite?: boolean;
@@ -305,6 +317,7 @@ type ConversationRecord = {
     assignedUser?: TeamUser | null;
     leadIntelligence?: LeadIntelligenceSnapshot | null;
     currentDeal?: Conversation["currentDeal"];
+    sessionExpiresAt?: string | null;
 };
 
 function transformConversation(conv: ConversationRecord): Conversation {
@@ -328,6 +341,8 @@ function transformConversation(conv: ConversationRecord): Conversation {
             senderId: null,
             direction: conv.lastMessageDirection || "inbound",
             type: conv.lastMessageType || "text",
+            sourceType: conv.lastMessageSourceType === "ycloud" ? "ycloud" : "wuzapi",
+            sourceId: conv.lastMessageSourceId || null,
             senderType: conv.lastMessageSenderType || null,
         }] : [],
         updatedAt: previewMessageTime,
@@ -340,6 +355,7 @@ function transformConversation(conv: ConversationRecord): Conversation {
         assignedUserId: conv.assignedUserId ?? null,
         assignedUser: conv.assignedUser ?? null,
         lastMessageType: conv.lastMessageType || "text",
+        sessionExpiresAt: typeof conv.sessionExpiresAt === "string" ? conv.sessionExpiresAt : null,
         leadIntelligence: conv.leadIntelligence ?? null,
         currentDeal: conv.currentDeal ?? null,
     };
@@ -1099,6 +1115,7 @@ export default function InboxPage() {
     const [teamUsers, setTeamUsers] = useState<TeamUser[]>([]);
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputText, setInputText] = useState("");
+    const [outboundSourceType, setOutboundSourceType] = useState<"wuzapi" | "ycloud">("wuzapi");
     const [templates, setTemplates] = useState<TemplateRecord[]>([]);
     const [isUploading, setIsUploading] = useState(false);
     const [pendingFile, setPendingFile] = useState<{
@@ -1110,6 +1127,8 @@ export default function InboxPage() {
     const [whatsAppSession, setWhatsAppSession] = useState<WhatsAppSessionStatus | null>(null);
     const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
     const [viewerMessageId, setViewerMessageId] = useState<string | null>(null);
+    const [isWindowOpen, setIsWindowOpen] = useState(true);
+    const [templateModalOpen, setTemplateModalOpen] = useState(false);
     // Reply, React & Forward state
     const [replyingTo, setReplyingTo] = useState<Message | null>(null);
     const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
@@ -1133,6 +1152,10 @@ export default function InboxPage() {
         whatsAppSession?.jid,
     );
     const shouldShowWhatsAppWarning = whatsAppSession !== null && !isWhatsAppTransportReady;
+    const isConversationWindowExpired = Boolean(selectedChat?.sessionExpiresAt) && (
+        !isWindowOpen ||
+        (selectedChat?.sessionExpiresAt ? new Date(selectedChat.sessionExpiresAt).getTime() <= Date.now() : false)
+    );
     const whatsAppWarningText = useMemo(() => {
         if (whatsAppSession?.error) {
             return whatsAppSession.error;
@@ -1148,6 +1171,10 @@ export default function InboxPage() {
 
         return "No hay un numero de WhatsApp vinculado al CRM. Conectalo en Configuracion para enviar mensajes, usar plantillas y adjuntar archivos.";
     }, [whatsAppSession]);
+
+    const handleWindowChange = useCallback((open: boolean) => {
+        setIsWindowOpen(open);
+    }, []);
 
     const slashQuery = extractTemplateSlashQuery(inputText);
     const slashTemplateMatches = useMemo(() => {
@@ -1303,9 +1330,13 @@ export default function InboxPage() {
     }, []);
 
     useEffect(() => {
-        selectedChatIdRef.current = selectedChat?.id ?? null;
-        selectedChatUpdatedAtRef.current = selectedChat ? toIsoTimestamp(selectedChat.updatedAt) : null;
-    }, [selectedChat?.id, selectedChat?.updatedAt]);
+        const activeChat = selectedChat;
+        selectedChatIdRef.current = activeChat?.id ?? null;
+        selectedChatUpdatedAtRef.current = activeChat ? toIsoTimestamp(activeChat.updatedAt) : null;
+        if (!activeChat?.sessionExpiresAt) {
+            setIsWindowOpen(true);
+        }
+    }, [selectedChat]);
 
     const restoreMobileInboxViewport = useCallback(() => {
         if (typeof window === "undefined" || window.innerWidth >= 768) {
@@ -2271,7 +2302,13 @@ export default function InboxPage() {
         const optimistic: Message = {
             id: optimisticId, content: caption || `[${mediaCategory}]`,
             senderId: "me", direction: "outbound", createdAt: new Date(),
-            type: mediaCategory, senderType: "human", mediaUrl, mediaType: mimeType, mediaFileName: fileName,
+            type: mediaCategory,
+            sourceType: outboundSourceType,
+            sourceId: null,
+            senderType: "human",
+            mediaUrl,
+            mediaType: mimeType,
+            mediaFileName: fileName,
         };
         setMessages(prev => [...prev, optimistic]);
         setConversationBotState(selectedChat.id, false);
@@ -2287,6 +2324,7 @@ export default function InboxPage() {
                 body: JSON.stringify({
                     conversationId: selectedChat.id, content: caption || `[${mediaCategory}]`,
                     direction: "outbound", type: mediaCategory,
+                    sourceType: outboundSourceType,
                     mediaUrl: fullMediaUrl, mediaType: mimeType, mediaFileName: fileName,
                 }),
             });
@@ -2330,7 +2368,13 @@ export default function InboxPage() {
         }
         const optimistic: Message = {
             id: "temp-" + Date.now(), content: fullContent,
-            senderId: "me", direction: "outbound", createdAt: new Date(), type: "text", senderType: "human",
+            senderId: "me",
+            direction: "outbound",
+            createdAt: new Date(),
+            type: "text",
+            sourceType: outboundSourceType,
+            sourceId: null,
+            senderType: "human",
         };
         setMessages(prev => [...prev, optimistic]);
         setConversationBotState(selectedChat.id, false);
@@ -2343,7 +2387,12 @@ export default function InboxPage() {
             const res = await fetch("/api/send-message", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ conversationId: selectedChat.id, content: fullContent, direction: "outbound" }),
+                body: JSON.stringify({
+                    conversationId: selectedChat.id,
+                    content: fullContent,
+                    direction: "outbound",
+                    sourceType: outboundSourceType,
+                }),
             });
             if (!res.ok) throw new Error("Failed");
             const result = await res.json();
@@ -2364,7 +2413,12 @@ export default function InboxPage() {
             await fetch("/api/send-message", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ conversationId: targetConvId, content: forwardMsg.content, direction: "outbound" }),
+                body: JSON.stringify({
+                    conversationId: targetConvId,
+                    content: forwardMsg.content,
+                    direction: "outbound",
+                    sourceType: outboundSourceType,
+                }),
             });
         } catch (error) {
             console.error("Forward error:", error);
@@ -2899,12 +2953,19 @@ export default function InboxPage() {
                                                                     {reactions[msg.id]}
                                                                 </span>
                                                             )}
-                                                                <p className={cn(
-                                                                    "mt-2 text-right text-[10px] font-medium",
-                                                                    msg.direction === "outbound" ? "text-foreground/50" : "text-muted-foreground"
-                                                                )}>
-                                                                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                            <div className={cn(
+                                                                "mt-2 flex items-center justify-end gap-1.5 text-[10px] font-medium",
+                                                                msg.direction === "outbound" ? "text-foreground/50" : "text-muted-foreground"
+                                                            )}>
+                                                                {msg.sourceType === "ycloud" ? (
+                                                                    <CheckCheck className="h-3.5 w-3.5 text-emerald-600" aria-label="YCloud" />
+                                                                ) : (
+                                                                    <Smartphone className="h-3.5 w-3.5 text-sky-600" aria-label="Wuzapi" />
+                                                                )}
+                                                                <p>
+                                                                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                                                                 </p>
+                                                            </div>
                                                         </div>
                                                         </div>
                                                         {/* Context menu on hover */}
@@ -3052,9 +3113,10 @@ export default function InboxPage() {
                             )}
 
                             {/* Window Timer */}
+                            <WindowTimer expiresAt={selectedChat.sessionExpiresAt} onWindowChange={handleWindowChange} />
 
                             {/* Input Area — Locked when 24h window is closed */}
-                            {false ? (
+                            {isConversationWindowExpired ? (
                                 /* ═══ LOCKED: 24h window expired ═══ */
                                 <div className="shrink-0 space-y-0">
                                     <p className="text-xs text-center text-muted-foreground px-6 py-3">
@@ -3063,11 +3125,16 @@ export default function InboxPage() {
                                             restricción de la ventana de mensajes de 24 horas
                                         </span>
                                     </p>
-                                    <p className="text-xs text-center text-muted-foreground px-6 pb-4">
-                                        El flujo principal ya no usa YCloud ni las plantillas legacy. Para soportar
-                                        plantillas con WuzAPI necesitamos una integracion dedicada en una siguiente
-                                        iteracion.
-                                    </p>
+                                    <div className="flex justify-center pb-4">
+                                        <Button
+                                            variant="outline"
+                                            className="rounded-full px-6 gap-2 border-border hover:bg-primary/5 hover:border-primary/30"
+                                            onClick={() => setTemplateModalOpen(true)}
+                                        >
+                                            <LayoutTemplate className="h-4 w-4" />
+                                            Mensaje de plantilla (YCloud)
+                                        </Button>
+                                    </div>
                                 </div>
                             ) : (
                                 /* ═══ UNLOCKED: Normal input area ═══ */
@@ -3191,6 +3258,36 @@ export default function InboxPage() {
                                                     onKeyDown={(e) => { void handleComposerKeyDown(e); }}
                                                 />
                                             </div>
+                                            <div className="pb-1 flex items-center gap-1 shrink-0">
+                                                <button
+                                                    type="button"
+                                                    className={cn(
+                                                        "inline-flex h-10 w-10 items-center justify-center rounded-full border transition",
+                                                        outboundSourceType === "wuzapi"
+                                                            ? "border-sky-500/60 bg-sky-500/10 text-sky-700"
+                                                            : "border-border/60 bg-background/85 text-muted-foreground hover:text-foreground",
+                                                    )}
+                                                    onClick={() => setOutboundSourceType("wuzapi")}
+                                                    disabled={!isWhatsAppTransportReady}
+                                                    title="Enviar por Wuzapi"
+                                                >
+                                                    <Smartphone className="h-4 w-4" />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className={cn(
+                                                        "inline-flex h-10 w-10 items-center justify-center rounded-full border transition",
+                                                        outboundSourceType === "ycloud"
+                                                            ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-700"
+                                                            : "border-border/60 bg-background/85 text-muted-foreground hover:text-foreground",
+                                                    )}
+                                                    onClick={() => setOutboundSourceType("ycloud")}
+                                                    disabled={!isWhatsAppTransportReady}
+                                                    title="Enviar por YCloud"
+                                                >
+                                                    <CheckCheck className="h-4 w-4" />
+                                                </button>
+                                            </div>
                                             <div className="pb-1 pr-1 shrink-0">
                                                 {(inputText.trim() || pendingFile) ? (
                                                     <Button size="icon" className="h-12 w-12 rounded-full animate-in zoom-in-50 duration-200 bg-foreground text-background shadow-[0_20px_45px_-24px_rgba(15,23,42,0.65)] hover:bg-foreground/90" onClick={handleSendMessage} disabled={!isWhatsAppTransportReady}>
@@ -3231,6 +3328,39 @@ export default function InboxPage() {
                     />
                 )
             }
+            {selectedChat && (
+                <YCloudTemplateSendModal
+                    open={templateModalOpen}
+                    onOpenChange={setTemplateModalOpen}
+                    conversationId={selectedChat.id}
+                    contactName={selectedChat.contact?.name}
+                    contactPhone={selectedChat.contact?.phone}
+                    onSent={(rawMessage) => {
+                        const normalized = normalizeMessageRecord(rawMessage as RawMessageRecord);
+                        setMessages((prev) => mergeFetchedMessages(prev, [normalized]));
+                        const nextExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+                        setIsWindowOpen(true);
+                        setSelectedChat((prev) => prev ? {
+                            ...prev,
+                            sessionExpiresAt: nextExpiry,
+                            updatedAt: normalized.createdAt,
+                            messages: [normalized],
+                        } : prev);
+                        setConversations((prev) =>
+                            prev.map((conversation) =>
+                                conversation.id === selectedChat.id
+                                    ? {
+                                        ...conversation,
+                                        sessionExpiresAt: nextExpiry,
+                                        updatedAt: normalized.createdAt,
+                                        messages: [normalized],
+                                    }
+                                    : conversation,
+                            ),
+                        );
+                    }}
+                />
+            )}
             {/* Forward Message Dialog */}
             {forwardMsg && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setForwardMsg(null)}>

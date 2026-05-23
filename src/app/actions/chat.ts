@@ -22,6 +22,11 @@ import { buildInboundMediaContext, shouldSkipAutoReplyText } from "@/lib/ai/medi
 import { maybeHandleAppointmentBooking } from "@/lib/ai/appointment-booking";
 import { processLeadAutomationTurn } from "@/lib/ai/lead-intelligence";
 import { buildPhoneMatchClauses, normalizePhoneDigits } from "@/lib/phone";
+import {
+    normalizeMessageSourceType,
+    resolveMessageSourceId,
+    type MessageSourceType,
+} from "@/lib/message-source";
 import { markBulkCampaignReplyForContact } from "@/lib/bulk-campaigns";
 import { refreshWhatsAppAvatarForContact } from "@/lib/whatsapp-avatar";
 import {
@@ -106,6 +111,11 @@ type InboundMediaPayload = {
     mediaUrl?: string;
     mediaType?: string;
     mediaFileName?: string;
+};
+
+export type InboundMessageSource = {
+    sourceType?: MessageSourceType | null;
+    sourceId?: string | null;
 };
 
 const FALLBACK_EXTENSION_BY_MIME: Record<string, string> = {
@@ -2136,6 +2146,7 @@ export async function processInboundMessage(
     media?: InboundMediaPayload,
     providerMessageId?: string,
     attribution?: InboundAttribution,
+    source?: InboundMessageSource,
 ) {
     try {
         const normalizedFrom = normalizePhoneDigits(from);
@@ -2143,9 +2154,18 @@ export async function processInboundMessage(
             return;
         }
 
+        const normalizedSourceType = normalizeMessageSourceType(source?.sourceType);
+        const sourceSettings = await getSystemSettingsOrDefaults();
+        const inboundSourceId =
+            source?.sourceId?.trim() ||
+            resolveMessageSourceId(normalizedSourceType, sourceSettings);
+
         if (providerMessageId) {
             const duplicatedMessage = await prisma.message.findFirst({
-                where: { providerMessageId },
+                where: {
+                    providerMessageId,
+                    sourceType: normalizedSourceType,
+                },
                 include: {
                     conversation: {
                         include: {
@@ -2289,6 +2309,8 @@ export async function processInboundMessage(
                 mediaType: media?.mediaType || null,
                 mediaFileName: media?.mediaFileName || null,
                 providerMessageId: providerMessageId || null,
+                sourceType: normalizedSourceType,
+                sourceId: inboundSourceId,
             },
         });
 
@@ -2297,6 +2319,7 @@ export async function processInboundMessage(
             where: { id: conversation.id },
             data: {
                 updatedAt: new Date(),
+                sessionExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
             },
         });
 

@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
   previewFeatures = ["postgresqlExtensions", "driverAdapters"]
 }
 
@@ -16,10 +16,10 @@ model User {
   role      Role     @default(ADMIN)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
-  appointments Appointment[]
+
+  appointments          Appointment[]
   assignedConversations Conversation[] @relation("ConversationAssignee")
-  bulkCampaigns BulkCampaign[]
+  bulkCampaigns         BulkCampaign[]
 }
 
 enum Role {
@@ -28,48 +28,48 @@ enum Role {
 }
 
 model Contact {
-  id          String   @id @default(cuid())
-  phone       String   @unique
-  name        String?
-  lastName    String?
-  email       String?
-  company     String?
-  role        String?
-  whatsappAvatarUrl       String?
-  whatsappAvatarPictureId String?
-  whatsappAvatarCheckedAt DateTime?
-  whatsappAvatarUpdatedAt DateTime?
-  bulkCampaignOptOutAt    DateTime?
+  id                       String    @id @default(cuid())
+  phone                    String    @unique
+  name                     String?
+  lastName                 String?
+  email                    String?
+  company                  String?
+  role                     String?
+  whatsappAvatarUrl        String?
+  whatsappAvatarPictureId  String?
+  whatsappAvatarCheckedAt  DateTime?
+  whatsappAvatarUpdatedAt  DateTime?
+  bulkCampaignOptOutAt     DateTime?
   bulkCampaignOptOutReason String?
-  tags        String[]
-  status      String   @default("lead") // lead, qualified, customer
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  conversations Conversation[]
-  appointments  Appointment[]
-  deals         Deal[]
+  tags                     String[]
+  status                   String    @default("lead") // lead, qualified, customer
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  conversations          Conversation[]
+  appointments           Appointment[]
+  deals                  Deal[]
   bulkCampaignRecipients BulkCampaignRecipient[]
 }
 
 model Conversation {
-  id         String    @id @default(cuid())
-  contactId  String
-  contact    Contact   @relation(fields: [contactId], references: [id])
+  id             String   @id @default(cuid())
+  contactId      String
+  contact        Contact  @relation(fields: [contactId], references: [id])
   assignedUserId String?
-  assignedUser User?   @relation("ConversationAssignee", fields: [assignedUserId], references: [id])
-  status     String    @default("active") // active, closed, archived
-  isMuted    Boolean   @default(false)
-  isFavorite Boolean   @default(false)
-  isGroup    Boolean   @default(false)
-  botActive  Boolean   @default(true) // true = IA handles, false = Humano handles
-  createdAt  DateTime  @default(now())
+  assignedUser   User?    @relation("ConversationAssignee", fields: [assignedUserId], references: [id])
+  status         String   @default("active") // active, closed, archived
+  isMuted        Boolean  @default(false)
+  isFavorite     Boolean  @default(false)
+  isGroup        Boolean  @default(false)
+  botActive      Boolean  @default(true) // true = IA handles, false = Humano handles
+  createdAt      DateTime @default(now())
 
-  updatedAt  DateTime  @updatedAt
+  updatedAt        DateTime  @updatedAt
   sessionExpiresAt DateTime? // Tracks the 24h WhatsApp Business API window
-  
-  messages   Message[]
-  catalogState CatalogConversationState?
+
+  messages               Message[]
+  catalogState           CatalogConversationState?
   bulkCampaignRecipients BulkCampaignRecipient[]
 
   @@index([updatedAt(sort: Desc)])
@@ -78,112 +78,116 @@ model Conversation {
 }
 
 model Message {
-  id             String       @id @default(cuid())
-  conversationId String
-  conversation   Conversation @relation(fields: [conversationId], references: [id])
-  content        String
-  type           String       @default("text") // text, image, document, audio, video
-  direction      String       // inbound, outbound
-  status         String       @default("sent") // sent, delivered, read, failed
-  senderType     String?      // "bot" for IA responses, "human" for CRM agent
-  mediaUrl       String?      // URL to media file
-  mediaType      String?      // MIME type (image/jpeg, audio/ogg, etc.)
-  mediaFileName  String?      // Original filename for documents
-  providerMessageId String?   // Native WhatsApp/WuzAPI message id
-  reaction       String?      // Emoji reaction (e.g., '👍', '❤️')
-  createdAt      DateTime     @default(now())
+  id                String       @id @default(cuid())
+  conversationId    String
+  conversation      Conversation @relation(fields: [conversationId], references: [id])
+  content           String
+  type              String       @default("text") // text, image, document, audio, video
+  direction         String // inbound, outbound
+  sourceType        String       @default("wuzapi") @map("source_type") // wuzapi, ycloud
+  sourceId          String?      @map("source_id") // account id / instance id
+  status            String       @default("sent") // sent, delivered, read, failed
+  senderType        String? // "bot" for IA responses, "human" for CRM agent
+  mediaUrl          String? // URL to media file
+  mediaType         String? // MIME type (image/jpeg, audio/ogg, etc.)
+  mediaFileName     String? // Original filename for documents
+  providerMessageId String? // Native WhatsApp/WuzAPI message id
+  reaction          String? // Emoji reaction (e.g., '👍', '❤️')
+  createdAt         DateTime     @default(now())
 
   @@index([conversationId, createdAt(sort: Desc)])
   @@index([providerMessageId])
+  @@index([sourceType, sourceId])
+  @@index([sourceType, providerMessageId])
 }
 
 model Appointment {
-  id        String   @id @default(cuid())
-  title     String
-  startTime DateTime
-  endTime   DateTime
-  status    String   @default("scheduled") // scheduled, completed, cancelled
-  notes     String?
-  googleEventId String?
-  googleCalendarId String?
-  googleCalendarName String?
-  googleCalendarColor String?
-  specialistName String?
+  id                   String    @id @default(cuid())
+  title                String
+  startTime            DateTime
+  endTime              DateTime
+  status               String    @default("scheduled") // scheduled, completed, cancelled
+  notes                String?
+  googleEventId        String?
+  googleCalendarId     String?
+  googleCalendarName   String?
+  googleCalendarColor  String?
+  specialistName       String?
   googleEventUpdatedAt DateTime?
-  
+
   contactId String?
   contact   Contact? @relation(fields: [contactId], references: [id])
-  
-  userId    String?
-  user      User?    @relation(fields: [userId], references: [id])
-  
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([googleCalendarId, googleEventId])
   @@index([startTime])
   @@index([contactId])
   @@index([googleCalendarId])
-  @@unique([googleCalendarId, googleEventId])
 }
 
 model Document {
-  id        String   @id @default(cuid())
+  id        String                       @id @default(cuid())
   title     String
-  content   String   // Text content for RAG
+  content   String // Text content for RAG
   embedding Unsupported("vector(1536)")? // Using pgvector if available, otherwise handle in code
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model KnowledgeSource {
-  id         String           @id @default(cuid())
+  id         String    @id @default(cuid())
   title      String
   type       String
-  status     String           @default("pending") // pending, processing, ready, failed
+  status     String    @default("pending") // pending, processing, ready, failed
   sourceUri  String?
   rawContent String?
   mimeType   String?
   error      String?
-  chunkCount Int              @default(0)
+  chunkCount Int       @default(0)
   metadata   Json?
   syncedAt   DateTime?
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
-  chunks     KnowledgeChunk[]
+  chunks KnowledgeChunk[]
 
   @@index([type, status])
   @@index([updatedAt(sort: Desc)])
 }
 
 model KnowledgeChunk {
-  id         String          @id @default(cuid())
+  id         String                       @id @default(cuid())
   sourceId   String
-  source     KnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  source     KnowledgeSource              @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   title      String?
   content    String
   chunkIndex Int
   tokenCount Int?
   metadata   Json?
   embedding  Unsupported("vector(1536)")?
-  createdAt  DateTime        @default(now())
+  createdAt  DateTime                     @default(now())
 
   @@index([sourceId, chunkIndex])
 }
 
 model CatalogItem {
-  id            String        @id @default(cuid())
-  externalId    String        @unique
-  development   String
-  location      String?
-  question      String
-  answer        String
+  id             String                       @id @default(cuid())
+  externalId     String                       @unique
+  development    String
+  location       String?
+  question       String
+  answer         String
   searchableText String
-  isActive      Boolean       @default(true)
-  embedding     Unsupported("vector(1536)")?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  isActive       Boolean                      @default(true)
+  embedding      Unsupported("vector(1536)")?
+  createdAt      DateTime                     @default(now())
+  updatedAt      DateTime                     @updatedAt
 
   assets        CatalogAsset[]
   conversations CatalogConversationState[]
@@ -193,55 +197,55 @@ model CatalogItem {
 }
 
 model CatalogAsset {
-  id         String      @id @default(cuid())
-  itemId      String
-  item        CatalogItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  type        String      // image | pdf | link
-  url         String
-  label       String?
-  sortOrder   Int         @default(0)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id        String      @id @default(cuid())
+  itemId    String
+  item      CatalogItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  type      String // image | pdf | link
+  url       String
+  label     String?
+  sortOrder Int         @default(0)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 
   @@index([itemId, type, sortOrder])
 }
 
 model CatalogConversationState {
-  id              String       @id @default(cuid())
-  conversationId  String       @unique
-  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  catalogItemId   String?
-  catalogItem     CatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
-  pendingImages   Boolean      @default(false)
-  pendingPdf      Boolean      @default(false)
-  pendingLink     Boolean      @default(false)
-  offeredAt       DateTime?
-  lastSentAt      DateTime?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  id             String       @id @default(cuid())
+  conversationId String       @unique
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  catalogItemId  String?
+  catalogItem    CatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
+  pendingImages  Boolean      @default(false)
+  pendingPdf     Boolean      @default(false)
+  pendingLink    Boolean      @default(false)
+  offeredAt      DateTime?
+  lastSentAt     DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@index([catalogItemId])
 }
 
 model Template {
-  id        String   @id @default(cuid())
-  name      String
-  content   String
-  category  String?
-  language  String   @default("es")
-  status    String   @default("approved")
-  type      String   @default("text") // text, image, document
-  mediaUrl  String?
-  mediaType String?
+  id            String    @id @default(cuid())
+  name          String
+  content       String
+  category      String?
+  language      String    @default("es")
+  status        String    @default("approved")
+  type          String    @default("text") // text, image, document
+  mediaUrl      String?
+  mediaType     String?
   mediaFileName String?
-  shortcut  String?  @unique
-  variables Json?
-  isFavorite Boolean @default(false)
-  isActive  Boolean  @default(true)
-  sortOrder Int      @default(0)
-  usageCount Int     @default(0)
-  lastUsedAt DateTime?
-  
+  shortcut      String?   @unique
+  variables     Json?
+  isFavorite    Boolean   @default(false)
+  isActive      Boolean   @default(true)
+  sortOrder     Int       @default(0)
+  usageCount    Int       @default(0)
+  lastUsedAt    DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -250,88 +254,88 @@ model Template {
 }
 
 model BulkCampaign {
-  id               String   @id @default(cuid())
-  name             String
-  description      String?
-  status           String   @default("draft") // draft, running, paused, completed, cancelled, failed
-  audienceFilters  Json?
-  type             String   @default("text") // text, image, document
-  mediaUrl         String?
-  mediaType        String?
-  mediaFileName    String?
-  batchSize        Int      @default(3)
-  batchDelayMinutes Int     @default(5)
-  randomDelayMinSeconds Int @default(25)
-  randomDelayMaxSeconds Int @default(75)
-  respectBusinessHours Boolean @default(true)
-  stopOnReply      Boolean  @default(true)
-  followUpCount    Int      @default(0)
-  followUpDelayDays Int     @default(1)
-  senderStrategy   String   @default("primary")
-  totalRecipients  Int      @default(0)
-  sentCount        Int      @default(0)
-  failedCount      Int      @default(0)
-  repliedCount     Int      @default(0)
-  skippedCount     Int      @default(0)
-  startedAt        DateTime?
-  completedAt      DateTime?
-  lastProcessedAt  DateTime?
-  scheduledStartAt DateTime?
-  nextRunAt        DateTime?
-  workerLockId     String?
-  workerLockExpiresAt DateTime?
-  createdById      String?
-  createdBy        User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                    String    @id @default(cuid())
+  name                  String
+  description           String?
+  status                String    @default("draft") // draft, running, paused, completed, cancelled, failed
+  audienceFilters       Json?
+  type                  String    @default("text") // text, image, document
+  mediaUrl              String?
+  mediaType             String?
+  mediaFileName         String?
+  batchSize             Int       @default(3)
+  batchDelayMinutes     Int       @default(5)
+  randomDelayMinSeconds Int       @default(25)
+  randomDelayMaxSeconds Int       @default(75)
+  respectBusinessHours  Boolean   @default(true)
+  stopOnReply           Boolean   @default(true)
+  followUpCount         Int       @default(0)
+  followUpDelayDays     Int       @default(1)
+  senderStrategy        String    @default("primary")
+  totalRecipients       Int       @default(0)
+  sentCount             Int       @default(0)
+  failedCount           Int       @default(0)
+  repliedCount          Int       @default(0)
+  skippedCount          Int       @default(0)
+  startedAt             DateTime?
+  completedAt           DateTime?
+  lastProcessedAt       DateTime?
+  scheduledStartAt      DateTime?
+  nextRunAt             DateTime?
+  workerLockId          String?
+  workerLockExpiresAt   DateTime?
+  createdById           String?
+  createdBy             User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
-  variants         BulkCampaignVariant[]
-  recipients       BulkCampaignRecipient[]
+  variants   BulkCampaignVariant[]
+  recipients BulkCampaignRecipient[]
 
   @@index([status, nextRunAt])
   @@index([createdAt(sort: Desc)])
 }
 
 model BulkCampaignVariant {
-  id          String   @id @default(cuid())
-  campaignId  String
-  campaign    BulkCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  label       String
-  content     String
-  weight      Int      @default(1)
-  sortOrder   Int      @default(0)
-  variables   Json?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String       @id @default(cuid())
+  campaignId String
+  campaign   BulkCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  label      String
+  content    String
+  weight     Int          @default(1)
+  sortOrder  Int          @default(0)
+  variables  Json?
+  isActive   Boolean      @default(true)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
 
-  recipients  BulkCampaignRecipient[]
+  recipients BulkCampaignRecipient[]
 
   @@index([campaignId, sortOrder])
 }
 
 model BulkCampaignRecipient {
-  id              String   @id @default(cuid())
-  campaignId      String
-  campaign        BulkCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  contactId       String
-  contact         Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  conversationId  String?
-  conversation    Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
-  variantId       String?
-  variant         BulkCampaignVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
-  status          String   @default("queued") // queued, sent, failed, replied, skipped, cancelled
-  sequenceIndex   Int
-  attemptNumber   Int      @default(0)
-  plannedAt       DateTime @default(now())
-  sentAt          DateTime?
-  repliedAt       DateTime?
-  lastInboundAt   DateTime?
-  lastError       String?
-  renderedContent String?
+  id                String               @id @default(cuid())
+  campaignId        String
+  campaign          BulkCampaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contactId         String
+  contact           Contact              @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  conversationId    String?
+  conversation      Conversation?        @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  variantId         String?
+  variant           BulkCampaignVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  status            String               @default("queued") // queued, sent, failed, replied, skipped, cancelled
+  sequenceIndex     Int
+  attemptNumber     Int                  @default(0)
+  plannedAt         DateTime             @default(now())
+  sentAt            DateTime?
+  repliedAt         DateTime?
+  lastInboundAt     DateTime?
+  lastError         String?
+  renderedContent   String?
   providerMessageId String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 
   @@unique([campaignId, contactId, attemptNumber])
   @@index([campaignId, status, sequenceIndex])
@@ -354,20 +358,20 @@ model PipelineStage {
 }
 
 model Deal {
-  id         String        @id @default(cuid())
-  title      String
-  value      Float         @default(0)
-  stageId    String
-  stage      PipelineStage @relation(fields: [stageId], references: [id])
-  source     String        @default("whatsapp") // whatsapp, manual, web
-  notes      String?
-  priority   String        @default("medium") // low, medium, high
-  contactId  String?
-  contact    Contact?      @relation(fields: [contactId], references: [id])
-  assignedTo String?
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
-  dealTags   DealTag[]
+  id           String            @id @default(cuid())
+  title        String
+  value        Float             @default(0)
+  stageId      String
+  stage        PipelineStage     @relation(fields: [stageId], references: [id])
+  source       String            @default("whatsapp") // whatsapp, manual, web
+  notes        String?
+  priority     String            @default("medium") // low, medium, high
+  contactId    String?
+  contact      Contact?          @relation(fields: [contactId], references: [id])
+  assignedTo   String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  dealTags     DealTag[]
   intelligence LeadIntelligence?
 
   @@index([stageId])
@@ -375,18 +379,18 @@ model Deal {
 }
 
 model LeadIntelligence {
-  id                  String   @id @default(cuid())
-  dealId              String   @unique
-  deal                Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  score               Int      @default(0)
-  interestStatus      String   @default("nuevo") // nuevo, interesado, calificado
-  currentStep         String   @default("inicio") // inicio, interes, captura_nombre, captura_email, calificado
-  stepProgress        Int      @default(0)
-  pendingCaptureField String?  // name | email
-  nameCaptured        Boolean  @default(false)
-  emailCaptured       Boolean  @default(false)
-  nameDeclined        Boolean  @default(false)
-  emailDeclined       Boolean  @default(false)
+  id                  String    @id @default(cuid())
+  dealId              String    @unique
+  deal                Deal      @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  score               Int       @default(0)
+  interestStatus      String    @default("nuevo") // nuevo, interesado, calificado
+  currentStep         String    @default("inicio") // inicio, interes, captura_nombre, captura_email, calificado
+  stepProgress        Int       @default(0)
+  pendingCaptureField String? // name | email
+  nameCaptured        Boolean   @default(false)
+  emailCaptured       Boolean   @default(false)
+  nameDeclined        Boolean   @default(false)
+  emailDeclined       Boolean   @default(false)
   capturedName        String?
   capturedEmail       String?
   askedForNameAt      DateTime?
@@ -395,11 +399,11 @@ model LeadIntelligence {
   capturedEmailAt     DateTime?
   interestDetectedAt  DateTime?
   lastScoredAt        DateTime?
-  sameDayInboundCount Int      @default(0)
+  sameDayInboundCount Int       @default(0)
   lastSummary         String?
   signals             Json?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   @@index([interestStatus])
   @@index([score])
@@ -419,7 +423,7 @@ model StageAutomation {
   stageId   String
   stage     PipelineStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
   trigger   String        @default("on_enter")
-  action    String        // "add_tag" | "remove_tag"
+  action    String // "add_tag" | "remove_tag"
   tagId     String
   tag       Tag           @relation(fields: [tagId], references: [id], onDelete: Cascade)
   applyAll  Boolean       @default(false)
@@ -432,86 +436,85 @@ model DealTag {
   deal   Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
   tagId  String
   tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
-  
+
   @@unique([dealId, tagId])
 }
 
 model SystemSettings {
-  id              String   @id @default(cuid())
-  openaiApiKey    String?
-  openaiModel     String?  @default("gpt-4o-mini")
-  geminiApiKey    String?
-  ycloudApiKey    String?
-  ycloudPhoneId   String?
-  whatsappBaseUrl String?
-  whatsappAdminToken String?
-  whatsappUserToken String?
-  whatsappInstanceName String? @default("zen-crm")
-  whatsappProxyEnabled Boolean @default(false)
-  whatsappProxyUrl String?
-  isBotEnabled    Boolean  @default(false)
-  n8nWebhookUrl   String?
-  agentName       String?  @default("Asistente Zen")
-  agentPrompt     String?
-  welcomeMessage  String?
-  welcomeRepeatHours Int   @default(24)
-  agentTemperature Float   @default(0.3)
-  knowledgeTopK   Int      @default(6)
-  autoReplyDelayMs Int     @default(1200)
-  businessHoursStart String @default("09:00")
-  businessHoursEnd String   @default("18:00")
-  businessTimeZone String   @default("America/Mexico_City")
-  businessWeeklySchedule Json?
-  appointmentDurationMinutes Int @default(30)
-  googleClientId String?
-  googleClientSecret String?
-  googleCalendarId String? @default("primary")
-  googleAccessToken String?
-  googleRefreshToken String?
-  googleTokenExpiresAt DateTime?
-  googleConnectedEmail String?
-  googleSyncToken String?
-  googleLastSyncedAt DateTime?
-  googleCalendars GoogleCalendarSource[]
-  leadScoringEnabled Boolean @default(true)
-  captureLeadName Boolean @default(false)
-  captureLeadEmail Boolean @default(false)
-  leadInterestThreshold Int @default(45)
-  escalationEnabled Boolean @default(false)
-  escalationPhone String?
-  catalogOfferImages Boolean @default(true)
-  catalogOfferPdf Boolean @default(true)
-  catalogAskBeforeSending Boolean @default(true)
-  catalogMaxImagesToSend Int @default(10)
-  catalogIncludeLink Boolean @default(true)
-  updatedAt       DateTime @updatedAt
+  id                         String                 @id @default(cuid())
+  openaiApiKey               String?
+  openaiModel                String?                @default("gpt-4o-mini")
+  geminiApiKey               String?
+  ycloudApiKey               String?
+  ycloudPhoneId              String?
+  whatsappBaseUrl            String?
+  whatsappAdminToken         String?
+  whatsappUserToken          String?
+  whatsappInstanceName       String?                @default("zen-crm")
+  whatsappProxyEnabled       Boolean                @default(false)
+  whatsappProxyUrl           String?
+  isBotEnabled               Boolean                @default(false)
+  n8nWebhookUrl              String?
+  agentName                  String?                @default("Asistente Zen")
+  agentPrompt                String?
+  welcomeMessage             String?
+  welcomeRepeatHours         Int                    @default(24)
+  agentTemperature           Float                  @default(0.3)
+  knowledgeTopK              Int                    @default(6)
+  autoReplyDelayMs           Int                    @default(1200)
+  businessHoursStart         String                 @default("09:00")
+  businessHoursEnd           String                 @default("18:00")
+  businessTimeZone           String                 @default("America/Mexico_City")
+  businessWeeklySchedule     Json?
+  appointmentDurationMinutes Int                    @default(30)
+  googleClientId             String?
+  googleClientSecret         String?
+  googleCalendarId           String?                @default("primary")
+  googleAccessToken          String?
+  googleRefreshToken         String?
+  googleTokenExpiresAt       DateTime?
+  googleConnectedEmail       String?
+  googleSyncToken            String?
+  googleLastSyncedAt         DateTime?
+  googleCalendars            GoogleCalendarSource[]
+  leadScoringEnabled         Boolean                @default(true)
+  captureLeadName            Boolean                @default(false)
+  captureLeadEmail           Boolean                @default(false)
+  leadInterestThreshold      Int                    @default(45)
+  escalationEnabled          Boolean                @default(false)
+  escalationPhone            String?
+  catalogOfferImages         Boolean                @default(true)
+  catalogOfferPdf            Boolean                @default(true)
+  catalogAskBeforeSending    Boolean                @default(true)
+  catalogMaxImagesToSend     Int                    @default(10)
+  catalogIncludeLink         Boolean                @default(true)
+  updatedAt                  DateTime               @updatedAt
 }
 
 model GoogleCalendarSource {
-  id                String         @id @default(cuid())
-  systemSettingsId  String
-  systemSettings    SystemSettings @relation(fields: [systemSettingsId], references: [id], onDelete: Cascade)
-  calendarId        String
-  summary           String
-  description       String?
-  backgroundColor   String?
-  foregroundColor   String?
-  accessRole        String?
-  isPrimary         Boolean        @default(false)
-  isSelected        Boolean        @default(false)
-  blocksAvailability Boolean       @default(false)
-  importToCrm       Boolean        @default(false)
-  isWriteTarget     Boolean        @default(false)
-  isSpecialist      Boolean        @default(false)
-  specialistName    String?
-  sortOrder         Int            @default(0)
-  syncToken         String?
-  lastSyncedAt      DateTime?
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  id                 String         @id @default(cuid())
+  systemSettingsId   String
+  systemSettings     SystemSettings @relation(fields: [systemSettingsId], references: [id], onDelete: Cascade)
+  calendarId         String
+  summary            String
+  description        String?
+  backgroundColor    String?
+  foregroundColor    String?
+  accessRole         String?
+  isPrimary          Boolean        @default(false)
+  isSelected         Boolean        @default(false)
+  blocksAvailability Boolean        @default(false)
+  importToCrm        Boolean        @default(false)
+  isWriteTarget      Boolean        @default(false)
+  isSpecialist       Boolean        @default(false)
+  specialistName     String?
+  sortOrder          Int            @default(0)
+  syncToken          String?
+  lastSyncedAt       DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
 
   @@unique([systemSettingsId, calendarId])
   @@index([systemSettingsId, sortOrder])
   @@index([systemSettingsId, isSpecialist])
 }
-

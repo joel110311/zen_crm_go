@@ -1,6 +1,13 @@
 import { prisma } from "@/lib/db";
 import { resolveMediaToDataUrl } from "@/lib/media-data-url";
+import {
+    normalizeMessageSourceType,
+    resolveMessageSourceId,
+    type MessageSourceType,
+} from "@/lib/message-source";
+import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { sendWuzapiMediaMessage, sendWuzapiTextMessage } from "@/lib/wuzapi";
+import { sendYCloudMediaMessage, sendYCloudTextMessage } from "@/lib/ycloud";
 
 export type OutboundMessageType = "text" | "image" | "document" | "audio" | "video";
 
@@ -8,6 +15,8 @@ export type SendOutboundConversationMessageParams = {
     conversationId: string;
     content?: string | null;
     type?: OutboundMessageType;
+    sourceType?: MessageSourceType | null;
+    sourceId?: string | null;
     mediaUrl?: string | null;
     mediaType?: string | null;
     mediaFileName?: string | null;
@@ -72,6 +81,11 @@ export async function sendOutboundConversationMessage(
     if (!conversation) {
         throw new Error("Conversation not found");
     }
+    const settings = await getSystemSettingsOrDefaults();
+    const selectedSourceType = normalizeMessageSourceType(params.sourceType);
+    const selectedSourceId =
+        params.sourceId?.trim() ||
+        resolveMessageSourceId(selectedSourceType, settings);
 
     const message = await prisma.message.create({
         data: {
@@ -80,6 +94,8 @@ export async function sendOutboundConversationMessage(
             direction: "outbound",
             status: "sending",
             type,
+            sourceType: selectedSourceType,
+            sourceId: selectedSourceId,
             mediaUrl: params.mediaUrl || null,
             mediaType: params.mediaType || null,
             mediaFileName: params.mediaFileName || null,
@@ -105,18 +121,43 @@ export async function sendOutboundConversationMessage(
             let providerMessageId: string | null = null;
 
             if (type === "text") {
-                const result = await sendWuzapiTextMessage(conversation.contact.phone, content);
+                const result = selectedSourceType === "ycloud"
+                    ? await sendYCloudTextMessage(conversation.contact.phone, content)
+                    : await sendWuzapiTextMessage(conversation.contact.phone, content);
                 providerMessageId = result?.Id || null;
             } else if (params.mediaUrl) {
-                const resolvedMedia = await resolveMediaToDataUrl(params.mediaUrl, params.mediaType);
-                const result = await sendWuzapiMediaMessage({
-                    phone: conversation.contact.phone,
-                    mediaCategory: type,
-                    dataUrl: resolvedMedia.dataUrl,
-                    caption: content && content !== `[${type}]` ? content : undefined,
-                    fileName: params.mediaFileName || resolvedMedia.fileName,
-                    mimeType: params.mediaType || resolvedMedia.mimeType,
-                });
+                let result: { Id?: string | null } | null = null;
+
+                if (selectedSourceType === "ycloud") {
+                    const appBaseUrl = (process.env.APP_BASE_URL || process.env.AUTH_URL || "").trim();
+                    const isAbsoluteMediaUrl = /^https?:\/\//i.test(params.mediaUrl);
+                    if (!isAbsoluteMediaUrl && !appBaseUrl) {
+                        throw new Error("APP_BASE_URL o AUTH_URL es requerido para enviar multimedia por YCloud.");
+                    }
+
+                    const publicMediaUrl = isAbsoluteMediaUrl
+                        ? params.mediaUrl
+                        : `${appBaseUrl.replace(/\/+$/, "")}${params.mediaUrl.startsWith("/") ? "" : "/"}${params.mediaUrl}`;
+
+                    result = await sendYCloudMediaMessage({
+                        to: conversation.contact.phone,
+                        mediaType: type,
+                        link: publicMediaUrl,
+                        caption: content && content !== `[${type}]` ? content : undefined,
+                        fileName: params.mediaFileName || undefined,
+                    });
+                } else {
+                    const resolvedMedia = await resolveMediaToDataUrl(params.mediaUrl, params.mediaType);
+                    result = await sendWuzapiMediaMessage({
+                        phone: conversation.contact.phone,
+                        mediaCategory: type,
+                        dataUrl: resolvedMedia.dataUrl,
+                        caption: content && content !== `[${type}]` ? content : undefined,
+                        fileName: params.mediaFileName || resolvedMedia.fileName,
+                        mimeType: params.mediaType || resolvedMedia.mimeType,
+                    });
+                }
+
                 providerMessageId = result?.Id || null;
             }
 

@@ -83,6 +83,8 @@ async function main() {
             conversationId: conversation.id,
             content: "¡Hola! Este es un mensaje de prueba.",
             direction: "inbound",
+            sourceType: "wuzapi",
+            sourceId: "seed",
             type: "text",
             status: "delivered",
         },

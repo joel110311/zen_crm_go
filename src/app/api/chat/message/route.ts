@@ -25,6 +25,7 @@ export async function DELETE(request: NextRequest) {
                 id: true,
                 conversationId: true,
                 providerMessageId: true,
+                sourceType: true,
                 direction: true,
                 conversation: {
                     select: {
@@ -51,7 +52,7 @@ export async function DELETE(request: NextRequest) {
         let whatsappSynced = false;
         let whatsappWarning: string | null = null;
 
-        if (message.providerMessageId && message.conversation?.contact?.phone) {
+        if (message.providerMessageId && message.conversation?.contact?.phone && message.sourceType === "wuzapi") {
             try {
                 await sendWuzapiDeleteMessage({
                     phone: message.conversation.contact.phone,
@@ -65,8 +66,10 @@ export async function DELETE(request: NextRequest) {
                     ? syncError.message
                     : "No se pudo sincronizar borrado con WhatsApp.";
             }
-        } else if (message.providerMessageId && !message.conversation?.contact?.phone) {
-            whatsappWarning = "No hay teléfono del contacto para sincronizar borrado con WhatsApp.";
+        } else if (message.providerMessageId && !message.conversation?.contact?.phone && message.sourceType === "wuzapi") {
+            whatsappWarning = "No hay telefono del contacto para sincronizar borrado con WhatsApp.";
+        } else if (message.providerMessageId && message.sourceType !== "wuzapi") {
+            whatsappWarning = "Este mensaje proviene de otro origen y no se sincroniza por Wuzapi.";
         } else if (!message.providerMessageId) {
             whatsappWarning = "Este mensaje no tiene identificador nativo para borrarlo en WhatsApp.";
         }

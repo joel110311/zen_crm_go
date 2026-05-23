@@ -67,6 +67,8 @@ export default function SettingsPage() {
     const [activeSection, setActiveSection] = useState<SectionId>("theme");
     const [openaiKey, setOpenaiKey] = useState("");
     const [geminiKey, setGeminiKey] = useState("");
+    const [ycloudApiKey, setYcloudApiKey] = useState("");
+    const [ycloudPhoneId, setYcloudPhoneId] = useState("");
     const [whatsappBaseUrl, setWhatsappBaseUrl] = useState("");
     const [whatsappAdminToken, setWhatsappAdminToken] = useState("");
     const [whatsappUserToken, setWhatsappUserToken] = useState("");
@@ -109,6 +111,8 @@ export default function SettingsPage() {
                 if (!settings) return;
                 setOpenaiKey(settings.openaiApiKey || "");
                 setGeminiKey(settings.geminiApiKey || "");
+                setYcloudApiKey(settings.ycloudApiKey || "");
+                setYcloudPhoneId(settings.ycloudPhoneId || "");
                 setWhatsappBaseUrl(settings.whatsappBaseUrl || "");
                 setWhatsappAdminToken(settings.whatsappAdminToken || "");
                 setWhatsappUserToken(settings.whatsappUserToken || "");
@@ -176,6 +180,8 @@ export default function SettingsPage() {
                 body: JSON.stringify({
                     openaiApiKey: openaiKey,
                     geminiApiKey: geminiKey,
+                    ycloudApiKey,
+                    ycloudPhoneId,
                     whatsappBaseUrl,
                     whatsappAdminToken,
                     whatsappUserToken,
@@ -365,6 +371,27 @@ export default function SettingsPage() {
                         <div className="space-y-2">
                             <Label htmlFor="gemini">Gemini API key</Label>
                             <Input id="gemini" type="password" value={geminiKey} onChange={(event) => setGeminiKey(event.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="ycloud-api-key">YCloud API key</Label>
+                            <Input
+                                id="ycloud-api-key"
+                                type="password"
+                                value={ycloudApiKey}
+                                onChange={(event) => setYcloudApiKey(event.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="ycloud-phone-id">YCloud Phone ID / Sender</Label>
+                            <Input
+                                id="ycloud-phone-id"
+                                value={ycloudPhoneId}
+                                onChange={(event) => setYcloudPhoneId(event.target.value)}
+                                placeholder="+524771075025"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Se usa para envios oficiales por API y como `source_id` del feed YCloud.
+                            </p>
                         </div>
                         <Button onClick={handleSave} disabled={isSaving}>
                             {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
