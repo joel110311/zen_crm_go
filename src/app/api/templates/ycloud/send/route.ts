@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { MESSAGE_SOURCE_YCLOUD, resolveMessageSourceId } from "@/lib/message-source";
 import { buildPhoneMatchClauses, normalizePhoneDigits } from "@/lib/phone";
+import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { sendYCloudTemplateMessage } from "@/lib/ycloud";
 
@@ -75,6 +76,19 @@ export async function POST(request: NextRequest) {
                 );
             }
 
+            const settings = await getSystemSettingsOrDefaults();
+            const sourceId = resolveMessageSourceId(MESSAGE_SOURCE_YCLOUD, settings);
+            const ycloudConversation = await findOrCreateActiveConversationForContactSource({
+                contactId: conversation.contactId,
+                sourceType: MESSAGE_SOURCE_YCLOUD,
+                sourceId,
+                defaults: {
+                    assignedUserId: currentUser?.id || conversation.assignedUserId,
+                    botActive: false,
+                    sessionExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                },
+            });
+
             const ycloudResult = await sendYCloudTemplateMessage({
                 to,
                 templateName,
@@ -82,13 +96,11 @@ export async function POST(request: NextRequest) {
                 components,
             });
 
-            const settings = await getSystemSettingsOrDefaults();
-            const sourceId = resolveMessageSourceId(MESSAGE_SOURCE_YCLOUD, settings);
             const content = resolvedContent || `[Plantilla: ${templateName}]`;
 
             const message = await prisma.message.create({
                 data: {
-                    conversationId: conversation.id,
+                    conversationId: ycloudConversation.id,
                     content,
                     direction: "outbound",
                     status: "sent",
@@ -101,12 +113,12 @@ export async function POST(request: NextRequest) {
             });
 
             await prisma.conversation.update({
-                where: { id: conversation.id },
+                where: { id: ycloudConversation.id },
                 data: {
                     updatedAt: new Date(),
                     sessionExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
                     botActive: false,
-                    assignedUserId: currentUser?.id || conversation.assignedUserId,
+                    assignedUserId: currentUser?.id || ycloudConversation.assignedUserId,
                 },
             });
 
@@ -115,6 +127,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({
                 success: true,
                 message,
+                conversationId: ycloudConversation.id,
                 sent: 1,
                 failed: 0,
                 total: 1,
@@ -210,21 +223,17 @@ async function resolveConversationForRecipient(phone: string, assignedUserId: st
         });
     }
 
-    let conversation = await prisma.conversation.findFirst({
-        where: { contactId: contact.id },
-        orderBy: { updatedAt: "desc" },
+    const settings = await getSystemSettingsOrDefaults();
+    const conversation = await findOrCreateActiveConversationForContactSource({
+        contactId: contact.id,
+        sourceType: MESSAGE_SOURCE_YCLOUD,
+        sourceId: resolveMessageSourceId(MESSAGE_SOURCE_YCLOUD, settings),
+        defaults: {
+            assignedUserId,
+            botActive: false,
+            sessionExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        },
     });
-
-    if (!conversation) {
-        conversation = await prisma.conversation.create({
-            data: {
-                contactId: contact.id,
-                assignedUserId,
-                botActive: false,
-                sessionExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-            },
-        });
-    }
 
     return {
         ...conversation,

@@ -11,6 +11,7 @@ import { MESSAGE_SOURCE_WUZAPI, resolveMessageSourceId } from "@/lib/message-sou
 import { downloadWuzapiMedia } from "@/lib/wuzapi";
 import { refreshWhatsAppAvatarForContact } from "@/lib/whatsapp-avatar";
 import { handleYCloudWebhookPayload, looksLikeYCloudWebhookPayload } from "@/lib/ycloud-webhook-handler";
+import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 
 type JsonObject = Record<string, unknown>;
 
@@ -1365,19 +1366,14 @@ async function storeOutboundEcho(
         });
     }
 
-    let conversation = await prisma.conversation.findFirst({
-        where: { contactId: contact.id, status: "active" },
+    const conversation = await findOrCreateActiveConversationForContactSource({
+        contactId: contact.id,
+        sourceType: MESSAGE_SOURCE_WUZAPI,
+        sourceId,
+        defaults: {
+            botActive: false,
+        },
     });
-
-    if (!conversation) {
-        conversation = await prisma.conversation.create({
-            data: {
-                contactId: contact.id,
-                status: "active",
-                botActive: false,
-            },
-        });
-    }
 
     const duplicate = await prisma.message.findFirst({
         where: {

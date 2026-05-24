@@ -3,6 +3,7 @@ import { processInboundMessage } from "@/app/actions/chat";
 import { prisma } from "@/lib/db";
 import { MESSAGE_SOURCE_YCLOUD, resolveMessageSourceId } from "@/lib/message-source";
 import { buildPhoneMatchClauses, uniquePhoneCandidates } from "@/lib/phone";
+import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { normalizeYCloudWebhookPayload, type YCloudNormalizedMessage } from "@/lib/ycloud-webhook";
 
@@ -95,22 +96,14 @@ async function storeYCloudOutboundEcho(message: YCloudNormalizedMessage) {
         });
     }
 
-    let conversation = await prisma.conversation.findFirst({
-        where: {
-            contactId: contact.id,
-            status: "active",
+    const conversation = await findOrCreateActiveConversationForContactSource({
+        contactId: contact.id,
+        sourceType: MESSAGE_SOURCE_YCLOUD,
+        sourceId: message.sourceId,
+        defaults: {
+            botActive: false,
         },
     });
-
-    if (!conversation) {
-        conversation = await prisma.conversation.create({
-            data: {
-                contactId: contact.id,
-                status: "active",
-                botActive: false,
-            },
-        });
-    }
 
     const duplicate = await prisma.message.findFirst({
         where: {

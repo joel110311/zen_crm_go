@@ -469,6 +469,7 @@ async function materializeManualAudienceContacts(entries: BulkCampaignManualEntr
             data: {
                 contactId: createdContact.id,
                 status: "active",
+                sourceType: "wuzapi",
                 botActive: true,
             },
         });

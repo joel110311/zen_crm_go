@@ -231,6 +231,8 @@ export type Conversation = {
     isMuted: boolean;
     isFavorite: boolean;
     isGroup: boolean;
+    sourceType: "wuzapi" | "ycloud";
+    sourceId?: string | null;
     botActive: boolean;
     assignedUserId?: string | null;
     assignedUser?: TeamUser | null;
@@ -306,6 +308,8 @@ type ConversationRecord = {
     lastMessageDirection?: string | null;
     lastMessageType?: string | null;
     lastMessageSenderType?: string | null;
+    sourceType?: "wuzapi" | "ycloud" | null;
+    sourceId?: string | null;
     lastMessageSourceType?: "wuzapi" | "ycloud" | null;
     lastMessageSourceId?: string | null;
     status?: string | null;
@@ -351,6 +355,8 @@ function transformConversation(conv: ConversationRecord): Conversation {
         isMuted: conv.isMuted || false,
         isFavorite: conv.isFavorite || false,
         isGroup: conv.isGroup || false,
+        sourceType: conv.sourceType === "ycloud" ? "ycloud" : "wuzapi",
+        sourceId: conv.sourceId || null,
         botActive: conv.botActive ?? true,
         assignedUserId: conv.assignedUserId ?? null,
         assignedUser: conv.assignedUser ?? null,
@@ -541,30 +547,28 @@ function MessageResponderBadge({ label, compact = false }: { label: "IA" | "Huma
     );
 }
 
-function MessageSourceBadge({
+function ConversationSourceIcon({
     sourceType,
-    compact = false,
+    className,
 }: {
-    sourceType: Message["sourceType"];
-    compact?: boolean;
+    sourceType: Conversation["sourceType"];
+    className?: string;
 }) {
     const isYCloud = sourceType === "ycloud";
-    const Icon = isYCloud ? CheckCircle2 : Smartphone;
-    const label = isYCloud ? "YCloud" : "Wuzapi";
+    const Icon = isYCloud ? CheckCircle2 : MessageSquare;
 
     return (
         <span
             title={isYCloud ? "YCloud API oficial" : "Wuzapi dispositivo vinculado"}
             className={cn(
-                "inline-flex shrink-0 items-center rounded-full border font-semibold leading-none",
+                "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border shadow-sm ring-2 ring-background",
                 isYCloud
-                    ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                    : "border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-300",
-                compact ? "gap-1 px-1.5 py-0.5 text-[9px]" : "gap-1.5 px-2 py-0.5 text-[10px]",
+                    ? "border-emerald-500/25 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+                    : "border-green-500/25 bg-green-50 text-green-700 dark:bg-green-500/15 dark:text-green-300",
+                className,
             )}
         >
-            <Icon className={compact ? "h-3 w-3" : "h-3.5 w-3.5"} aria-hidden="true" />
-            <span>{label}</span>
+            <Icon className="h-3 w-3" aria-hidden="true" />
         </span>
     );
 }
@@ -1173,6 +1177,14 @@ export default function InboxPage() {
         () => messages.find((message) => message.id === emojiPickerMsgId) || null,
         [messages, emojiPickerMsgId],
     );
+    const selectedChatSourceType = selectedChat?.sourceType;
+
+    useEffect(() => {
+        if (selectedChatSourceType) {
+            setOutboundSourceType(selectedChatSourceType);
+        }
+    }, [selectedChatSourceType]);
+
     const isWhatsAppTransportReady = Boolean(
         whatsAppSession?.configured &&
         whatsAppSession?.connected &&
@@ -1199,6 +1211,41 @@ export default function InboxPage() {
 
         return "No hay un numero de WhatsApp vinculado al CRM. Conectalo en Configuracion para enviar mensajes, usar plantillas y adjuntar archivos.";
     }, [whatsAppSession]);
+
+    const selectOutboundSource = useCallback((sourceType: "wuzapi" | "ycloud") => {
+        setOutboundSourceType(sourceType);
+
+        if (!selectedChat?.contact?.id) return;
+
+        const targetConversation = conversations.find((conversation) =>
+            conversation.contact?.id === selectedChat.contact?.id &&
+            conversation.sourceType === sourceType,
+        );
+
+        if (targetConversation && targetConversation.id !== selectedChat.id) {
+            setSelectedChat(targetConversation);
+            setShowContactInfo(false);
+        }
+    }, [conversations, selectedChat]);
+
+    const refreshConversationsAndSelect = useCallback(async (conversationId: string) => {
+        const url = new URL("/api/chat", window.location.origin);
+        url.searchParams.set("limit", String(INBOX_CONVERSATION_LIMIT));
+        const response = await fetch(url.toString(), { cache: "no-store" });
+        const data = await response.json();
+        if (!Array.isArray(data)) return null;
+
+        const transformed = data.map(transformConversation);
+        setConversations((prev) => mergeConversationSnapshots(prev, transformed));
+
+        const target = transformed.find((conversation) => conversation.id === conversationId) || null;
+        if (target) {
+            setSelectedChat(target);
+            setShowContactInfo(false);
+        }
+
+        return target;
+    }, []);
 
     const handleWindowChange = useCallback((open: boolean) => {
         setIsWindowOpen(open);
@@ -1573,11 +1620,18 @@ export default function InboxPage() {
                 if (isFirstFetchRef.current && mode === "full") {
                     isFirstFetchRef.current = false;
 
+                    const contactIdParam = searchParams.get("contactId");
                     const phoneParam = searchParams.get("phone");
-                    if (phoneParam && transformed.length > 0) {
-                        const match = transformed.find((conversation) =>
-                            conversation.contact?.phone?.includes(phoneParam.slice(-10)),
-                        );
+                    const sourceParam = searchParams.get("sourceType") || searchParams.get("source");
+                    const requestedSource = sourceParam === "ycloud" || sourceParam === "wuzapi" ? sourceParam : null;
+                    if ((contactIdParam || phoneParam) && transformed.length > 0) {
+                        const contactMatches = transformed.filter((conversation) => {
+                            if (contactIdParam && conversation.contact?.id === contactIdParam) return true;
+                            return Boolean(phoneParam && conversation.contact?.phone?.includes(phoneParam.slice(-10)));
+                        });
+                        const match = requestedSource
+                            ? contactMatches.find((conversation) => conversation.sourceType === requestedSource) || contactMatches[0]
+                            : contactMatches[0];
                         if (match) {
                             setSelectedChat(match);
                             return;
@@ -2365,7 +2419,12 @@ export default function InboxPage() {
             const result = await res.json();
             if (result?.message) {
                 const persistedMessage = normalizeMessageRecord(result.message);
-                setMessages((prev) => replaceOptimisticMessage(prev, optimisticId, persistedMessage));
+                if (result.conversationId && result.conversationId !== selectedChat.id) {
+                    setMessages((prev) => prev.filter((message) => message.id !== optimisticId));
+                    await refreshConversationsAndSelect(result.conversationId);
+                } else {
+                    setMessages((prev) => replaceOptimisticMessage(prev, optimisticId, persistedMessage));
+                }
             }
 
         } catch (error: unknown) {
@@ -2426,7 +2485,12 @@ export default function InboxPage() {
             const result = await res.json();
             if (result?.message) {
                 const persistedMessage = normalizeMessageRecord(result.message);
-                setMessages((prev) => replaceOptimisticMessage(prev, optimistic.id, persistedMessage));
+                if (result.conversationId && result.conversationId !== selectedChat.id) {
+                    setMessages((prev) => prev.filter((message) => message.id !== optimistic.id));
+                    await refreshConversationsAndSelect(result.conversationId);
+                } else {
+                    setMessages((prev) => replaceOptimisticMessage(prev, optimistic.id, persistedMessage));
+                }
             }
         } catch (error) {
             console.error("sendMessage error:", error);
@@ -2622,6 +2686,10 @@ export default function InboxPage() {
                                         {chat.isFavorite && (
                                             <Star className="absolute -top-0.5 -right-0.5 h-3 w-3 text-yellow-500 fill-yellow-500" />
                                         )}
+                                        <ConversationSourceIcon
+                                            sourceType={chat.sourceType}
+                                            className="absolute -bottom-1 -right-1"
+                                        />
                                     </div>
                                     <div className="min-w-0 overflow-hidden">
                                         <div className="flex min-w-0 items-start gap-1.5">
@@ -2646,9 +2714,6 @@ export default function InboxPage() {
                                         <span className="text-[10px] font-medium text-muted-foreground/85 whitespace-nowrap">
                                             {formatConversationListTimestamp(chat.updatedAt)}
                                         </span>
-                                        {chat.messages[0]?.sourceType ? (
-                                            <MessageSourceBadge sourceType={chat.messages[0].sourceType} compact />
-                                        ) : null}
                                         <MessageResponderBadge
                                             label={currentModeLabel}
                                             compact
@@ -2697,13 +2762,19 @@ export default function InboxPage() {
                                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
                                     </button>
                                     <button className="ml-1 flex items-center gap-3 overflow-hidden text-left transition hover:opacity-80 md:ml-0" onClick={() => setShowContactInfo(true)}>
-                                        <Avatar className="h-11 w-11 flex-shrink-0 ring-1 ring-black/5 dark:ring-white/10">
-                                            <AvatarImage
-                                                src={selectedChat.contact?.avatarUrl || undefined}
-                                                alt={selectedChat.contact?.name || "Contacto"}
+                                        <div className="relative shrink-0">
+                                            <Avatar className="h-11 w-11 flex-shrink-0 ring-1 ring-black/5 dark:ring-white/10">
+                                                <AvatarImage
+                                                    src={selectedChat.contact?.avatarUrl || undefined}
+                                                    alt={selectedChat.contact?.name || "Contacto"}
+                                                />
+                                                <AvatarFallback>{selectedChat.contact?.name?.charAt(0) || "?"}</AvatarFallback>
+                                            </Avatar>
+                                            <ConversationSourceIcon
+                                                sourceType={selectedChat.sourceType}
+                                                className="absolute -bottom-1 -right-1"
                                             />
-                                            <AvatarFallback>{selectedChat.contact?.name?.charAt(0) || "?"}</AvatarFallback>
-                                        </Avatar>
+                                        </div>
                                         <div className="overflow-hidden">
                                             <div className="flex items-center gap-1.5 truncate text-[1.02rem] font-semibold tracking-tight">
                                                 <span className="truncate">{selectedChat.contact?.name || "Desconocido"}</span>
@@ -2988,7 +3059,6 @@ export default function InboxPage() {
                                                                 "mt-2 flex items-center justify-end gap-1.5 text-[10px] font-medium",
                                                                 msg.direction === "outbound" ? "text-foreground/50" : "text-muted-foreground"
                                                             )}>
-                                                                <MessageSourceBadge sourceType={msg.sourceType} />
                                                                 <p>
                                                                     {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                                                                 </p>
@@ -3296,7 +3366,7 @@ export default function InboxPage() {
                                                             ? "border-sky-500/60 bg-sky-500/10 text-sky-700"
                                                             : "border-border/60 bg-background/85 text-muted-foreground hover:text-foreground",
                                                     )}
-                                                    onClick={() => setOutboundSourceType("wuzapi")}
+                                                    onClick={() => selectOutboundSource("wuzapi")}
                                                     disabled={!isWhatsAppTransportReady}
                                                     title="Enviar por Wuzapi"
                                                 >
@@ -3310,7 +3380,7 @@ export default function InboxPage() {
                                                             ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-700"
                                                             : "border-border/60 bg-background/85 text-muted-foreground hover:text-foreground",
                                                     )}
-                                                    onClick={() => setOutboundSourceType("ycloud")}
+                                                    onClick={() => selectOutboundSource("ycloud")}
                                                     disabled={!isWhatsAppTransportReady}
                                                     title="Enviar por YCloud"
                                                 >
@@ -3364,8 +3434,16 @@ export default function InboxPage() {
                     conversationId={selectedChat.id}
                     contactName={selectedChat.contact?.name}
                     contactPhone={selectedChat.contact?.phone}
-                    onSent={(rawMessage) => {
-                        const normalized = normalizeMessageRecord(rawMessage as RawMessageRecord);
+                    onSent={(rawResult) => {
+                        const result = rawResult as { message?: RawMessageRecord; conversationId?: string | null };
+                        if (!result.message) return;
+
+                        const normalized = normalizeMessageRecord(result.message);
+                        if (result.conversationId && result.conversationId !== selectedChat.id) {
+                            void refreshConversationsAndSelect(result.conversationId);
+                            return;
+                        }
+
                         setMessages((prev) => mergeFetchedMessages(prev, [normalized]));
                         const nextExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
                         setIsWindowOpen(true);

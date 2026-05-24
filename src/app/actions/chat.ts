@@ -27,6 +27,7 @@ import {
     resolveMessageSourceId,
     type MessageSourceType,
 } from "@/lib/message-source";
+import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 import { markBulkCampaignReplyForContact } from "@/lib/bulk-campaigns";
 import { refreshWhatsAppAvatarForContact } from "@/lib/whatsapp-avatar";
 import {
@@ -2117,18 +2118,12 @@ export async function sendMessage(conversationId: string, content: string, direc
 
 export async function createConversation(contactId: string) {
     try {
-        let conversation = await prisma.conversation.findFirst({
-            where: { contactId, status: 'active' }
+        const settings = await getSystemSettingsOrDefaults();
+        const conversation = await findOrCreateActiveConversationForContactSource({
+            contactId,
+            sourceType: "wuzapi",
+            sourceId: resolveMessageSourceId("wuzapi", settings),
         });
-
-        if (!conversation) {
-            conversation = await prisma.conversation.create({
-                data: {
-                    contactId,
-                    status: 'active'
-                }
-            });
-        }
 
         revalidatePath('/dashboard/inbox');
         return conversation;
@@ -2237,18 +2232,11 @@ export async function processInboundMessage(
         }
 
         // Find or create conversation
-        let conversation = await prisma.conversation.findFirst({
-            where: { contactId: contact.id, status: "active" },
+        let conversation = await findOrCreateActiveConversationForContactSource({
+            contactId: contact.id,
+            sourceType: normalizedSourceType,
+            sourceId: inboundSourceId,
         });
-
-        if (!conversation) {
-            conversation = await prisma.conversation.create({
-                data: {
-                    contactId: contact.id,
-                    status: "active",
-                },
-            });
-        }
 
         let conversationBotActive = conversation.botActive ?? true;
         if (!conversationBotActive) {

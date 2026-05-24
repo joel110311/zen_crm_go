@@ -67,6 +67,7 @@ export async function backfillMissingActiveConversations(params?: { dryRun?: boo
                 data: contactIdChunk.map((contactId) => ({
                     contactId,
                     status: "active",
+                    sourceType: "wuzapi",
                     botActive: true,
                 })),
             });

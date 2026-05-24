@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { normalizeMessageSourceType, resolveMessageSourceId } from "@/lib/message-source";
+import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
+import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 
 /**
  * POST /api/bot-message
@@ -18,7 +21,7 @@ import { prisma } from "@/lib/db";
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { to, text, type = "text", mediaUrl, mediaType, mediaFileName } = body;
+        const { to, text, type = "text", mediaUrl, mediaType, mediaFileName, sourceType } = body;
         const textContent = typeof text === "string" ? text.trim() : "";
 
         if (!to || (!textContent && !mediaUrl)) {
@@ -54,16 +57,14 @@ export async function POST(request: NextRequest) {
             console.log(`[Bot Message] Created contact ${contact.id} for phone ${phone}`);
         }
 
-        // Find existing conversation
-        let conversation = await prisma.conversation.findFirst({
-            where: { contactId: contact.id },
+        const settings = await getSystemSettingsOrDefaults();
+        const normalizedSourceType = normalizeMessageSourceType(sourceType);
+        const sourceId = resolveMessageSourceId(normalizedSourceType, settings);
+        const conversation = await findOrCreateActiveConversationForContactSource({
+            contactId: contact.id,
+            sourceType: normalizedSourceType,
+            sourceId,
         });
-
-        if (!conversation) {
-            conversation = await prisma.conversation.create({
-                data: { contactId: contact.id, status: "active" },
-            });
-        }
 
         // Check for recent duplicate (avoid double-storing)
         const recentDuplicate = await prisma.message.findFirst({
@@ -71,6 +72,7 @@ export async function POST(request: NextRequest) {
                 conversationId: conversation.id,
                 content: textContent || `[${type}]`,
                 direction: "outbound",
+                sourceType: normalizedSourceType,
                 createdAt: { gte: new Date(Date.now() - 15000) }, // Within last 15 seconds
             },
         });
@@ -88,6 +90,8 @@ export async function POST(request: NextRequest) {
                 direction: "outbound",
                 status: "sent",
                 type,
+                sourceType: normalizedSourceType,
+                sourceId,
                 mediaUrl: mediaUrl || null,
                 mediaType: mediaType || null,
                 mediaFileName: mediaFileName || null,

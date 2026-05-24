@@ -7,6 +7,8 @@ import {
     refreshWhatsAppAvatarForContact,
     refreshWhatsAppAvatarForContactsInBackground,
 } from "@/lib/whatsapp-avatar";
+import { resolveMessageSourceId } from "@/lib/message-source";
+import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 
 const CONTACT_LIST_INCLUDE = {
     conversations: {
@@ -248,6 +250,8 @@ export async function createContact(formData: FormData) {
     }
 
     try {
+        const settings = await getSystemSettingsOrDefaults();
+        const wuzapiSourceId = resolveMessageSourceId("wuzapi", settings);
         const contact = await prisma.$transaction(async (tx) => {
             const createdContact = await tx.contact.create({
                 data: {
@@ -264,6 +268,8 @@ export async function createContact(formData: FormData) {
                 data: {
                     contactId: createdContact.id,
                     status: "active",
+                    sourceType: "wuzapi",
+                    sourceId: wuzapiSourceId,
                     botActive: true,
                 },
             });

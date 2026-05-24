@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
             success: true,
             message: result.message,
+            conversationId: result.conversation.id,
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to send message";

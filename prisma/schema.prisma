@@ -59,6 +59,8 @@ model Conversation {
   assignedUserId String?
   assignedUser   User?    @relation("ConversationAssignee", fields: [assignedUserId], references: [id])
   status         String   @default("active") // active, closed, archived
+  sourceType     String   @default("wuzapi") @map("source_type") // wuzapi, ycloud
+  sourceId       String?  @map("source_id") // account id / instance id
   isMuted        Boolean  @default(false)
   isFavorite     Boolean  @default(false)
   isGroup        Boolean  @default(false)
@@ -74,6 +76,8 @@ model Conversation {
 
   @@index([updatedAt(sort: Desc)])
   @@index([contactId])
+  @@index([contactId, sourceType, sourceId, status])
+  @@index([sourceType, sourceId])
   @@index([assignedUserId])
 }
 

@@ -247,7 +247,7 @@ export function YCloudTemplateSendModal({
             });
 
             if (result.message) {
-                onSent?.(result.message);
+                onSent?.(result);
             }
             onOpenChange(false);
         } catch (error) {

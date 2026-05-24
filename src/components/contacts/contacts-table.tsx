@@ -519,7 +519,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                                         <TableCell className="text-right">
                                             {contact.phone ? (
                                                 <Link
-                                                    href={`/dashboard/inbox?phone=${encodeURIComponent(contact.phone)}`}
+                                                    href={`/dashboard/inbox?contactId=${encodeURIComponent(contact.id)}`}
                                                     className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/10 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/15"
                                                 >
                                                     <MessageSquare className="h-3.5 w-3.5" />

@@ -333,7 +333,7 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                                     <Phone className="h-4 w-4 text-muted-foreground" />
                                     <span className="text-sm text-foreground/80">+{deal.contact.phone}</span>
                                     <button
-                                        onClick={() => router.push(`/dashboard/inbox?phone=${deal.contact!.phone}`)}
+                                        onClick={() => router.push(`/dashboard/inbox?contactId=${deal.contact!.id}`)}
                                         className="ml-auto text-xs font-medium px-2 py-1 rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
                                     >
                                         <MessageSquare className="h-3 w-3 inline mr-1" />

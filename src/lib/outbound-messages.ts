@@ -6,6 +6,7 @@ import {
     type MessageSourceType,
 } from "@/lib/message-source";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
+import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 import { sendWuzapiMediaMessage, sendWuzapiTextMessage } from "@/lib/wuzapi";
 import { sendYCloudMediaMessage, sendYCloudTextMessage } from "@/lib/ycloud";
 
@@ -27,22 +28,11 @@ export type SendOutboundConversationMessageParams = {
 };
 
 export async function findOrCreateActiveConversationForContact(contactId: string) {
-    const existingConversation = await prisma.conversation.findFirst({
-        where: {
-            contactId,
-            status: "active",
-        },
-    });
-
-    if (existingConversation) {
-        return existingConversation;
-    }
-
-    return prisma.conversation.create({
-        data: {
-            contactId,
-            status: "active",
-        },
+    const settings = await getSystemSettingsOrDefaults();
+    return findOrCreateActiveConversationForContactSource({
+        contactId,
+        sourceType: "wuzapi",
+        sourceId: resolveMessageSourceId("wuzapi", settings),
     });
 }
 
@@ -55,6 +45,12 @@ export async function sendOutboundConversationMessage(
     if (!params.conversationId || (!content && !params.mediaUrl)) {
         throw new Error("conversationId and content or mediaUrl are required");
     }
+
+    const settings = await getSystemSettingsOrDefaults();
+    const selectedSourceType = normalizeMessageSourceType(params.sourceType);
+    const selectedSourceId =
+        params.sourceId?.trim() ||
+        resolveMessageSourceId(selectedSourceType, settings);
 
     let conversation = await prisma.conversation.findUnique({
         where: { id: params.conversationId },
@@ -71,7 +67,11 @@ export async function sendOutboundConversationMessage(
             throw new Error("Conversation not found");
         }
 
-        const ensuredConversation = await findOrCreateActiveConversationForContact(contactById.id);
+        const ensuredConversation = await findOrCreateActiveConversationForContactSource({
+            contactId: contactById.id,
+            sourceType: selectedSourceType,
+            sourceId: selectedSourceId,
+        });
         conversation = await prisma.conversation.findUnique({
             where: { id: ensuredConversation.id },
             include: { contact: true },
@@ -81,11 +81,28 @@ export async function sendOutboundConversationMessage(
     if (!conversation) {
         throw new Error("Conversation not found");
     }
-    const settings = await getSystemSettingsOrDefaults();
-    const selectedSourceType = normalizeMessageSourceType(params.sourceType);
-    const selectedSourceId =
-        params.sourceId?.trim() ||
-        resolveMessageSourceId(selectedSourceType, settings);
+
+    if (
+        conversation.sourceType !== selectedSourceType ||
+        (conversation.sourceId || null) !== (selectedSourceId || null)
+    ) {
+        const ensuredConversation = await findOrCreateActiveConversationForContactSource({
+            contactId: conversation.contactId,
+            sourceType: selectedSourceType,
+            sourceId: selectedSourceId,
+            defaults: {
+                assignedUserId: params.currentUserId || conversation.assignedUserId,
+                botActive: conversation.botActive,
+            },
+        });
+        conversation = await prisma.conversation.findUnique({
+            where: { id: ensuredConversation.id },
+            include: { contact: true },
+        });
+        if (!conversation) {
+            throw new Error("Conversation not found");
+        }
+    }
 
     const message = await prisma.message.create({
         data: {

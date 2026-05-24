@@ -266,6 +266,7 @@ async function importDirectChatHistory(params: {
             where: {
                 contactId: contact.id,
                 status: "active",
+                sourceType: "wuzapi",
             },
             orderBy: {
                 updatedAt: "desc",
@@ -278,6 +279,7 @@ async function importDirectChatHistory(params: {
                 data: {
                     contactId: contact.id,
                     status: "active",
+                    sourceType: "wuzapi",
                 },
             });
             conversationsCreated += 1;
@@ -318,6 +320,7 @@ async function importDirectChatHistory(params: {
                     direction,
                     status: direction === "outbound" ? "sent" : "delivered",
                     type: mapHistoryMessageType(message.message_type),
+                    sourceType: "wuzapi",
                     senderType: direction === "outbound" ? "human" : null,
                     providerMessageId: (message.message_id || "").trim() || null,
                     createdAt: message.parsedTimestamp!,

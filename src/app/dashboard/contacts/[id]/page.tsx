@@ -63,7 +63,7 @@ export default async function ContactDetailsPage(props: { params: Promise<{ id: 
 
                             <div className="mt-2 mb-6 flex w-full justify-center">
                                 {contact.phone ? (
-                                    <Link href={`/dashboard/inbox?phone=${encodeURIComponent(contact.phone)}`}>
+                                    <Link href={`/dashboard/inbox?contactId=${encodeURIComponent(contact.id)}`}>
                                         <Button
                                             size="icon"
                                             variant="outline"
