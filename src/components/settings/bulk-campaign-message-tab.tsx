@@ -1,20 +1,157 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FileImage, FileText, Loader2, Plus, Trash2, Upload, WandSparkles } from "lucide-react";
+import { FileImage, FileText, Loader2, Plus, RefreshCw, Trash2, Upload, WandSparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { WhatsAppTemplatePreview } from "@/components/templates/whatsapp-template-preview";
 import { getSafeMediaUrl } from "@/lib/media-url";
-import { TEMPLATE_VARIABLES } from "@/lib/templates";
+import { renderTemplateContent, TEMPLATE_VARIABLES } from "@/lib/templates";
 import { cn } from "@/lib/utils";
 import type {
     CampaignFormState,
     CampaignVariantFormState,
+    YCloudCampaignTemplateComponent,
 } from "@/components/settings/bulk-campaign-manager-shared";
+
+type YCloudTemplateListItem = {
+    id: string;
+    name: string;
+    language: string;
+    status: string;
+    category: string;
+    components: YCloudCampaignTemplateComponent[];
+};
+
+type YCloudTemplateVariableSlot = {
+    key: string;
+    componentType: "HEADER" | "BODY";
+    variableIndex: string;
+    label: string;
+};
+
+const YCloudTemplateValueDefaults = ["{{nombre}}", "{{empresa}}", "{{agente}}", "{{telefono}}"];
+const TEMPLATE_PREVIEW_CONTEXT = {
+    contact: {
+        name: "Karen",
+        company: "Zen Estates",
+        phone: "9991234567",
+    },
+    agentName: "Joel",
+};
+
+function normalizeYCloudTemplateItem(value: unknown): YCloudTemplateListItem | null {
+    if (!value || typeof value !== "object") return null;
+
+    const record = value as Record<string, unknown>;
+    const name = typeof record.name === "string" ? record.name.trim() : "";
+    if (!name) return null;
+
+    const rawLanguage = record.language;
+    const language = typeof rawLanguage === "string"
+        ? rawLanguage.trim()
+        : rawLanguage && typeof rawLanguage === "object" && typeof (rawLanguage as Record<string, unknown>).code === "string"
+            ? String((rawLanguage as Record<string, unknown>).code).trim()
+            : "es";
+
+    return {
+        id: `${name}:${language || "es"}`,
+        name,
+        language: language || "es",
+        status: typeof record.status === "string" ? record.status : "",
+        category: typeof record.category === "string" ? record.category : "",
+        components: Array.isArray(record.components)
+            ? record.components.filter((component): component is YCloudCampaignTemplateComponent =>
+                Boolean(component) && typeof component === "object",
+            )
+            : [],
+    };
+}
+
+function isApprovedYCloudTemplate(template: YCloudTemplateListItem) {
+    const status = template.status.trim().toUpperCase();
+    return !status || status === "APPROVED" || status === "APROBADA";
+}
+
+function extractYCloudNumericVariables(text: string) {
+    const variables: string[] = [];
+    const matches = text.matchAll(/{{\s*(\d+)\s*}}/g);
+
+    for (const match of matches) {
+        const key = match[1];
+        if (key && !variables.includes(key)) {
+            variables.push(key);
+        }
+    }
+
+    return variables;
+}
+
+function getYCloudTemplateVariableKey(componentType: string, variableIndex: string) {
+    return `${componentType.toUpperCase()}:${variableIndex}`;
+}
+
+function listYCloudTemplateVariableSlots(components: YCloudCampaignTemplateComponent[]) {
+    return components.flatMap((component) => {
+        const componentType = component.type.toUpperCase();
+        const text = component.text || "";
+
+        if ((componentType !== "HEADER" && componentType !== "BODY") || !text) {
+            return [];
+        }
+
+        return extractYCloudNumericVariables(text).map((variableIndex) => ({
+            key: getYCloudTemplateVariableKey(componentType, variableIndex),
+            componentType: componentType as "HEADER" | "BODY",
+            variableIndex,
+            label: `${componentType === "HEADER" ? "Header" : "Cuerpo"} {{${variableIndex}}}`,
+        }));
+    });
+}
+
+function getYCloudTemplateComponentText(components: YCloudCampaignTemplateComponent[], type: string) {
+    return components.find((component) => component.type.toUpperCase() === type.toUpperCase())?.text || "";
+}
+
+function renderYCloudTemplateText(
+    components: YCloudCampaignTemplateComponent[],
+    variableValues: Record<string, string>,
+) {
+    const renderComponent = (componentType: "HEADER" | "BODY" | "FOOTER") => {
+        const source = getYCloudTemplateComponentText(components, componentType);
+        return source.replace(/{{\s*(\d+)\s*}}/g, (_match, variableIndex: string) => {
+            const value = variableValues[getYCloudTemplateVariableKey(componentType, variableIndex)]
+                || variableValues[variableIndex]
+                || `{{${variableIndex}}}`;
+            return renderTemplateContent(value, TEMPLATE_PREVIEW_CONTEXT).trim() || `{{${variableIndex}}}`;
+        }).trim();
+    };
+
+    return [
+        renderComponent("HEADER"),
+        renderComponent("BODY"),
+        renderComponent("FOOTER"),
+    ].filter(Boolean).join("\n\n");
+}
+
+function buildDefaultYCloudTemplateVariableValues(components: YCloudCampaignTemplateComponent[]) {
+    return Object.fromEntries(
+        listYCloudTemplateVariableSlots(components).map((slot, index) => [
+            slot.key,
+            YCloudTemplateValueDefaults[index] || "{{nombre}}",
+        ]),
+    );
+}
 
 type BulkCampaignMessageTabProps = {
     form: CampaignFormState;
@@ -50,9 +187,21 @@ export function BulkCampaignMessageTab({
 }: BulkCampaignMessageTabProps) {
     const variantLayoutRef = useRef<HTMLDivElement | null>(null);
     const [variantLayoutWidth, setVariantLayoutWidth] = useState(0);
+    const [ycloudTemplates, setYCloudTemplates] = useState<YCloudTemplateListItem[]>([]);
+    const [isLoadingYCloudTemplates, setIsLoadingYCloudTemplates] = useState(false);
+    const [ycloudTemplatesError, setYCloudTemplatesError] = useState("");
     const previewMediaUrl = getSafeMediaUrl(form.mediaUrl);
     const useTwoColumnVariantFields = variantLayoutWidth >= 560;
     const useInlineActiveActions = variantLayoutWidth >= 460;
+    const approvedYCloudTemplates = ycloudTemplates.filter(isApprovedYCloudTemplate);
+    const selectedYCloudTemplate = approvedYCloudTemplates.find((template) =>
+        template.name === form.ycloudTemplateName && template.language === form.ycloudTemplateLanguage,
+    ) || null;
+    const ycloudVariableSlots = listYCloudTemplateVariableSlots(form.ycloudTemplateComponents);
+    const ycloudPreviewContent = renderYCloudTemplateText(
+        form.ycloudTemplateComponents,
+        form.ycloudTemplateVariableValues,
+    );
 
     useEffect(() => {
         const node = variantLayoutRef.current;
@@ -73,6 +222,268 @@ export function BulkCampaignMessageTab({
         observer.observe(node);
         return () => observer.disconnect();
     }, []);
+
+    useEffect(() => {
+        if (form.type !== "template" || isLoadingYCloudTemplates || ycloudTemplates.length > 0) {
+            return;
+        }
+
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => {
+            setIsLoadingYCloudTemplates(true);
+            setYCloudTemplatesError("");
+
+            void fetch("/api/templates/ycloud?limit=100", { cache: "no-store", signal: controller.signal })
+                .then(async (response) => {
+                    const result = await response.json();
+                    if (!response.ok) {
+                        throw new Error(result.error || "No se pudieron cargar las plantillas YCloud.");
+                    }
+
+                    setYCloudTemplates(
+                        (Array.isArray(result.items) ? result.items : [])
+                            .map(normalizeYCloudTemplateItem)
+                            .filter((template): template is YCloudTemplateListItem => Boolean(template)),
+                    );
+                })
+                .catch((error) => {
+                    if (!controller.signal.aborted) {
+                        setYCloudTemplatesError(error instanceof Error ? error.message : "No se pudieron cargar las plantillas YCloud.");
+                    }
+                })
+                .finally(() => {
+                    if (!controller.signal.aborted) {
+                        setIsLoadingYCloudTemplates(false);
+                    }
+                });
+        }, 0);
+
+        return () => {
+            controller.abort();
+            window.clearTimeout(timer);
+        };
+    }, [form.type, isLoadingYCloudTemplates, ycloudTemplates.length]);
+
+    const refreshYCloudTemplates = () => {
+        setYCloudTemplates([]);
+        setYCloudTemplatesError("");
+    };
+
+    const applyYCloudTemplate = (templateId: string) => {
+        const template = approvedYCloudTemplates.find((entry) => entry.id === templateId);
+        if (!template) return;
+
+        const variableValues = buildDefaultYCloudTemplateVariableValues(template.components);
+        const content = renderYCloudTemplateText(template.components, variableValues);
+
+        onActiveVariantIndexChange(0);
+        onFormChange((current) => ({
+            ...current,
+            sourceType: "ycloud",
+            type: "template",
+            mediaUrl: null,
+            mediaType: null,
+            mediaFileName: null,
+            followUpCount: 0,
+            audienceOnlyOpenYCloudWindow: false,
+            ycloudTemplateName: template.name,
+            ycloudTemplateLanguage: template.language,
+            ycloudTemplateComponents: template.components,
+            ycloudTemplateVariableValues: variableValues,
+            variants: [
+                {
+                    label: "A",
+                    content,
+                    weight: 1,
+                    isActive: true,
+                },
+            ],
+        }));
+    };
+
+    const updateYCloudTemplateVariable = (slot: YCloudTemplateVariableSlot, value: string) => {
+        onFormChange((current) => {
+            const variableValues = {
+                ...current.ycloudTemplateVariableValues,
+                [slot.key]: value,
+            };
+            const content = renderYCloudTemplateText(current.ycloudTemplateComponents, variableValues);
+
+            return {
+                ...current,
+                ycloudTemplateVariableValues: variableValues,
+                variants: [
+                    {
+                        ...(current.variants[0] || { label: "A", weight: 1, isActive: true }),
+                        content,
+                    },
+                ],
+            };
+        });
+    };
+
+    if (form.type === "template") {
+        return (
+            <div className="space-y-4">
+                <div className="rounded-xl border bg-muted/15 p-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div className="space-y-1">
+                            <p className="text-sm font-semibold">Plantilla Meta/YCloud</p>
+                            <p className="text-sm leading-6 text-muted-foreground">
+                                Usa una plantilla aprobada por Meta para contactos sin ventana abierta. El envio se hara siempre por YCloud.
+                            </p>
+                        </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="h-10 rounded-xl bg-background"
+                            onClick={refreshYCloudTemplates}
+                            disabled={isLoadingYCloudTemplates}
+                        >
+                            {isLoadingYCloudTemplates ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                                <RefreshCw className="mr-2 h-4 w-4" />
+                            )}
+                            Actualizar
+                        </Button>
+                    </div>
+
+                    <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+                        <div className="min-w-0 space-y-4">
+                            <div className="space-y-2">
+                                <Label>Plantilla aprobada</Label>
+                                <Select
+                                    value={selectedYCloudTemplate?.id || ""}
+                                    onValueChange={applyYCloudTemplate}
+                                    disabled={isLoadingYCloudTemplates || approvedYCloudTemplates.length === 0}
+                                >
+                                    <SelectTrigger className="h-11 rounded-xl bg-background">
+                                        <SelectValue placeholder={isLoadingYCloudTemplates ? "Cargando plantillas..." : "Selecciona una plantilla"} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {approvedYCloudTemplates.map((template) => (
+                                            <SelectItem key={template.id} value={template.id}>
+                                                {template.name} - {template.language}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                {ycloudTemplatesError ? (
+                                    <p className="text-sm text-destructive">{ycloudTemplatesError}</p>
+                                ) : null}
+                                {!isLoadingYCloudTemplates && approvedYCloudTemplates.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground">
+                                        No hay plantillas aprobadas disponibles desde YCloud con la configuracion actual.
+                                    </p>
+                                ) : null}
+                            </div>
+
+                            {form.ycloudTemplateName ? (
+                                <div className="rounded-xl border bg-background/90 p-4">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div>
+                                            <p className="font-medium">{form.ycloudTemplateName}</p>
+                                            <p className="text-sm text-muted-foreground">
+                                                Idioma {form.ycloudTemplateLanguage || "es"}
+                                                {selectedYCloudTemplate?.category ? ` - ${selectedYCloudTemplate.category}` : ""}
+                                            </p>
+                                        </div>
+                                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                                            Meta/YCloud
+                                        </span>
+                                    </div>
+
+                                    {ycloudVariableSlots.length > 0 ? (
+                                        <div className="mt-4 space-y-4">
+                                            <div>
+                                                <p className="text-sm font-semibold">Variables de Meta</p>
+                                                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                                                    Cada campo alimenta una variable numerica de la plantilla. Puedes usar variables internas del CRM.
+                                                </p>
+                                            </div>
+
+                                            {ycloudVariableSlots.map((slot) => (
+                                                <div key={slot.key} className="space-y-2 rounded-xl border bg-muted/15 p-3">
+                                                    <Label>{slot.label}</Label>
+                                                    <Input
+                                                        value={form.ycloudTemplateVariableValues[slot.key] || ""}
+                                                        onChange={(event) => updateYCloudTemplateVariable(slot, event.target.value)}
+                                                        placeholder="Ej. {{nombre}} o texto fijo"
+                                                        className="h-10 rounded-xl bg-background"
+                                                    />
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {TEMPLATE_VARIABLES.map((variable) => (
+                                                            <button
+                                                                key={`${slot.key}-${variable.key}`}
+                                                                type="button"
+                                                                onClick={() => updateYCloudTemplateVariable(slot, variable.placeholder)}
+                                                                className="rounded-full border bg-background px-2.5 py-1 text-xs font-semibold transition hover:border-primary hover:text-primary"
+                                                            >
+                                                                {variable.placeholder}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="mt-4 rounded-xl border bg-muted/15 p-3 text-sm text-muted-foreground">
+                                            Esta plantilla no tiene variables numericas que completar.
+                                        </p>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="rounded-xl border border-dashed bg-background/70 p-4 text-sm leading-6 text-muted-foreground">
+                                    Selecciona una plantilla aprobada para habilitar la vista previa y guardar la campana.
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="min-w-0 space-y-4">
+                            <div className="min-w-0 rounded-xl border bg-background/80 p-4">
+                                <div className="flex items-center gap-2">
+                                    <WandSparkles className="h-4 w-4 text-primary" />
+                                    <p className="text-sm font-semibold">Vista previa de WhatsApp</p>
+                                </div>
+                                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                                    Render aproximado con datos de ejemplo antes de disparar la plantilla.
+                                </p>
+                                <div className="mt-4">
+                                    <WhatsAppTemplatePreview
+                                        title={form.ycloudTemplateName || form.name || "Plantilla YCloud"}
+                                        subtitle={form.ycloudTemplateLanguage || "Meta template"}
+                                        type="text"
+                                        content={ycloudPreviewContent || "Selecciona una plantilla para ver el contenido."}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="rounded-xl border bg-background/90 p-4 text-sm leading-6 text-muted-foreground">
+                                <p className="font-medium text-foreground">Regla de envio</p>
+                                <p className="mt-2">
+                                    Esta modalidad no filtra por ventana abierta: sirve para reactivar o iniciar conversaciones con una plantilla aprobada.
+                                </p>
+                                <p className="mt-2">
+                                    Si quieres mandar texto libre por YCloud, cambia el tipo a texto y la audiencia solo incluira ventanas abiertas.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="space-y-2">
+                    <Label>Descripcion interna</Label>
+                    <Textarea
+                        value={form.description}
+                        onChange={(event) => onFormChange((current) => ({ ...current, description: event.target.value }))}
+                        placeholder="Para auditar esta ola, equipo responsable, objetivo, etc."
+                        className="min-h-[90px]"
+                    />
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-4">

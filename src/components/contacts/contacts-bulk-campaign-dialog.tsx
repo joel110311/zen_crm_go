@@ -29,6 +29,7 @@ import { WhatsAppTemplatePreview } from "@/components/templates/whatsapp-templat
 import { getContactFullName } from "@/lib/contact-name";
 import { renderTemplateContent, type TemplateRecord } from "@/lib/templates";
 import { cn } from "@/lib/utils";
+import type { YCloudCampaignTemplateComponent } from "@/components/settings/bulk-campaign-manager-shared";
 
 type CampaignContact = {
     id: string;
@@ -38,13 +39,35 @@ type CampaignContact = {
     phone?: string | null;
 };
 
+type QuickCampaignMessageType = "text" | "image" | "document" | "template";
+
+type YCloudTemplateListItem = {
+    id: string;
+    name: string;
+    language: string;
+    status: string;
+    category: string;
+    components: YCloudCampaignTemplateComponent[];
+};
+
+type YCloudTemplateVariableSlot = {
+    key: string;
+    componentType: "HEADER" | "BODY";
+    variableIndex: string;
+    label: string;
+};
+
 type QuickCampaignFormState = {
     name: string;
-    type: "text" | "image" | "document";
+    type: QuickCampaignMessageType;
     content: string;
     mediaUrl: string | null;
     mediaType: string | null;
     mediaFileName: string | null;
+    ycloudTemplateName: string;
+    ycloudTemplateLanguage: string;
+    ycloudTemplateComponents: YCloudCampaignTemplateComponent[];
+    ycloudTemplateVariableValues: Record<string, string>;
     batchSize: number;
     batchDelayMinutes: number;
     randomDelayMinSeconds: number;
@@ -59,6 +82,127 @@ type QuickCampaignFormState = {
     sourceType: "wuzapi" | "ycloud";
 };
 
+const YCloudTemplateValueDefaults = ["{{nombre}}", "{{empresa}}", "{{agente}}", "{{telefono}}"];
+
+function normalizeYCloudTemplateItem(value: unknown): YCloudTemplateListItem | null {
+    if (!value || typeof value !== "object") return null;
+
+    const record = value as Record<string, unknown>;
+    const name = typeof record.name === "string" ? record.name.trim() : "";
+    if (!name) return null;
+
+    const rawLanguage = record.language;
+    const language = typeof rawLanguage === "string"
+        ? rawLanguage.trim()
+        : rawLanguage && typeof rawLanguage === "object" && typeof (rawLanguage as Record<string, unknown>).code === "string"
+            ? String((rawLanguage as Record<string, unknown>).code).trim()
+            : "es";
+
+    return {
+        id: `${name}:${language || "es"}`,
+        name,
+        language: language || "es",
+        status: typeof record.status === "string" ? record.status : "",
+        category: typeof record.category === "string" ? record.category : "",
+        components: Array.isArray(record.components)
+            ? record.components.filter((component): component is YCloudCampaignTemplateComponent =>
+                Boolean(component) && typeof component === "object",
+            )
+            : [],
+    };
+}
+
+function isApprovedYCloudTemplate(template: YCloudTemplateListItem) {
+    const status = template.status.trim().toUpperCase();
+    return !status || status === "APPROVED" || status === "APROBADA";
+}
+
+function extractYCloudNumericVariables(text: string) {
+    const variables: string[] = [];
+    const matches = text.matchAll(/{{\s*(\d+)\s*}}/g);
+
+    for (const match of matches) {
+        const key = match[1];
+        if (key && !variables.includes(key)) {
+            variables.push(key);
+        }
+    }
+
+    return variables;
+}
+
+function getYCloudTemplateVariableKey(componentType: string, variableIndex: string) {
+    return `${componentType.toUpperCase()}:${variableIndex}`;
+}
+
+function listYCloudTemplateVariableSlots(components: YCloudCampaignTemplateComponent[]) {
+    return components.flatMap((component) => {
+        const componentType = component.type.toUpperCase();
+        const text = component.text || "";
+
+        if ((componentType !== "HEADER" && componentType !== "BODY") || !text) {
+            return [];
+        }
+
+        return extractYCloudNumericVariables(text).map((variableIndex) => ({
+            key: getYCloudTemplateVariableKey(componentType, variableIndex),
+            componentType: componentType as "HEADER" | "BODY",
+            variableIndex,
+            label: `${componentType === "HEADER" ? "Header" : "Cuerpo"} {{${variableIndex}}}`,
+        }));
+    });
+}
+
+function getYCloudTemplateComponentText(components: YCloudCampaignTemplateComponent[], type: string) {
+    return components.find((component) => component.type.toUpperCase() === type.toUpperCase())?.text || "";
+}
+
+function renderYCloudTemplateText(
+    components: YCloudCampaignTemplateComponent[],
+    variableValues: Record<string, string>,
+    previewContact: CampaignContact | null,
+) {
+    const context = {
+        contact: previewContact
+            ? {
+                name: getContactFullName(previewContact, "Sin nombre"),
+                company: previewContact.company || "",
+                phone: previewContact.phone || "",
+            }
+            : {
+                name: "Karen",
+                company: "Zen Estates",
+                phone: "9991234567",
+            },
+        agentName: "Equipo Zen CRM",
+    };
+
+    const renderComponent = (componentType: "HEADER" | "BODY" | "FOOTER") => {
+        const source = getYCloudTemplateComponentText(components, componentType);
+        return source.replace(/{{\s*(\d+)\s*}}/g, (_match, variableIndex: string) => {
+            const value = variableValues[getYCloudTemplateVariableKey(componentType, variableIndex)]
+                || variableValues[variableIndex]
+                || `{{${variableIndex}}}`;
+            return renderTemplateContent(value, context).trim() || `{{${variableIndex}}}`;
+        }).trim();
+    };
+
+    return [
+        renderComponent("HEADER"),
+        renderComponent("BODY"),
+        renderComponent("FOOTER"),
+    ].filter(Boolean).join("\n\n");
+}
+
+function buildDefaultYCloudTemplateVariableValues(components: YCloudCampaignTemplateComponent[]) {
+    return Object.fromEntries(
+        listYCloudTemplateVariableSlots(components).map((slot, index) => [
+            slot.key,
+            YCloudTemplateValueDefaults[index] || "{{nombre}}",
+        ]),
+    );
+}
+
 type ContactsBulkCampaignDialogProps = {
     contacts: CampaignContact[];
     onCreated: () => void;
@@ -71,6 +215,10 @@ const DEFAULT_QUICK_CAMPAIGN_FORM: QuickCampaignFormState = {
     mediaUrl: null,
     mediaType: null,
     mediaFileName: null,
+    ycloudTemplateName: "",
+    ycloudTemplateLanguage: "",
+    ycloudTemplateComponents: [],
+    ycloudTemplateVariableValues: {},
     batchSize: 3,
     batchDelayMinutes: 5,
     randomDelayMinSeconds: 25,
@@ -105,6 +253,9 @@ export function ContactsBulkCampaignDialog({
     const [open, setOpen] = useState(false);
     const [templates, setTemplates] = useState<TemplateRecord[]>([]);
     const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+    const [ycloudTemplates, setYCloudTemplates] = useState<YCloudTemplateListItem[]>([]);
+    const [isLoadingYCloudTemplates, setIsLoadingYCloudTemplates] = useState(false);
+    const [ycloudTemplatesError, setYCloudTemplatesError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [bodyLayoutWidth, setBodyLayoutWidth] = useState(0);
     const [form, setForm] = useState<QuickCampaignFormState>(DEFAULT_QUICK_CAMPAIGN_FORM);
@@ -114,10 +265,32 @@ export function ContactsBulkCampaignDialog({
         () => (contacts[0] ? getContactFullName(contacts[0], "Sin nombre") : "Sin nombre"),
         [contacts],
     );
+    const approvedYCloudTemplates = useMemo(
+        () => ycloudTemplates.filter(isApprovedYCloudTemplate),
+        [ycloudTemplates],
+    );
+    const selectedYCloudTemplate = useMemo(
+        () => approvedYCloudTemplates.find((template) =>
+            template.name === form.ycloudTemplateName && template.language === form.ycloudTemplateLanguage,
+        ) || null,
+        [approvedYCloudTemplates, form.ycloudTemplateLanguage, form.ycloudTemplateName],
+    );
+    const ycloudVariableSlots = useMemo(
+        () => listYCloudTemplateVariableSlots(form.ycloudTemplateComponents),
+        [form.ycloudTemplateComponents],
+    );
 
     const previewContent = useMemo(
-        () =>
-            renderTemplateContent(form.content, {
+        () => {
+            if (form.type === "template") {
+                return renderYCloudTemplateText(
+                    form.ycloudTemplateComponents,
+                    form.ycloudTemplateVariableValues,
+                    previewContact,
+                );
+            }
+
+            return renderTemplateContent(form.content, {
                 contact: previewContact
                     ? {
                         name: getContactFullName(previewContact, "Sin nombre"),
@@ -126,8 +299,15 @@ export function ContactsBulkCampaignDialog({
                     }
                     : null,
                 agentName: "Equipo Zen CRM",
-            }),
-        [form.content, previewContact],
+            });
+        },
+        [
+            form.content,
+            form.type,
+            form.ycloudTemplateComponents,
+            form.ycloudTemplateVariableValues,
+            previewContact,
+        ],
     );
 
     const submitLabel = useMemo(() => {
@@ -180,6 +360,33 @@ export function ContactsBulkCampaignDialog({
     }, [contacts.length, isLoadingTemplates, open, templates.length, toast]);
 
     useEffect(() => {
+        if (!open || form.type !== "template" || isLoadingYCloudTemplates || ycloudTemplates.length > 0) {
+            return;
+        }
+
+        setIsLoadingYCloudTemplates(true);
+        setYCloudTemplatesError("");
+
+        void fetch("/api/templates/ycloud?limit=100", { cache: "no-store" })
+            .then(async (response) => {
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || "No se pudieron cargar las plantillas YCloud.");
+                }
+
+                setYCloudTemplates(
+                    (Array.isArray(result.items) ? result.items : [])
+                        .map(normalizeYCloudTemplateItem)
+                        .filter((template): template is YCloudTemplateListItem => Boolean(template)),
+                );
+            })
+            .catch((error) => {
+                setYCloudTemplatesError(error instanceof Error ? error.message : "No se pudieron cargar las plantillas YCloud.");
+            })
+            .finally(() => setIsLoadingYCloudTemplates(false));
+    }, [form.type, isLoadingYCloudTemplates, open, ycloudTemplates.length]);
+
+    useEffect(() => {
         if (!open) {
             setBodyLayoutWidth(0);
             return;
@@ -229,9 +436,53 @@ export function ContactsBulkCampaignDialog({
             mediaUrl: template.mediaUrl,
             mediaType: template.mediaType,
             mediaFileName: template.mediaFileName,
+            ycloudTemplateName: "",
+            ycloudTemplateLanguage: "",
+            ycloudTemplateComponents: [],
+            ycloudTemplateVariableValues: {},
             selectedTemplateId: template.id,
             selectedTemplateName: template.name,
         }));
+    };
+
+    const applyYCloudTemplate = (templateId: string) => {
+        const template = approvedYCloudTemplates.find((entry) => entry.id === templateId);
+        if (!template) return;
+
+        const variableValues = buildDefaultYCloudTemplateVariableValues(template.components);
+        const content = renderYCloudTemplateText(template.components, variableValues, previewContact);
+
+        setForm((current) => ({
+            ...current,
+            sourceType: "ycloud",
+            type: "template",
+            content,
+            mediaUrl: null,
+            mediaType: null,
+            mediaFileName: null,
+            ycloudTemplateName: template.name,
+            ycloudTemplateLanguage: template.language,
+            ycloudTemplateComponents: template.components,
+            ycloudTemplateVariableValues: variableValues,
+            followUpCount: 0,
+            selectedTemplateId: null,
+            selectedTemplateName: template.name,
+        }));
+    };
+
+    const updateYCloudTemplateVariable = (slot: YCloudTemplateVariableSlot, value: string) => {
+        setForm((current) => {
+            const variableValues = {
+                ...current.ycloudTemplateVariableValues,
+                [slot.key]: value,
+            };
+
+            return {
+                ...current,
+                ycloudTemplateVariableValues: variableValues,
+                content: renderYCloudTemplateText(current.ycloudTemplateComponents, variableValues, previewContact),
+            };
+        });
     };
 
     const handleSubmit = async () => {
@@ -248,6 +499,27 @@ export function ContactsBulkCampaignDialog({
             return;
         }
 
+        if (form.type === "template") {
+            if (!form.ycloudTemplateName || !form.ycloudTemplateLanguage) {
+                toast({
+                    title: "Selecciona una plantilla YCloud",
+                    description: "Para enviar fuera de ventana necesitamos una plantilla aprobada por Meta.",
+                    variant: "destructive",
+                });
+                return;
+            }
+
+            const missingVariables = ycloudVariableSlots.filter((slot) => !form.ycloudTemplateVariableValues[slot.key]?.trim());
+            if (missingVariables.length > 0) {
+                toast({
+                    title: "Completa las variables",
+                    description: "Todas las variables numericas de la plantilla deben tener valor.",
+                    variant: "destructive",
+                });
+                return;
+            }
+        }
+
         if (form.type === "text" && !form.content.trim()) {
             toast({
                 title: "Falta el mensaje",
@@ -257,7 +529,7 @@ export function ContactsBulkCampaignDialog({
             return;
         }
 
-        if (form.type !== "text" && !form.mediaUrl) {
+        if (form.type !== "text" && form.type !== "template" && !form.mediaUrl) {
             toast({
                 title: "Falta el adjunto",
                 description: "Carga una plantilla con archivo antes de lanzar el envio.",
@@ -284,9 +556,13 @@ export function ContactsBulkCampaignDialog({
                 sourceType: form.sourceType,
                 sourceId: null,
                 type: form.type,
-                mediaUrl: form.type === "text" ? null : form.mediaUrl,
-                mediaType: form.type === "text" ? null : form.mediaType,
-                mediaFileName: form.type === "text" ? null : form.mediaFileName,
+                mediaUrl: form.type === "text" || form.type === "template" ? null : form.mediaUrl,
+                mediaType: form.type === "text" || form.type === "template" ? null : form.mediaType,
+                mediaFileName: form.type === "text" || form.type === "template" ? null : form.mediaFileName,
+                ycloudTemplateName: form.type === "template" ? form.ycloudTemplateName : null,
+                ycloudTemplateLanguage: form.type === "template" ? form.ycloudTemplateLanguage : null,
+                ycloudTemplateComponents: form.type === "template" ? form.ycloudTemplateComponents : null,
+                ycloudTemplateVariableValues: form.type === "template" ? form.ycloudTemplateVariableValues : null,
                 batchSize: form.batchSize,
                 batchDelayMinutes: form.batchDelayMinutes,
                 randomDelayMinSeconds: form.randomDelayMinSeconds,
@@ -294,7 +570,7 @@ export function ContactsBulkCampaignDialog({
                 scheduledStartAt: form.scheduledStartAt ? new Date(form.scheduledStartAt).toISOString() : null,
                 respectBusinessHours: form.respectBusinessHours,
                 stopOnReply: form.stopOnReply,
-                followUpCount: form.followUpCount,
+                followUpCount: form.type === "template" || form.sourceType === "ycloud" ? 0 : form.followUpCount,
                 followUpDelayDays: form.followUpDelayDays,
                 audienceFilters: {
                     mode: "selected",
@@ -302,9 +578,9 @@ export function ContactsBulkCampaignDialog({
                     tags: [],
                     query: "",
                     limit: null,
-                    sourceType: form.sourceType === "ycloud" ? "ycloud" : "any",
+                    sourceType: form.sourceType === "ycloud" && form.type !== "template" ? "ycloud" : "any",
                     sourceId: "",
-                    onlyOpenYCloudWindow: form.sourceType === "ycloud",
+                    onlyOpenYCloudWindow: form.sourceType === "ycloud" && form.type !== "template",
                     lastInboundFrom: "",
                     lastInboundTo: "",
                     selectedContactIds: contacts.map((contact) => contact.id),
@@ -313,7 +589,7 @@ export function ContactsBulkCampaignDialog({
                 variants: [
                     {
                         label: "A",
-                        content: form.content,
+                        content: form.type === "template" ? previewContent : form.content,
                         weight: 1,
                         sortOrder: 0,
                         isActive: true,
@@ -461,6 +737,15 @@ export function ContactsBulkCampaignDialog({
                                             setForm((current) => ({
                                                 ...current,
                                                 sourceType: value,
+                                                type: value === "wuzapi" && current.type === "template" ? "text" : current.type,
+                                                content: value === "wuzapi" && current.type === "template" ? "" : current.content,
+                                                mediaUrl: value === "wuzapi" && current.type === "template" ? null : current.mediaUrl,
+                                                mediaType: value === "wuzapi" && current.type === "template" ? null : current.mediaType,
+                                                mediaFileName: value === "wuzapi" && current.type === "template" ? null : current.mediaFileName,
+                                                ycloudTemplateName: value === "wuzapi" ? "" : current.ycloudTemplateName,
+                                                ycloudTemplateLanguage: value === "wuzapi" ? "" : current.ycloudTemplateLanguage,
+                                                ycloudTemplateComponents: value === "wuzapi" ? [] : current.ycloudTemplateComponents,
+                                                ycloudTemplateVariableValues: value === "wuzapi" ? {} : current.ycloudTemplateVariableValues,
                                                 followUpCount: value === "ycloud" ? 0 : current.followUpCount,
                                             }))
                                         }
@@ -470,12 +755,14 @@ export function ContactsBulkCampaignDialog({
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="wuzapi">WhatsApp Wuzapi</SelectItem>
-                                            <SelectItem value="ycloud">WhatsApp API YCloud (ventana abierta)</SelectItem>
+                                            <SelectItem value="ycloud">WhatsApp API YCloud</SelectItem>
                                         </SelectContent>
                                     </Select>
                                     <p className="text-xs text-muted-foreground">
                                         {form.sourceType === "ycloud"
-                                            ? "Solo se incluiran contactos seleccionados que tengan ventana YCloud abierta."
+                                            ? form.type === "template"
+                                                ? "La plantilla puede enviarse aunque el contacto no tenga ventana abierta."
+                                                : "El mensaje libre solo incluira contactos seleccionados con ventana YCloud abierta."
                                             : "Usa el envio masivo Wuzapi actual."}
                                     </p>
                                 </div>
@@ -492,20 +779,111 @@ export function ContactsBulkCampaignDialog({
                                         className="h-11 rounded-xl"
                                     />
                                 </div>
+
+                                {form.sourceType === "ycloud" ? (
+                                    <div className="space-y-2">
+                                        <Label>Modo YCloud</Label>
+                                        <Select
+                                            value={form.type === "template" ? "template" : "open-window"}
+                                            onValueChange={(value: "open-window" | "template") =>
+                                                setForm((current) => ({
+                                                    ...current,
+                                                    type: value === "template" ? "template" : "text",
+                                                    content: value === "template" ? current.content : "",
+                                                    mediaUrl: null,
+                                                    mediaType: null,
+                                                    mediaFileName: null,
+                                                    ycloudTemplateName: value === "template" ? current.ycloudTemplateName : "",
+                                                    ycloudTemplateLanguage: value === "template" ? current.ycloudTemplateLanguage : "",
+                                                    ycloudTemplateComponents: value === "template" ? current.ycloudTemplateComponents : [],
+                                                    ycloudTemplateVariableValues: value === "template" ? current.ycloudTemplateVariableValues : {},
+                                                    followUpCount: 0,
+                                                }))
+                                            }
+                                        >
+                                            <SelectTrigger className="h-11 rounded-xl">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="open-window">Mensaje libre (ventana abierta)</SelectItem>
+                                                <SelectItem value="template">Plantilla Meta/YCloud</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                ) : null}
                             </div>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="bulk-contacts-content">Mensaje</Label>
-                                <Textarea
-                                    id="bulk-contacts-content"
-                                    value={form.content}
-                                    onChange={(event) =>
-                                        setForm((current) => ({ ...current, content: event.target.value }))
-                                    }
-                                    placeholder="Escribe el mensaje o carga una plantilla para precargarlo..."
-                                    className="min-h-[140px] rounded-2xl"
-                                />
-                            </div>
+                            {form.type === "template" ? (
+                                <div className="space-y-4 rounded-2xl border bg-muted/20 p-4">
+                                    <div className="flex flex-col gap-1">
+                                        <p className="text-sm font-semibold text-foreground">Plantilla Meta/YCloud</p>
+                                        <p className="text-sm leading-6 text-muted-foreground">
+                                            Selecciona una plantilla aprobada y completa sus variables antes de iniciar el envio.
+                                        </p>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label>Plantilla aprobada</Label>
+                                        <Select
+                                            value={selectedYCloudTemplate?.id || ""}
+                                            onValueChange={applyYCloudTemplate}
+                                            disabled={isLoadingYCloudTemplates || approvedYCloudTemplates.length === 0}
+                                        >
+                                            <SelectTrigger className="h-11 rounded-xl bg-background">
+                                                <SelectValue placeholder={isLoadingYCloudTemplates ? "Cargando plantillas..." : "Selecciona plantilla"} />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {approvedYCloudTemplates.map((template) => (
+                                                    <SelectItem key={template.id} value={template.id}>
+                                                        {template.name} - {template.language}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        {ycloudTemplatesError ? (
+                                            <p className="text-sm text-destructive">{ycloudTemplatesError}</p>
+                                        ) : null}
+                                        {!isLoadingYCloudTemplates && approvedYCloudTemplates.length === 0 ? (
+                                            <p className="text-sm text-muted-foreground">
+                                                No hay plantillas aprobadas disponibles con la configuracion actual de YCloud.
+                                            </p>
+                                        ) : null}
+                                    </div>
+
+                                    {ycloudVariableSlots.length > 0 ? (
+                                        <div className="grid gap-3 sm:grid-cols-2">
+                                            {ycloudVariableSlots.map((slot) => (
+                                                <div key={slot.key} className="space-y-2 rounded-xl border bg-background p-3">
+                                                    <Label>{slot.label}</Label>
+                                                    <Input
+                                                        value={form.ycloudTemplateVariableValues[slot.key] || ""}
+                                                        onChange={(event) => updateYCloudTemplateVariable(slot, event.target.value)}
+                                                        placeholder="Ej. {{nombre}}"
+                                                        className="h-10 rounded-xl"
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : form.ycloudTemplateName ? (
+                                        <p className="rounded-xl border bg-background p-3 text-sm text-muted-foreground">
+                                            Esta plantilla no tiene variables numericas.
+                                        </p>
+                                    ) : null}
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    <Label htmlFor="bulk-contacts-content">Mensaje</Label>
+                                    <Textarea
+                                        id="bulk-contacts-content"
+                                        value={form.content}
+                                        onChange={(event) =>
+                                            setForm((current) => ({ ...current, content: event.target.value }))
+                                        }
+                                        placeholder="Escribe el mensaje o carga una plantilla para precargarlo..."
+                                        className="min-h-[140px] rounded-2xl"
+                                    />
+                                </div>
+                            )}
 
                             <details className="rounded-2xl border bg-background open:pb-4">
                                 <summary className="flex cursor-pointer list-none items-center justify-between rounded-2xl px-4 py-3">
@@ -677,7 +1055,7 @@ export function ContactsBulkCampaignDialog({
                             <WhatsAppTemplatePreview
                                 title={form.name || "Envio rapido"}
                                 subtitle={previewContact ? getContactFullName(previewContact, "Sin nombre") : "Sin destinatario"}
-                                type={form.type}
+                                type={form.type === "template" ? "text" : form.type}
                                 content={previewContent}
                                 mediaUrl={form.mediaUrl}
                                 mediaType={form.mediaType}

@@ -24,6 +24,15 @@ export type CampaignAudienceFilters = {
     manualEntries?: BulkCampaignManualEntry[];
 };
 
+export type CampaignMessageType = "text" | "image" | "document" | "template";
+
+export type YCloudCampaignTemplateComponent = {
+    type: string;
+    text?: string;
+    format?: string;
+    buttons?: Array<{ type: string; text: string; url?: string; phone_number?: string }>;
+};
+
 export type CampaignRecord = {
     id: string;
     name: string;
@@ -32,10 +41,14 @@ export type CampaignRecord = {
     audienceFilters: CampaignAudienceFilters | null;
     sourceType?: "wuzapi" | "ycloud";
     sourceId?: string | null;
-    type: "text" | "image" | "document";
+    type: CampaignMessageType;
     mediaUrl: string | null;
     mediaType: string | null;
     mediaFileName: string | null;
+    ycloudTemplateName?: string | null;
+    ycloudTemplateLanguage?: string | null;
+    ycloudTemplateComponents?: YCloudCampaignTemplateComponent[] | null;
+    ycloudTemplateVariableValues?: Record<string, string> | null;
     batchSize: number;
     batchDelayMinutes: number;
     randomDelayMinSeconds: number;
@@ -122,10 +135,14 @@ export type CampaignFormState = {
     name: string;
     description: string;
     status: string;
-    type: "text" | "image" | "document";
+    type: CampaignMessageType;
     mediaUrl: string | null;
     mediaType: string | null;
     mediaFileName: string | null;
+    ycloudTemplateName: string;
+    ycloudTemplateLanguage: string;
+    ycloudTemplateComponents: YCloudCampaignTemplateComponent[];
+    ycloudTemplateVariableValues: Record<string, string>;
     batchSize: number;
     batchDelayMinutes: number;
     randomDelayMinSeconds: number;
@@ -168,6 +185,10 @@ export const EMPTY_FORM: CampaignFormState = {
     mediaUrl: null,
     mediaType: null,
     mediaFileName: null,
+    ycloudTemplateName: "",
+    ycloudTemplateLanguage: "",
+    ycloudTemplateComponents: [],
+    ycloudTemplateVariableValues: {},
     batchSize: 3,
     batchDelayMinutes: 5,
     randomDelayMinSeconds: 25,

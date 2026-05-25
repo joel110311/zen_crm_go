@@ -265,10 +265,14 @@ model BulkCampaign {
   audienceFilters       Json?
   sourceType            String    @default("wuzapi") @map("source_type") // wuzapi, ycloud
   sourceId              String?   @map("source_id") // selected sender account / number
-  type                  String    @default("text") // text, image, document
+  type                  String    @default("text") // text, image, document, template
   mediaUrl              String?
   mediaType             String?
   mediaFileName         String?
+  ycloudTemplateName           String?
+  ycloudTemplateLanguage       String?
+  ycloudTemplateComponents     Json?
+  ycloudTemplateVariableValues Json?
   batchSize             Int       @default(3)
   batchDelayMinutes     Int       @default(5)
   randomDelayMinSeconds Int       @default(25)

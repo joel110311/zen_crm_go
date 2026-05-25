@@ -1,10 +1,5 @@
 import crypto from "crypto";
-import type {
-    BulkCampaign,
-    BulkCampaignVariant,
-    Contact,
-    Prisma,
-} from "@prisma/client";
+import { Prisma, type BulkCampaign, type BulkCampaignVariant, type Contact } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
     businessBoundsForDate,
@@ -15,6 +10,7 @@ import {
     type OutboundMessageType,
     sendOutboundConversationMessage,
 } from "@/lib/outbound-messages";
+import { sendYCloudTemplateMessage } from "@/lib/ycloud";
 import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 import {
     MESSAGE_SOURCE_YCLOUD,
@@ -41,8 +37,10 @@ import { buildPhoneMatchClauses, normalizePhoneDigits } from "@/lib/phone";
 
 const DEFAULT_VARIANT_LABELS = ["A", "B", "C", "D", "E"];
 const WORKER_LOCK_TTL_MS = 60_000;
-const ALLOWED_CAMPAIGN_TYPES = new Set<OutboundMessageType>(["text", "image", "document"]);
+type BulkCampaignMessageType = OutboundMessageType | "template";
+const ALLOWED_CAMPAIGN_TYPES = new Set<BulkCampaignMessageType>(["text", "image", "document", "template"]);
 const YCLOUD_OPEN_WINDOW_GRACE_MS = 60_000;
+const YCLOUD_TEMPLATE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export type BulkCampaignVariantInput = {
     label: string;
@@ -57,10 +55,14 @@ export type BulkCampaignUpsertInput = {
     description: string;
     sourceType: MessageSourceType;
     sourceId: string | null;
-    type: OutboundMessageType;
+    type: BulkCampaignMessageType;
     mediaUrl: string | null;
     mediaType: string | null;
     mediaFileName: string | null;
+    ycloudTemplateName: string | null;
+    ycloudTemplateLanguage: string | null;
+    ycloudTemplateComponents: Prisma.InputJsonValue | null;
+    ycloudTemplateVariableValues: Record<string, string>;
     batchSize: number;
     batchDelayMinutes: number;
     randomDelayMinSeconds: number;
@@ -100,10 +102,10 @@ function normalizeOptionalDate(value: unknown) {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function normalizeCampaignType(value: unknown): OutboundMessageType {
+function normalizeCampaignType(value: unknown): BulkCampaignMessageType {
     const normalized = typeof value === "string" ? value.trim().toLowerCase() : "text";
-    if (ALLOWED_CAMPAIGN_TYPES.has(normalized as OutboundMessageType)) {
-        return normalized as OutboundMessageType;
+    if (ALLOWED_CAMPAIGN_TYPES.has(normalized as BulkCampaignMessageType)) {
+        return normalized as BulkCampaignMessageType;
     }
     return "text";
 }
@@ -122,6 +124,175 @@ function normalizeAudienceWindowDate(value: string) {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function normalizeTemplateComponents(value: unknown): Prisma.InputJsonValue | null {
+    return Array.isArray(value) ? value as Prisma.InputJsonValue : null;
+}
+
+function normalizeTemplateVariableValues(value: unknown) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return {};
+    }
+
+    return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>)
+            .map(([key, entry]) => [key.trim(), typeof entry === "string" ? entry : ""])
+            .filter(([key]) => Boolean(key)),
+    );
+}
+
+type YCloudTemplateComponentRecord = {
+    type?: unknown;
+    text?: unknown;
+};
+
+type YCloudTemplateSendComponents = NonNullable<Parameters<typeof sendYCloudTemplateMessage>[0]["components"]>;
+
+function getYCloudTemplateComponents(value: unknown): YCloudTemplateComponentRecord[] {
+    return Array.isArray(value)
+        ? value.filter((entry): entry is YCloudTemplateComponentRecord => Boolean(entry) && typeof entry === "object")
+        : [];
+}
+
+function extractYCloudNumericVariables(text: string) {
+    const keys: string[] = [];
+    const matches = text.matchAll(/{{\s*(\d+)\s*}}/g);
+
+    for (const match of matches) {
+        const key = match[1];
+        if (key && !keys.includes(key)) {
+            keys.push(key);
+        }
+    }
+
+    return keys;
+}
+
+function getYCloudTemplateVariableKey(componentType: string, variableIndex: string) {
+    return `${componentType.toUpperCase()}:${variableIndex}`;
+}
+
+function listYCloudTemplateRequiredVariableKeys(components: unknown) {
+    return getYCloudTemplateComponents(components)
+        .flatMap((component) => {
+            const componentType = typeof component.type === "string" ? component.type.toUpperCase() : "";
+            const text = typeof component.text === "string" ? component.text : "";
+
+            if (!["HEADER", "BODY"].includes(componentType) || !text) {
+                return [];
+            }
+
+            return extractYCloudNumericVariables(text).map((variableIndex) =>
+                getYCloudTemplateVariableKey(componentType, variableIndex),
+            );
+        })
+        .filter((key, index, array) => array.indexOf(key) === index);
+}
+
+function normalizeYCloudTemplateVariableMap(value: Prisma.JsonValue | null | undefined) {
+    return normalizeTemplateVariableValues(value);
+}
+
+function buildBulkCampaignRenderContext(
+    contact: Pick<Contact, "name" | "company" | "phone">,
+    agentName: string | null | undefined,
+) {
+    return {
+        contact: {
+            name: contact.name,
+            company: contact.company,
+            phone: contact.phone,
+        },
+        agentName,
+    };
+}
+
+function resolveYCloudTemplateParameterText(params: {
+    componentType: string;
+    variableIndex: string;
+    variableValues: Record<string, string>;
+    contact: Pick<Contact, "name" | "company" | "phone">;
+    agentName: string | null | undefined;
+}) {
+    const directKey = getYCloudTemplateVariableKey(params.componentType, params.variableIndex);
+    const rawValue =
+        params.variableValues[directKey] ??
+        params.variableValues[params.variableIndex] ??
+        params.variableValues[`{{${params.variableIndex}}}`] ??
+        "";
+
+    const rendered = renderTemplateContent(
+        rawValue,
+        buildBulkCampaignRenderContext(params.contact, params.agentName),
+    ).trim();
+
+    return rendered || "-";
+}
+
+function buildYCloudTemplateComponentsForCampaign(params: {
+    components: Prisma.JsonValue | null | undefined;
+    variableValues: Prisma.JsonValue | null | undefined;
+    contact: Pick<Contact, "name" | "company" | "phone">;
+    agentName: string | null | undefined;
+}): YCloudTemplateSendComponents {
+    const variableValues = normalizeYCloudTemplateVariableMap(params.variableValues);
+    const apiComponents: YCloudTemplateSendComponents = [];
+
+    for (const component of getYCloudTemplateComponents(params.components)) {
+        const componentType = typeof component.type === "string" ? component.type.toUpperCase() : "";
+        const text = typeof component.text === "string" ? component.text : "";
+
+        if (!["HEADER", "BODY"].includes(componentType) || !text) {
+            continue;
+        }
+
+        const variableIndexes = extractYCloudNumericVariables(text);
+        if (variableIndexes.length === 0) {
+            continue;
+        }
+
+        apiComponents.push({
+            type: componentType as "HEADER" | "BODY",
+            parameters: variableIndexes.map((variableIndex) => ({
+                type: "text" as const,
+                text: resolveYCloudTemplateParameterText({
+                    componentType,
+                    variableIndex,
+                    variableValues,
+                    contact: params.contact,
+                    agentName: params.agentName,
+                }),
+            })),
+        });
+    }
+
+    return apiComponents;
+}
+
+function renderYCloudTemplatePreviewContent(params: {
+    templateName: string;
+    components: Prisma.JsonValue | null | undefined;
+    variableValues: Prisma.JsonValue | null | undefined;
+    contact: Pick<Contact, "name" | "company" | "phone">;
+    agentName: string | null | undefined;
+}) {
+    const variableValues = normalizeYCloudTemplateVariableMap(params.variableValues);
+    const body = getYCloudTemplateComponents(params.components)
+        .find((component) => typeof component.type === "string" && component.type.toUpperCase() === "BODY");
+    const bodyText = typeof body?.text === "string" ? body.text : "";
+
+    const renderedBody = bodyText.replace(/{{\s*(\d+)\s*}}/g, (_match, variableIndex: string) =>
+        resolveYCloudTemplateParameterText({
+            componentType: "BODY",
+            variableIndex,
+            variableValues,
+            contact: params.contact,
+            agentName: params.agentName,
+        }),
+    ).trim();
+
+    return renderedBody || `[Plantilla: ${params.templateName}]`;
+}
+
 function buildDefaultVariant(index = 0): BulkCampaignVariantInput {
     return {
         label: DEFAULT_VARIANT_LABELS[index] || `Variante ${index + 1}`,
@@ -134,7 +305,7 @@ function buildDefaultVariant(index = 0): BulkCampaignVariantInput {
 
 export function normalizeBulkCampaignVariants(
     value: unknown,
-    type: OutboundMessageType,
+    type: BulkCampaignMessageType,
 ): BulkCampaignVariantInput[] {
     if (!Array.isArray(value) || value.length === 0) {
         return [buildDefaultVariant()];
@@ -168,16 +339,27 @@ export function normalizeBulkCampaignPayload(value: unknown): BulkCampaignUpsert
     const type = normalizeCampaignType(record.type);
     const sourceType = normalizeCampaignSourceType(record.sourceType);
     const sourceId = normalizeCampaignSourceId(record.sourceId);
+    const isYCloudTemplate = sourceType === MESSAGE_SOURCE_YCLOUD && type === "template";
     const audienceFilters = normalizeBulkCampaignAudienceFilters(
         record.audienceFilters,
         MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT,
     );
+    const ycloudTemplateName = typeof record.ycloudTemplateName === "string" && record.ycloudTemplateName.trim()
+        ? record.ycloudTemplateName.trim()
+        : null;
+    const ycloudTemplateLanguage = typeof record.ycloudTemplateLanguage === "string" && record.ycloudTemplateLanguage.trim()
+        ? record.ycloudTemplateLanguage.trim()
+        : null;
 
     const normalizedAudienceFilters = {
         ...audienceFilters,
-        sourceType: sourceType === MESSAGE_SOURCE_YCLOUD ? MESSAGE_SOURCE_YCLOUD : audienceFilters.sourceType,
-        sourceId: sourceType === MESSAGE_SOURCE_YCLOUD ? (sourceId || audienceFilters.sourceId) || "" : audienceFilters.sourceId,
-        onlyOpenYCloudWindow: sourceType === MESSAGE_SOURCE_YCLOUD ? true : audienceFilters.onlyOpenYCloudWindow,
+        sourceType: sourceType === MESSAGE_SOURCE_YCLOUD && !isYCloudTemplate ? MESSAGE_SOURCE_YCLOUD : audienceFilters.sourceType,
+        sourceId: sourceType === MESSAGE_SOURCE_YCLOUD && !isYCloudTemplate
+            ? (sourceId || audienceFilters.sourceId) || ""
+            : audienceFilters.sourceId,
+        onlyOpenYCloudWindow: sourceType === MESSAGE_SOURCE_YCLOUD && !isYCloudTemplate
+            ? true
+            : audienceFilters.onlyOpenYCloudWindow,
     };
 
     return {
@@ -186,9 +368,25 @@ export function normalizeBulkCampaignPayload(value: unknown): BulkCampaignUpsert
         sourceType,
         sourceId,
         type,
-        mediaUrl: typeof record.mediaUrl === "string" && record.mediaUrl.trim() ? record.mediaUrl.trim() : null,
-        mediaType: typeof record.mediaType === "string" && record.mediaType.trim() ? record.mediaType.trim() : null,
-        mediaFileName: typeof record.mediaFileName === "string" && record.mediaFileName.trim() ? record.mediaFileName.trim() : null,
+        mediaUrl: type === "template"
+            ? null
+            : typeof record.mediaUrl === "string" && record.mediaUrl.trim()
+                ? record.mediaUrl.trim()
+                : null,
+        mediaType: type === "template"
+            ? null
+            : typeof record.mediaType === "string" && record.mediaType.trim()
+                ? record.mediaType.trim()
+                : null,
+        mediaFileName: type === "template"
+            ? null
+            : typeof record.mediaFileName === "string" && record.mediaFileName.trim()
+                ? record.mediaFileName.trim()
+                : null,
+        ycloudTemplateName: type === "template" ? ycloudTemplateName : null,
+        ycloudTemplateLanguage: type === "template" ? ycloudTemplateLanguage : null,
+        ycloudTemplateComponents: type === "template" ? normalizeTemplateComponents(record.ycloudTemplateComponents) : null,
+        ycloudTemplateVariableValues: type === "template" ? normalizeTemplateVariableValues(record.ycloudTemplateVariableValues) : {},
         batchSize: clampInteger(record.batchSize, 3, 1, 100),
         batchDelayMinutes: clampInteger(record.batchDelayMinutes, 5, 0, 24 * 60),
         randomDelayMinSeconds: clampInteger(record.randomDelayMinSeconds, 25, 5, 30 * 60),
@@ -196,7 +394,7 @@ export function normalizeBulkCampaignPayload(value: unknown): BulkCampaignUpsert
         scheduledStartAt: normalizeOptionalDate(record.scheduledStartAt),
         respectBusinessHours: record.respectBusinessHours !== false,
         stopOnReply: record.stopOnReply !== false,
-        followUpCount: clampInteger(record.followUpCount, 0, 0, 12),
+        followUpCount: type === "template" ? 0 : clampInteger(record.followUpCount, 0, 0, 12),
         followUpDelayDays: clampInteger(record.followUpDelayDays, 2, 1, 30),
         audienceFilters: normalizedAudienceFilters,
         variants: normalizeBulkCampaignVariants(record.variants, type),
@@ -208,8 +406,25 @@ function ensureCampaignDraftIsValid(input: BulkCampaignUpsertInput) {
         throw new Error("El nombre de la campaña es obligatorio");
     }
 
-    if (input.type !== "text" && !input.mediaUrl) {
+    if (input.type !== "text" && input.type !== "template" && !input.mediaUrl) {
         throw new Error("La campaña requiere un archivo adjunto");
+    }
+
+    if (input.type === "template") {
+        if (input.sourceType !== MESSAGE_SOURCE_YCLOUD) {
+            throw new Error("Las plantillas Meta solo se pueden enviar por YCloud");
+        }
+
+        if (!input.ycloudTemplateName || !input.ycloudTemplateLanguage) {
+            throw new Error("Selecciona una plantilla YCloud aprobada antes de guardar");
+        }
+
+        const missingVariables = listYCloudTemplateRequiredVariableKeys(input.ycloudTemplateComponents)
+            .filter((key) => !input.ycloudTemplateVariableValues[key]?.trim());
+
+        if (missingVariables.length > 0) {
+            throw new Error("Completa las variables de la plantilla YCloud antes de guardar");
+        }
     }
 
     if (input.randomDelayMaxSeconds < input.randomDelayMinSeconds) {
@@ -222,8 +437,18 @@ function ensureCampaignCanLaunch(campaign: BulkCampaignRecord) {
         throw new Error("La campaña no tiene nombre");
     }
 
-    if (campaign.type !== "text" && !campaign.mediaUrl) {
+    if (campaign.type !== "text" && campaign.type !== "template" && !campaign.mediaUrl) {
         throw new Error("La campaña necesita un adjunto antes de iniciarse");
+    }
+
+    if (campaign.type === "template") {
+        if (campaign.sourceType !== MESSAGE_SOURCE_YCLOUD) {
+            throw new Error("Las plantillas Meta solo se pueden enviar por YCloud");
+        }
+
+        if (!campaign.ycloudTemplateName || !campaign.ycloudTemplateLanguage) {
+            throw new Error("Selecciona una plantilla YCloud aprobada antes de iniciar");
+        }
     }
 
     const activeVariants = campaign.variants.filter((variant) => variant.isActive);
@@ -821,6 +1046,14 @@ export async function createBulkCampaign(input: BulkCampaignUpsertInput, created
             mediaUrl: input.mediaUrl,
             mediaType: input.mediaType,
             mediaFileName: input.mediaFileName,
+            ycloudTemplateName: input.type === "template" ? input.ycloudTemplateName : null,
+            ycloudTemplateLanguage: input.type === "template" ? input.ycloudTemplateLanguage : null,
+            ycloudTemplateComponents: input.type === "template" && input.ycloudTemplateComponents
+                ? input.ycloudTemplateComponents
+                : Prisma.JsonNull,
+            ycloudTemplateVariableValues: input.type === "template"
+                ? input.ycloudTemplateVariableValues
+                : Prisma.JsonNull,
             batchSize: input.batchSize,
             batchDelayMinutes: input.batchDelayMinutes,
             randomDelayMinSeconds: input.randomDelayMinSeconds,
@@ -883,6 +1116,14 @@ export async function updateBulkCampaign(id: string, input: BulkCampaignUpsertIn
                 mediaUrl: input.mediaUrl,
                 mediaType: input.mediaType,
                 mediaFileName: input.mediaFileName,
+                ycloudTemplateName: input.type === "template" ? input.ycloudTemplateName : null,
+                ycloudTemplateLanguage: input.type === "template" ? input.ycloudTemplateLanguage : null,
+                ycloudTemplateComponents: input.type === "template" && input.ycloudTemplateComponents
+                    ? input.ycloudTemplateComponents
+                    : Prisma.JsonNull,
+                ycloudTemplateVariableValues: input.type === "template"
+                    ? input.ycloudTemplateVariableValues
+                    : Prisma.JsonNull,
                 batchSize: input.batchSize,
                 batchDelayMinutes: input.batchDelayMinutes,
                 randomDelayMinSeconds: input.randomDelayMinSeconds,
@@ -1074,7 +1315,7 @@ export async function deleteBulkCampaign(id: string) {
     });
 }
 
-function chooseVariant(variants: BulkCampaignVariant[], campaignType: OutboundMessageType) {
+function chooseVariant(variants: BulkCampaignVariant[], campaignType: BulkCampaignMessageType) {
     const activeVariants = variants.filter((variant) =>
         variant.isActive && (campaignType !== "text" || variant.content.trim()),
     );
@@ -1453,7 +1694,8 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
         const settings = await getSystemSettingsOrDefaults();
         const campaignSourceType = normalizeMessageSourceType(campaign.sourceType);
         const campaignSourceId = campaign.sourceId || resolveMessageSourceId(campaignSourceType, settings);
-        const variant = chooseVariant(campaign.variants, campaign.type as OutboundMessageType);
+        const campaignMessageType = normalizeCampaignType(campaign.type);
+        const variant = chooseVariant(campaign.variants, campaignMessageType);
 
         if (!variant) {
             await prisma.bulkCampaignRecipient.update({
@@ -1479,6 +1721,92 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
                             botActive: true,
                         },
                     });
+
+                if (campaignMessageType === "template") {
+                    if (campaignSourceType !== MESSAGE_SOURCE_YCLOUD) {
+                        throw new Error("Las plantillas Meta solo se pueden enviar por YCloud");
+                    }
+
+                    if (!recipient.contact.phone) {
+                        throw new Error("El contacto no tiene telefono destino");
+                    }
+
+                    const renderedContent = renderYCloudTemplatePreviewContent({
+                        templateName: campaign.ycloudTemplateName || "plantilla_ycloud",
+                        components: campaign.ycloudTemplateComponents,
+                        variableValues: campaign.ycloudTemplateVariableValues,
+                        contact: recipient.contact,
+                        agentName: settings.agentName,
+                    });
+
+                    const ycloudResult = await sendYCloudTemplateMessage({
+                        to: recipient.contact.phone,
+                        templateName: campaign.ycloudTemplateName || "",
+                        languageCode: campaign.ycloudTemplateLanguage || "es",
+                        components: buildYCloudTemplateComponentsForCampaign({
+                            components: campaign.ycloudTemplateComponents,
+                            variableValues: campaign.ycloudTemplateVariableValues,
+                            contact: recipient.contact,
+                            agentName: settings.agentName,
+                        }),
+                    });
+
+                    const message = await prisma.message.create({
+                        data: {
+                            conversationId: activeConversation.id,
+                            content: renderedContent,
+                            direction: "outbound",
+                            status: "sent",
+                            type: "template",
+                            senderType: "human",
+                            sourceType: MESSAGE_SOURCE_YCLOUD,
+                            sourceId: campaignSourceId,
+                            providerMessageId: ycloudResult.Id || null,
+                        },
+                    });
+
+                    await prisma.conversation.update({
+                        where: { id: activeConversation.id },
+                        data: {
+                            updatedAt: new Date(),
+                            sessionExpiresAt: new Date(Date.now() + YCLOUD_TEMPLATE_WINDOW_MS),
+                            botActive: true,
+                        },
+                    });
+
+                    await prisma.bulkCampaignRecipient.update({
+                        where: { id: recipient.id },
+                        data: {
+                            status: "sent",
+                            conversationId: activeConversation.id,
+                            variantId: variant.id,
+                            renderedContent,
+                            providerMessageId: message.providerMessageId || null,
+                            sentAt: new Date(),
+                            lastError: null,
+                        },
+                    });
+
+                    if (recipient.attemptNumber === 0) {
+                        try {
+                            await moveContactIncomingDealsToThirdStage(recipient.contactId);
+                        } catch (stageMoveError) {
+                            console.warn(
+                                "[BulkCampaigns] Failed to move incoming deals to third stage after initial bulk template send",
+                                stageMoveError,
+                            );
+                        }
+                    }
+
+                    await refreshBulkCampaignStats(campaignId);
+                    await releaseCampaignLockForNextRecipient(
+                        campaign,
+                        lockId,
+                        recipient.sequenceIndex,
+                        new Date(),
+                    );
+                    return;
+                }
 
                 if (
                     campaignSourceType === MESSAGE_SOURCE_YCLOUD &&
@@ -1515,12 +1843,12 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
                 const result = await sendOutboundConversationMessage({
                     conversationId: activeConversation.id,
                     content: renderedContent,
-                    type: campaign.type as OutboundMessageType,
+                    type: campaignMessageType as OutboundMessageType,
                     sourceType: campaignSourceType,
                     sourceId: campaignSourceId,
-                    mediaUrl: campaign.type === "text" ? null : campaign.mediaUrl,
-                    mediaType: campaign.type === "text" ? null : campaign.mediaType,
-                    mediaFileName: campaign.type === "text" ? null : campaign.mediaFileName,
+                    mediaUrl: campaignMessageType === "text" ? null : campaign.mediaUrl,
+                    mediaType: campaignMessageType === "text" ? null : campaign.mediaType,
+                    mediaFileName: campaignMessageType === "text" ? null : campaign.mediaFileName,
                     senderType: "human",
                     botActiveOverride: true,
                 });
