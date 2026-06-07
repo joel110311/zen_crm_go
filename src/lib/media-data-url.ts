@@ -278,7 +278,7 @@ export async function resolveMediaToDataUrl(
     const fileName = fileNameFromUrl(mediaUrl);
     const mimeType = inferMimeType(fileName, explicitMimeType);
 
-    if (mediaUrl.includes("/uploads/") || mediaUrl.startsWith("/")) {
+    if (mediaUrl.includes("/uploads/") || mediaUrl.includes("/api/media/") || mediaUrl.startsWith("/")) {
         const buffer = await readFile(localUploadPathFromUrl(mediaUrl));
         return finalizeMedia(buffer, fileName, mimeType);
     }
