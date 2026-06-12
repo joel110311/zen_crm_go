@@ -63,7 +63,7 @@ services:
         - "traefik.docker.network=${TRAEFIK_NETWORK:-SociosNet}"
 
   whatsapp-gateway:
-    image: asternic/wuzapi:sha-4a20674
+    image: asternic/wuzapi:sha-e6d58f8
     environment:
       - WUZAPI_ADMIN_TOKEN=${WUZAPI_ADMIN_TOKEN}
       - WUZAPI_GLOBAL_ENCRYPTION_KEY=${WUZAPI_GLOBAL_ENCRYPTION_KEY}
