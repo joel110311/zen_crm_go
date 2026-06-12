@@ -43,15 +43,15 @@ jobs:
             type=sha,prefix=
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
           tags: ghcr.io/${{ github.repository }}:latest
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=zen-crm-app
+          cache-to: type=gha,mode=max,scope=zen-crm-app,ignore-error=true
 
   build-push-db:
     runs-on: ubuntu-latest
@@ -74,12 +74,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Database image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile.db
           push: true
           tags: ghcr.io/${{ github.repository }}_db:latest
           platforms: linux/amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=zen-crm-db
+          cache-to: type=gha,mode=max,scope=zen-crm-db,ignore-error=true
