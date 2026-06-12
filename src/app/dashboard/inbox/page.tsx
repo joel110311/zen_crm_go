@@ -1209,8 +1209,7 @@ export default function InboxPage() {
     const isWuzapiTransportReady = Boolean(
         whatsAppSession?.configured &&
         whatsAppSession?.connected &&
-        whatsAppSession?.loggedIn &&
-        whatsAppSession?.jid,
+        whatsAppSession?.loggedIn,
     );
     const isYCloudTransportReady = Boolean(whatsAppSession?.ycloudConfigured);
     const isWhatsAppTransportReady = outboundSourceType === "ycloud"

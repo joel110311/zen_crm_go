@@ -123,14 +123,14 @@ export function WhatsAppGatewayPanel(props: Props) {
     }, [toast]);
 
     useEffect(() => {
-        const isSessionReady = Boolean(session.loggedIn && session.connected && session.jid);
+        const isSessionReady = Boolean(session.loggedIn && session.connected);
         const justBecameReady = isSessionReady && !wasReadyRef.current;
         if (justBecameReady && pendingHistoryImportMonths && !isImportingHistory) {
             const monthsToImport = pendingHistoryImportMonths;
             void runHistoryImport(monthsToImport, "connect");
         }
         wasReadyRef.current = isSessionReady;
-    }, [isImportingHistory, pendingHistoryImportMonths, runHistoryImport, session.connected, session.jid, session.loggedIn]);
+    }, [isImportingHistory, pendingHistoryImportMonths, runHistoryImport, session.connected, session.loggedIn]);
 
     const executeAction = async (
         action: "provision" | "connect" | "disconnect" | "logout" | "delete",
@@ -371,7 +371,7 @@ export function WhatsAppGatewayPanel(props: Props) {
                                 <Button
                                     variant="outline"
                                     onClick={() => void runHistoryImport(Number.parseInt(historyImportMonths, 10), "manual")}
-                                    disabled={!session.loggedIn || !session.connected || !session.jid || historyImportMonths === "0" || isImportingHistory || isWorking}
+                                    disabled={!session.loggedIn || !session.connected || historyImportMonths === "0" || isImportingHistory || isWorking}
                                 >
                                     {isImportingHistory ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
                                     Importar ahora
