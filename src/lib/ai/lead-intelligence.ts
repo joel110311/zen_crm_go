@@ -78,6 +78,45 @@ const BUSINESS_CONTEXT_KEYWORDS = [
 const EMAIL_REGEX = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/;
 const NAME_PREFIX_REGEX = /(?:mi nombre es|me llamo|soy|habla|hablo como|nombre completo(?: es)?|puedes poner(?:me)? como)\s+(.+)/i;
 const NAME_REQUEST_CAPTURE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const SHIPPING_OR_LOCATION_KEYWORDS = [
+    "mandar",
+    "mandan",
+    "mandame",
+    "mandamelo",
+    "mandarla",
+    "mandarlas",
+    "mandarian",
+    "enviar",
+    "envian",
+    "envio",
+    "envios",
+    "entrega",
+    "entregan",
+    "llega",
+    "llegan",
+    "domicilio",
+    "direccion",
+    "ubicacion",
+    "ciudad",
+    "estado",
+    "pais",
+    "republica",
+    "dhl",
+    "paqueteria",
+    "codigo postal",
+];
+const NON_NAME_CONTEXT_KEYWORDS = [
+    ...SHIPPING_OR_LOCATION_KEYWORDS,
+    "evento",
+    "pedido",
+    "pulsera",
+    "pulseras",
+    "pieza",
+    "piezas",
+    "cotizacion",
+    "precio",
+    "costo",
+];
 
 function normalizeWhitespace(value: string) {
     return value.replace(/\s+/g, " ").trim();
@@ -100,6 +139,29 @@ function cleanCustomerName(value: string) {
     );
 
     return normalized.replace(/\s{2,}/g, " ").trim();
+}
+
+function isLikelyLocationOrShippingMessage(text: string) {
+    const normalized = normalizeForIntent(text);
+    if (!normalized) return false;
+
+    const hasShippingOrLocationKeyword = collectMatchedKeywords(normalized, SHIPPING_OR_LOCATION_KEYWORDS).length > 0;
+
+    return (
+        /\b(soy|estoy|vivo|radico|me encuentro)\s+(de|del|en|desde)\b/.test(normalized) ||
+        (/^(de|del|desde|en|para|por)\b/.test(normalized) && hasShippingOrLocationKeyword) ||
+        (/[?!]/.test(text) && hasShippingOrLocationKeyword)
+    );
+}
+
+function isUnsafeNameCandidate(candidate: string) {
+    const normalized = normalizeForIntent(candidate);
+    if (!normalized) return true;
+
+    return (
+        /^(de|del|desde|en|para|por|a|al|la|las|los|el|un|una)\b/.test(normalized) ||
+        collectMatchedKeywords(normalized, NON_NAME_CONTEXT_KEYWORDS).length > 0
+    );
 }
 
 function splitFullName(fullName: string) {
@@ -142,12 +204,13 @@ function detectFieldDecline(text: string, field: PendingCaptureField) {
     );
 }
 
-function looksLikeStandaloneName(text: string) {
+function looksLikeStandaloneName(text: string, sourceText = text) {
     const normalizedSource = normalizeWhitespace(text);
     const loweredSource = normalizedSource.toLowerCase();
 
     if (!normalizedSource) return false;
     if (/[?!]/.test(normalizedSource)) return false;
+    if (isLikelyLocationOrShippingMessage(sourceText)) return false;
     if (collectMatchedKeywords(loweredSource, STRONG_INTENT_KEYWORDS).length > 0) return false;
     if (collectMatchedKeywords(loweredSource, DECISION_KEYWORDS).length > 0) return false;
     if (collectMatchedKeywords(loweredSource, BUSINESS_CONTEXT_KEYWORDS).length > 0) return false;
@@ -158,6 +221,7 @@ function looksLikeStandaloneName(text: string) {
     );
     const candidate = cleanCustomerName(withoutGreeting);
     if (!candidate) return false;
+    if (isUnsafeNameCandidate(candidate)) return false;
     if (candidate.length < 3 || candidate.length > 60) return false;
     if (/[0-9@]/.test(candidate)) return false;
 
@@ -172,10 +236,10 @@ function extractNameHeuristically(text: string) {
     const prefixed = normalized.match(NAME_PREFIX_REGEX)?.[1];
     if (prefixed) {
         const candidate = cleanCustomerName(prefixed);
-        return looksLikeStandaloneName(candidate) ? candidate : null;
+        return looksLikeStandaloneName(candidate, normalized) ? candidate : null;
     }
 
-    if (looksLikeStandaloneName(normalized)) {
+    if (looksLikeStandaloneName(normalized, normalized)) {
         return cleanCustomerName(normalized);
     }
 
@@ -218,7 +282,7 @@ async function extractNameWithAi(text: string): Promise<ExtractionResult> {
         const candidate = cleanCustomerName(typeof parsed?.name === "string" ? parsed.name : "");
 
         return {
-            value: looksLikeStandaloneName(candidate) ? candidate : null,
+            value: looksLikeStandaloneName(candidate, text) ? candidate : null,
             declined: Boolean(parsed?.declined),
         };
     } catch {
