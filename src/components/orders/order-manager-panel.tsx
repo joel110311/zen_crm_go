@@ -5,8 +5,10 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import {
     AlertCircle,
     CalendarClock,
+    Check,
     CheckCircle2,
     ChevronRight,
+    ChevronsUpDown,
     ClipboardList,
     CreditCard,
     DollarSign,
@@ -21,6 +23,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import {
     Dialog,
     DialogContent,
@@ -31,6 +34,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -224,6 +228,8 @@ export function OrderManagerPanel({
     const [query, setQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
     const [newDialogOpen, setNewDialogOpen] = useState(false);
+    const [contactComboboxOpen, setContactComboboxOpen] = useState(false);
+    const [contactQuery, setContactQuery] = useState("");
     const [paymentDialogOrderId, setPaymentDialogOrderId] = useState<string | null>(null);
     const [form, setForm] = useState<OrderFormState>(() => makeEmptyForm(initialContactId || "", initialConversationId || null));
     const [isPending, startTransition] = useTransition();
@@ -254,6 +260,19 @@ export function OrderManagerPanel({
     const selectedOrder = orders.find((order) => order.id === selectedOrderId) || filteredOrders[0] || null;
     const selectedPaymentOrder = orders.find((order) => order.id === paymentDialogOrderId) || null;
     const selectedContact = contacts.find((contact) => contact.id === form.contactId) || null;
+    const contactSearchResults = useMemo(() => {
+        const term = contactQuery.trim().toLowerCase();
+        const sortedContacts = [...contacts].sort((left, right) => contactName(left).localeCompare(contactName(right), "es"));
+        const matches = term
+            ? sortedContacts.filter((contact) => [
+                contactName(contact),
+                contact.phone,
+                contact.email,
+                contact.company,
+            ].filter(Boolean).join(" ").toLowerCase().includes(term))
+            : sortedContacts;
+        return matches.slice(0, 8);
+    }, [contacts, contactQuery]);
     const total = orderTotal(form.items);
 
     const stats = useMemo(() => ({
@@ -454,46 +473,82 @@ export function OrderManagerPanel({
             </div>
 
             <Dialog open={newDialogOpen} onOpenChange={setNewDialogOpen}>
-                <DialogContent className="max-h-[94vh] w-[96vw] max-w-5xl overflow-hidden p-0">
-                    <DialogHeader className="border-b px-5 py-4">
+                <DialogContent className="max-h-[94vh] w-[calc(100vw-2rem)] !max-w-5xl gap-0 overflow-hidden p-0">
+                    <DialogHeader className="border-b px-5 py-4 pr-12">
                         <DialogTitle>Nuevo pedido</DialogTitle>
-                        <DialogDescription>
+                        <DialogDescription className="max-w-3xl leading-5">
                             Captura conceptos, fechas y pagos programados. Luego podras registrar abonos desde el detalle.
                         </DialogDescription>
                     </DialogHeader>
-                    <ScrollArea className="max-h-[calc(94vh-8rem)] px-5 py-4">
-                        <div className="grid gap-4 lg:grid-cols-2">
+                    <ScrollArea className="max-h-[calc(94vh-9rem)] overflow-x-hidden px-5 py-4">
+                        <div className="grid min-w-0 gap-4 lg:grid-cols-2">
                             <div className="space-y-2">
                                 <Label>Cliente</Label>
-                                <Select
-                                    value={form.contactId || "__none__"}
-                                    onValueChange={(value) => setForm((current) => ({ ...current, contactId: value === "__none__" ? "" : value }))}
-                                >
-                                    <SelectTrigger className="h-11 rounded-xl">
-                                        <SelectValue placeholder="Selecciona un cliente" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="__none__">Selecciona un cliente</SelectItem>
-                                        {contacts.map((contact) => (
-                                            <SelectItem key={contact.id} value={contact.id}>
-                                                {contactName(contact)} - {contact.phone || "sin telefono"}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <Popover open={contactComboboxOpen} onOpenChange={setContactComboboxOpen}>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            role="combobox"
+                                            aria-expanded={contactComboboxOpen}
+                                            className="h-11 w-full justify-between rounded-xl bg-background px-3 font-normal"
+                                        >
+                                            <span className="min-w-0 truncate">
+                                                {selectedContact
+                                                    ? `${contactName(selectedContact)}${selectedContact.phone ? ` - ${selectedContact.phone}` : ""}`
+                                                    : "Buscar cliente..."}
+                                            </span>
+                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[min(28rem,calc(100vw-4rem))] p-0" align="start">
+                                        <Command shouldFilter={false}>
+                                            <CommandInput placeholder="Buscar cliente..." value={contactQuery} onValueChange={setContactQuery} />
+                                            <CommandList>
+                                                <CommandEmpty>No se encontraron clientes.</CommandEmpty>
+                                                <CommandGroup>
+                                                    {contactSearchResults.map((contact) => (
+                                                        <CommandItem
+                                                            key={contact.id}
+                                                            value={contact.id}
+                                                            onSelect={() => {
+                                                                setForm((current) => ({ ...current, contactId: contact.id }));
+                                                                setContactComboboxOpen(false);
+                                                                setContactQuery("");
+                                                            }}
+                                                        >
+                                                            <Check className={cn("mr-2 h-4 w-4", form.contactId === contact.id ? "opacity-100" : "opacity-0")} />
+                                                            <div className="min-w-0">
+                                                                <div className="truncate font-medium">{contactName(contact)}</div>
+                                                                <div className="truncate text-xs text-muted-foreground">
+                                                                    {contact.phone || contact.email || contact.company || "Sin datos de contacto"}
+                                                                </div>
+                                                            </div>
+                                                        </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                            </CommandList>
+                                            <div className="border-t px-3 py-2 text-xs text-muted-foreground">
+                                                {contactQuery.trim()
+                                                    ? `Mostrando hasta ${contactSearchResults.length} coincidencias.`
+                                                    : "Escribe para filtrar por nombre, telefono o empresa."}
+                                            </div>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
                                 {selectedContact ? <p className="text-xs text-muted-foreground">Se vinculara a {contactName(selectedContact)}.</p> : null}
                             </div>
                             <Field label="Nombre del pedido" value={form.title} onChange={(value) => setForm((current) => ({ ...current, title: value }))} />
                             <div className="space-y-2">
                                 <Label>Estado</Label>
                                 <Select value={form.status} onValueChange={(value) => setForm((current) => ({ ...current, status: value }))}>
-                                    <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
+                                    <SelectTrigger className="h-11 min-w-0 rounded-xl"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         {Object.entries(STATUS_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid gap-3 sm:grid-cols-2">
                                 <Field type="date" label="Fecha del evento" value={form.eventDate} onChange={(value) => setForm((current) => ({ ...current, eventDate: value }))} />
                                 <Field type="date" label="Entrega" value={form.deliveryDate} onChange={(value) => setForm((current) => ({ ...current, deliveryDate: value }))} />
                             </div>
@@ -505,11 +560,11 @@ export function OrderManagerPanel({
                             </Button>
                             <div className="mt-4 space-y-3">
                                 {form.items.map((item, index) => (
-                                    <div key={index} className="grid gap-2 rounded-xl border bg-card p-3 md:grid-cols-[1fr_7rem_8rem_2.5rem]">
+                                    <div key={index} className="grid min-w-0 gap-2 rounded-xl border bg-card p-3 sm:grid-cols-[minmax(0,1fr)_7rem_8rem_2.5rem]">
                                         <Input value={item.description} placeholder="Descripcion" onChange={(event) => updateItem(index, "description", event.target.value, setForm)} />
                                         <Input value={item.quantity} inputMode="decimal" placeholder="Cant." onChange={(event) => updateItem(index, "quantity", event.target.value, setForm)} />
                                         <Input value={item.unitPrice} inputMode="decimal" placeholder="Precio" onChange={(event) => updateItem(index, "unitPrice", event.target.value, setForm)} />
-                                        <Button type="button" variant="ghost" size="icon" disabled={form.items.length === 1} onClick={() => setForm((current) => ({ ...current, items: current.items.filter((_, itemIndex) => itemIndex !== index) }))}>
+                                        <Button type="button" variant="ghost" size="icon" className="justify-self-end sm:justify-self-auto" disabled={form.items.length === 1} onClick={() => setForm((current) => ({ ...current, items: current.items.filter((_, itemIndex) => itemIndex !== index) }))}>
                                             <Trash2 className="h-4 w-4 text-muted-foreground" />
                                         </Button>
                                     </div>
@@ -524,18 +579,18 @@ export function OrderManagerPanel({
                             </Button>
                             <div className="mt-4 space-y-3">
                                 {form.payments.map((payment, index) => (
-                                    <div key={index} className="grid gap-2 rounded-xl border bg-card p-3 md:grid-cols-[1fr_8rem_10rem_9rem_2.5rem]">
+                                    <div key={index} className="grid min-w-0 gap-2 rounded-xl border bg-card p-3 sm:grid-cols-[minmax(0,1fr)_8rem_10rem] lg:grid-cols-[minmax(0,1fr)_8rem_10rem_9rem_2.5rem]">
                                         <Input value={payment.label} placeholder="Anticipo" onChange={(event) => updatePayment(index, "label", event.target.value, setForm)} />
                                         <Input value={payment.amount} inputMode="decimal" placeholder="Monto" onChange={(event) => updatePayment(index, "amount", event.target.value, setForm)} />
                                         <Input value={payment.dueDate} type="date" onChange={(event) => updatePayment(index, "dueDate", event.target.value, setForm)} />
                                         <Select value={payment.status} onValueChange={(value) => updatePayment(index, "status", value, setForm)}>
-                                            <SelectTrigger><SelectValue /></SelectTrigger>
+                                            <SelectTrigger className="min-w-0"><SelectValue /></SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="pending">Pendiente</SelectItem>
                                                 <SelectItem value="paid">Pagado</SelectItem>
                                             </SelectContent>
                                         </Select>
-                                        <Button type="button" variant="ghost" size="icon" disabled={form.payments.length === 1} onClick={() => setForm((current) => ({ ...current, payments: current.payments.filter((_, paymentIndex) => paymentIndex !== index) }))}>
+                                        <Button type="button" variant="ghost" size="icon" className="justify-self-end lg:justify-self-auto" disabled={form.payments.length === 1} onClick={() => setForm((current) => ({ ...current, payments: current.payments.filter((_, paymentIndex) => paymentIndex !== index) }))}>
                                             <Trash2 className="h-4 w-4 text-muted-foreground" />
                                         </Button>
                                     </div>
@@ -549,7 +604,7 @@ export function OrderManagerPanel({
                         </div>
                         {error ? <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div> : null}
                     </ScrollArea>
-                    <DialogFooter className="border-t px-5 py-4">
+                    <DialogFooter className="border-t bg-background/95 px-5 py-4">
                         <Button type="button" variant="outline" onClick={() => setNewDialogOpen(false)}>Cancelar</Button>
                         <Button type="button" onClick={handleCreateOrder} disabled={isPending || !form.contactId}>
                             {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
