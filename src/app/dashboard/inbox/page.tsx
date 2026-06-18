@@ -1,14 +1,14 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
     Search, MoreVertical, Phone, Video, Paperclip, Send, Mic, X,
     FileText, Download, Square, Star, BellOff, Bell, Archive, Trash2,
     Info, Users, MessageSquare, ChevronRight, ChevronDown, Mail, Tag, Clock,
     Eraser, Image as ImageIcon, Play, Pause, Bot, User as UserIcon, AlertTriangle, LayoutTemplate,
-    Reply, Copy, SmilePlus, Forward, CheckCircle2
+    Reply, Copy, SmilePlus, Forward, CheckCircle2, ReceiptText
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -1163,6 +1163,7 @@ function WindowTimer({ expiresAt, onWindowChange }: { expiresAt: string | null |
 
 // ──────────── Main Inbox Page ────────────
 export default function InboxPage() {
+    const router = useRouter();
     const searchParams = useSearchParams();
     const { data: session } = useSession();
     const sessionUser = session?.user as { id?: string; role?: string } | undefined;
@@ -2385,6 +2386,16 @@ export default function InboxPage() {
         setQuoteBuilderOpen(true);
     }, [selectedChat]);
 
+    const openOrderBuilder = useCallback(() => {
+        if (!selectedChat?.contact?.id) return;
+        const params = new URLSearchParams({
+            contactId: selectedChat.contact.id,
+            conversationId: selectedChat.id,
+            new: "1",
+        });
+        router.push(`/dashboard/orders?${params.toString()}`);
+    }, [router, selectedChat]);
+
     const handleQuoteGenerated = useCallback(async (asset: GeneratedQuoteAsset) => {
         setIsUploading(true);
         try {
@@ -2860,6 +2871,15 @@ export default function InboxPage() {
                                         <FileText className="h-4 w-4" />
                                         Cotizar
                                     </Button>
+                                    <Button
+                                        variant="ghost"
+                                        className="hidden h-11 rounded-2xl border border-border/60 bg-background/90 px-3 text-sm font-semibold shadow-sm lg:inline-flex"
+                                        onClick={openOrderBuilder}
+                                        title="Crear pedido para este contacto"
+                                    >
+                                        <ReceiptText className="h-4 w-4" />
+                                        Pedido
+                                    </Button>
                                     <div className="min-w-[180px]">
                                         <Select
                                             value={selectedChat.assignedUserId || "__unassigned__"}
@@ -2915,6 +2935,9 @@ export default function InboxPage() {
                                             </DropdownMenuItem>
                                             <DropdownMenuItem onClick={openQuoteBuilder}>
                                                 <FileText className="h-4 w-4 mr-2" /> Crear cotizacion
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={openOrderBuilder}>
+                                                <ReceiptText className="h-4 w-4 mr-2" /> Crear pedido
                                             </DropdownMenuItem>
                                             <DropdownMenuSeparator />
                                             <DropdownMenuItem onClick={() => performAction("mute")}>

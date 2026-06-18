@@ -20,6 +20,7 @@ model User {
   appointments          Appointment[]
   assignedConversations Conversation[] @relation("ConversationAssignee")
   bulkCampaigns         BulkCampaign[]
+  customerOrders        CustomerOrder[]
 }
 
 enum Role {
@@ -50,6 +51,7 @@ model Contact {
   appointments           Appointment[]
   deals                  Deal[]
   bulkCampaignRecipients BulkCampaignRecipient[]
+  customerOrders         CustomerOrder[]
 }
 
 model Conversation {
@@ -73,6 +75,7 @@ model Conversation {
   messages               Message[]
   catalogState           CatalogConversationState?
   bulkCampaignRecipients BulkCampaignRecipient[]
+  customerOrders         CustomerOrder[]
 
   @@index([updatedAt(sort: Desc)])
   @@index([contactId])
@@ -363,9 +366,84 @@ model PipelineStage {
   isClosedWon  Boolean           @default(false)
   isClosedLost Boolean           @default(false)
   deals        Deal[]
+  customerOrders CustomerOrder[]
   automations  StageAutomation[]
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
+}
+
+model CustomerOrder {
+  id                 String    @id @default(cuid())
+  orderNumber        String    @unique
+  title              String
+  status             String    @default("quoted") // quoted, reserved, in_production, pending_balance, paid, delivered, cancelled
+  currency           String    @default("MXN")
+  totalAmount        Decimal   @default(0) @db.Decimal(12, 2)
+  paidAmount         Decimal   @default(0) @db.Decimal(12, 2)
+  balanceAmount      Decimal   @default(0) @db.Decimal(12, 2)
+  eventDate          DateTime?
+  deliveryDate       DateTime?
+  nextPaymentDueDate DateTime?
+  notes              String?
+
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  conversationId String?
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  stageId String?
+  stage   PipelineStage? @relation(fields: [stageId], references: [id], onDelete: SetNull)
+
+  createdById String?
+  createdBy   User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  items    CustomerOrderItem[]
+  payments OrderPayment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([contactId, updatedAt(sort: Desc)])
+  @@index([conversationId])
+  @@index([status, nextPaymentDueDate])
+  @@index([createdAt(sort: Desc)])
+}
+
+model CustomerOrderItem {
+  id          String        @id @default(cuid())
+  orderId     String
+  order       CustomerOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Decimal       @default(1) @db.Decimal(12, 2)
+  unitPrice   Decimal       @default(0) @db.Decimal(12, 2)
+  totalAmount Decimal       @default(0) @db.Decimal(12, 2)
+  sortOrder   Int           @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([orderId, sortOrder])
+}
+
+model OrderPayment {
+  id              String        @id @default(cuid())
+  orderId         String
+  order           CustomerOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  label           String
+  amount          Decimal       @default(0) @db.Decimal(12, 2)
+  status          String        @default("pending") // pending, paid, overdue, cancelled
+  dueDate         DateTime?
+  paidAt          DateTime?
+  method          String?
+  reference       String?
+  receiptUrl      String?
+  receiptFileName String?
+  notes           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([orderId, status, dueDate])
+  @@index([status, dueDate])
 }
 
 model Deal {
