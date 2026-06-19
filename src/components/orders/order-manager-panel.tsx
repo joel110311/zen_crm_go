@@ -449,8 +449,8 @@ export function OrderManagerPanel({
     };
 
     return (
-        <div className="mx-auto flex h-full w-full max-w-none flex-col gap-4">
-            <div className="rounded-2xl border bg-card px-5 py-4 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)]">
+        <div className="mx-auto flex h-full w-full max-w-none flex-col gap-3">
+            <div className="rounded-2xl border bg-card px-5 py-3 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)]">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div>
                         <h1 className="flex items-center gap-2.5 text-[1.85rem] font-semibold tracking-tight">
@@ -804,12 +804,14 @@ function StatCard({ icon: Icon, label, value, tone }: { icon: React.ElementType;
         emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
     };
     return (
-        <div className="rounded-2xl border bg-card p-4 shadow-sm">
-            <div className={cn("flex h-10 w-10 items-center justify-center rounded-xl border", tones[tone])}>
-                <Icon className="h-5 w-5" />
+        <div className="flex min-h-[5.5rem] items-center gap-3 rounded-2xl border bg-card p-3 shadow-sm">
+            <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border", tones[tone])}>
+                <Icon className="h-4 w-4" />
             </div>
-            <div className="mt-3 text-sm text-muted-foreground">{label}</div>
-            <div className="mt-1 text-2xl font-bold tracking-tight">{value}</div>
+            <div className="min-w-0">
+                <div className="truncate text-sm text-muted-foreground">{label}</div>
+                <div className="mt-1 truncate text-2xl font-bold tracking-tight">{value}</div>
+            </div>
         </div>
     );
 }
@@ -858,43 +860,43 @@ function OrderDetail({
 
     return (
         <div className="min-h-0 rounded-2xl border bg-card shadow-sm">
-            <div className="border-b p-4">
+            <div className="border-b p-3">
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                         <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{order.orderNumber}</div>
-                        <h2 className="mt-1 truncate text-xl font-bold tracking-tight">{order.title}</h2>
+                        <h2 className="mt-0.5 truncate text-lg font-bold tracking-tight">{order.title}</h2>
                         <p className="truncate text-sm text-muted-foreground">{contactName(order.contact)}</p>
                     </div>
                     <StatusBadge status={order.status} />
                 </div>
-                <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
+                <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
                     <MiniMoney label="Total" value={currency(order.totalAmount, order.currency)} />
                     <MiniMoney label="Pagado" value={currency(order.paidAmount, order.currency)} tone="emerald" />
                     <MiniMoney label="Saldo" value={currency(order.balanceAmount, order.currency)} tone="amber" />
                 </div>
-                <div className="mt-4 grid grid-cols-2 gap-2 2xl:grid-cols-4">
-                    <Button size="sm" className="rounded-xl" onClick={() => onAddPayment(order.id)} disabled={isBusy}>
+                <div className="mt-3 grid grid-cols-2 gap-2 2xl:grid-cols-4">
+                    <Button size="sm" className="h-9 rounded-xl" onClick={() => onAddPayment(order.id)} disabled={isBusy}>
                         <DollarSign className="h-4 w-4" /> Abonar
                     </Button>
-                    <Button size="sm" variant="outline" className="rounded-xl" onClick={() => onEdit(order)} disabled={isBusy}>
+                    <Button size="sm" variant="outline" className="h-9 rounded-xl" onClick={() => onEdit(order)} disabled={isBusy}>
                         <Pencil className="h-4 w-4" /> Editar
                     </Button>
                     <Link href={order.conversationId ? `/dashboard/inbox?conversationId=${encodeURIComponent(order.conversationId)}` : `/dashboard/inbox?contactId=${encodeURIComponent(order.contact.id)}`}>
-                        <Button size="sm" variant="outline" className="rounded-xl">
+                        <Button size="sm" variant="outline" className="h-9 w-full rounded-xl">
                             <MessageSquare className="h-4 w-4" /> Chat
                         </Button>
                     </Link>
-                    <Button size="sm" variant="outline" className="rounded-xl border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => onDelete(order)} disabled={isBusy}>
+                    <Button size="sm" variant="outline" className="h-9 rounded-xl border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => onDelete(order)} disabled={isBusy}>
                         <Trash2 className="h-4 w-4" /> Eliminar
                     </Button>
                 </div>
             </div>
 
-            <ScrollArea className="h-[calc(100vh-25rem)] min-h-[28rem]">
-                <div className="space-y-5 p-4">
+            <ScrollArea className="h-[calc(100vh-22rem)] min-h-[28rem]">
+                <div className="space-y-4 p-3">
                     <section>
                         <h3 className="flex items-center gap-2 font-semibold"><CalendarClock className="h-4 w-4 text-primary" /> Fechas</h3>
-                        <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                        <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
                             <InfoBox label="Evento" value={shortDate(order.eventDate)} />
                             <InfoBox label="Entrega" value={shortDate(order.deliveryDate)} />
                             <InfoBox label="Proximo pago" value={shortDate(order.nextPaymentDueDate)} />
@@ -904,9 +906,9 @@ function OrderDetail({
 
                     <section>
                         <h3 className="flex items-center gap-2 font-semibold"><ReceiptText className="h-4 w-4 text-primary" /> Conceptos</h3>
-                        <div className="mt-3 overflow-hidden rounded-xl border">
+                        <div className="mt-2 overflow-hidden rounded-xl border">
                             {order.items.map((item) => (
-                                <div key={item.id || item.description} className="grid grid-cols-[1fr_auto] gap-3 border-b p-3 text-sm last:border-0">
+                                <div key={item.id || item.description} className="grid grid-cols-[1fr_auto] gap-3 border-b p-2.5 text-sm last:border-0">
                                     <div>
                                         <div className="font-medium">{item.description}</div>
                                         <div className="text-xs text-muted-foreground">{item.quantity} x {currency(item.unitPrice, order.currency)}</div>
@@ -919,11 +921,11 @@ function OrderDetail({
 
                     <section>
                         <h3 className="flex items-center gap-2 font-semibold"><CreditCard className="h-4 w-4 text-primary" /> Pagos y abonos</h3>
-                        <div className="mt-3 overflow-hidden rounded-2xl border bg-background/70">
+                        <div className="mt-2 max-h-[12.75rem] overflow-y-auto overscroll-contain rounded-2xl border bg-background/70">
                             {order.payments.map((payment) => {
                                 const overdue = isOverdue(payment);
                                 return (
-                                    <div key={payment.id} className="border-b p-3 last:border-0">
+                                    <div key={payment.id} className="border-b p-2.5 last:border-0">
                                         <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                                             <div className="min-w-0">
                                                 <div className="truncate font-semibold">{payment.label}</div>
@@ -939,7 +941,7 @@ function OrderDetail({
                                                 <PaymentBadge status={payment.status} overdue={overdue} />
                                             </div>
                                         </div>
-                                        <div className="mt-2 flex flex-wrap justify-end gap-2">
+                                        <div className="mt-2 flex flex-wrap justify-end gap-1.5">
                                             <input
                                                 id={`receipt-${payment.id}`}
                                                 type="file"
@@ -954,7 +956,7 @@ function OrderDetail({
                                                 <Button
                                                     size="sm"
                                                     variant="outline"
-                                                    className="h-8 rounded-lg"
+                                                    className="h-7 rounded-lg px-2 text-xs"
                                                     onClick={() => onPreviewReceipt({ url: payment.receiptUrl || "", fileName: payment.receiptFileName })}
                                                 >
                                                     <ImageIcon className="h-4 w-4" />
@@ -964,7 +966,7 @@ function OrderDetail({
                                             <Button
                                                 size="sm"
                                                 variant="outline"
-                                                className="h-8 rounded-lg"
+                                                className="h-7 rounded-lg px-2 text-xs"
                                                 onClick={() => document.getElementById(`receipt-${payment.id}`)?.click()}
                                                 disabled={isBusy || uploadingReceiptId === payment.id}
                                             >
@@ -972,11 +974,11 @@ function OrderDetail({
                                                 {payment.receiptUrl ? "Cambiar" : "Agregar comprobante"}
                                             </Button>
                                             {payment.status === "paid" ? (
-                                                <Button size="sm" variant="outline" className="h-8 rounded-lg" onClick={() => onMarkPayment(order.id, payment.id, "pending")} disabled={isBusy}>
+                                                <Button size="sm" variant="outline" className="h-7 rounded-lg px-2 text-xs" onClick={() => onMarkPayment(order.id, payment.id, "pending")} disabled={isBusy}>
                                                     Reabrir
                                                 </Button>
                                             ) : (
-                                                <Button size="sm" className="h-8 rounded-lg" onClick={() => onMarkPayment(order.id, payment.id, "paid")} disabled={isBusy}>
+                                                <Button size="sm" className="h-7 rounded-lg px-2 text-xs" onClick={() => onMarkPayment(order.id, payment.id, "paid")} disabled={isBusy}>
                                                     Marcar pagado
                                                 </Button>
                                             )}
@@ -1002,7 +1004,7 @@ function OrderDetail({
 function MiniMoney({ label, value, tone = "slate" }: { label: string; value: string; tone?: "slate" | "emerald" | "amber" }) {
     const tones = { slate: "text-foreground", emerald: "text-emerald-700", amber: "text-amber-700" };
     return (
-        <div className="rounded-xl border bg-background/80 p-3">
+        <div className="rounded-xl border bg-background/80 p-2.5">
             <div className="text-xs text-muted-foreground">{label}</div>
             <div className={cn("mt-1 font-bold", tones[tone])}>{value}</div>
         </div>
@@ -1011,7 +1013,7 @@ function MiniMoney({ label, value, tone = "slate" }: { label: string; value: str
 
 function InfoBox({ label, value }: { label: string; value: string }) {
     return (
-        <div className="rounded-xl border bg-background/70 p-3">
+        <div className="rounded-xl border bg-background/70 p-2.5">
             <div className="text-xs text-muted-foreground">{label}</div>
             <div className="mt-1 font-medium">{value}</div>
         </div>
