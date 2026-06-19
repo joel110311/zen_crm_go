@@ -9,7 +9,6 @@ import {
     CheckCircle2,
     ChevronRight,
     ChevronsUpDown,
-    ClipboardList,
     CreditCard,
     Download,
     DollarSign,
@@ -255,19 +254,6 @@ function orderTotal(items: OrderFormItem[]) {
     return items.reduce((sum, item) => sum + toNumber(item.quantity) * toNumber(item.unitPrice), 0);
 }
 
-function buildReminder(order: OrderRecordView) {
-    const pending = order.payments.find((payment) => payment.status === "pending") || null;
-    if (!pending) {
-        return `Hola ${contactName(order.contact)}, tu pedido ${order.orderNumber} ya aparece liquidado. Gracias por tu pago.`;
-    }
-    return [
-        `Hola ${contactName(order.contact)}, te comparto el recordatorio de tu pedido ${order.orderNumber}.`,
-        `Saldo pendiente: ${currency(order.balanceAmount, order.currency)}.`,
-        pending.dueDate ? `Fecha sugerida de pago: ${shortDate(pending.dueDate)}.` : null,
-        "Cuando realices el pago, puedes enviarnos tu comprobante por este medio.",
-    ].filter(Boolean).join("\n");
-}
-
 export function OrderManagerPanel({
     initialOrders,
     contacts,
@@ -298,7 +284,6 @@ export function OrderManagerPanel({
     const [form, setForm] = useState<OrderFormState>(() => makeEmptyForm(initialContactId || "", initialConversationId || null));
     const [isPending, startTransition] = useTransition();
     const [error, setError] = useState<string | null>(null);
-    const [copiedReminderOrderId, setCopiedReminderOrderId] = useState<string | null>(null);
 
     useEffect(() => {
         if (openNew) {
@@ -463,17 +448,6 @@ export function OrderManagerPanel({
         }
     };
 
-    const copyReminder = async (order: OrderRecordView) => {
-        const text = buildReminder(order);
-        try {
-            await navigator.clipboard.writeText(text);
-            setCopiedReminderOrderId(order.id);
-            window.setTimeout(() => setCopiedReminderOrderId((current) => current === order.id ? null : current), 1800);
-        } catch {
-            window.prompt("Copia el recordatorio:", text);
-        }
-    };
-
     return (
         <div className="mx-auto flex h-full w-full max-w-none flex-col gap-4">
             <div className="rounded-2xl border bg-card px-5 py-4 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)]">
@@ -498,7 +472,7 @@ export function OrderManagerPanel({
             </div>
 
             <div className="grid gap-3 md:grid-cols-4">
-                <StatCard icon={ClipboardList} label="Pedidos" value={String(stats.total)} tone="slate" />
+                <StatCard icon={ReceiptText} label="Pedidos" value={String(stats.total)} tone="slate" />
                 <StatCard icon={WalletCards} label="Saldo por cobrar" value={currency(stats.pending)} tone="amber" />
                 <StatCard icon={AlertCircle} label="Pagos vencidos" value={String(stats.overdue)} tone="rose" />
                 <StatCard icon={CheckCircle2} label="Liquidados" value={String(stats.paid)} tone="emerald" />
@@ -592,7 +566,6 @@ export function OrderManagerPanel({
                 <OrderDetail
                     order={selectedOrder}
                     isBusy={isPending}
-                    reminderCopied={selectedOrder ? copiedReminderOrderId === selectedOrder.id : false}
                     uploadingReceiptId={uploadingReceiptId}
                     onEdit={openEditOrderDialog}
                     onDelete={(order) => {
@@ -604,7 +577,6 @@ export function OrderManagerPanel({
                     onMarkPayment={handleMarkPayment}
                     onUploadReceipt={handleUploadPaymentReceipt}
                     onPreviewReceipt={setReceiptPreview}
-                    onCopyReminder={copyReminder}
                 />
             </div>
 
@@ -855,7 +827,6 @@ function PaymentBadge({ status, overdue }: { status: string; overdue?: boolean }
 function OrderDetail({
     order,
     isBusy,
-    reminderCopied,
     uploadingReceiptId,
     onEdit,
     onDelete,
@@ -863,11 +834,9 @@ function OrderDetail({
     onMarkPayment,
     onUploadReceipt,
     onPreviewReceipt,
-    onCopyReminder,
 }: {
     order: OrderRecordView | null;
     isBusy: boolean;
-    reminderCopied: boolean;
     uploadingReceiptId: string | null;
     onEdit: (order: OrderRecordView) => void;
     onDelete: (order: OrderRecordView) => void;
@@ -875,7 +844,6 @@ function OrderDetail({
     onMarkPayment: (orderId: string, paymentId: string, status: "paid" | "pending") => void;
     onUploadReceipt: (orderId: string, paymentId: string, file: File | null | undefined) => void;
     onPreviewReceipt: (receipt: ReceiptPreview) => void;
-    onCopyReminder: (order: OrderRecordView) => void;
 }) {
     if (!order) {
         return (
@@ -892,10 +860,10 @@ function OrderDetail({
         <div className="min-h-0 rounded-2xl border bg-card shadow-sm">
             <div className="border-b p-4">
                 <div className="flex items-start justify-between gap-3">
-                    <div>
+                    <div className="min-w-0">
                         <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{order.orderNumber}</div>
-                        <h2 className="mt-1 text-xl font-bold tracking-tight">{order.title}</h2>
-                        <p className="text-sm text-muted-foreground">{contactName(order.contact)}</p>
+                        <h2 className="mt-1 truncate text-xl font-bold tracking-tight">{order.title}</h2>
+                        <p className="truncate text-sm text-muted-foreground">{contactName(order.contact)}</p>
                     </div>
                     <StatusBadge status={order.status} />
                 </div>
@@ -904,12 +872,9 @@ function OrderDetail({
                     <MiniMoney label="Pagado" value={currency(order.paidAmount, order.currency)} tone="emerald" />
                     <MiniMoney label="Saldo" value={currency(order.balanceAmount, order.currency)} tone="amber" />
                 </div>
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mt-4 grid grid-cols-2 gap-2 2xl:grid-cols-4">
                     <Button size="sm" className="rounded-xl" onClick={() => onAddPayment(order.id)} disabled={isBusy}>
-                        <DollarSign className="h-4 w-4" /> Registrar abono
-                    </Button>
-                    <Button size="sm" variant="outline" className="rounded-xl" onClick={() => onCopyReminder(order)}>
-                        <ClipboardList className="h-4 w-4" /> {reminderCopied ? "Recordatorio copiado" : "Copiar recordatorio"}
+                        <DollarSign className="h-4 w-4" /> Abonar
                     </Button>
                     <Button size="sm" variant="outline" className="rounded-xl" onClick={() => onEdit(order)} disabled={isBusy}>
                         <Pencil className="h-4 w-4" /> Editar
@@ -1162,7 +1127,7 @@ function PaymentDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-xl">
                 <DialogHeader>
-                    <DialogTitle>Registrar abono</DialogTitle>
+                    <DialogTitle>Abonar pedido</DialogTitle>
                     <DialogDescription>
                         Pedido {order.orderNumber} - saldo {currency(order.balanceAmount, order.currency)}
                     </DialogDescription>
@@ -1247,12 +1212,14 @@ function ReceiptPreviewDialog({
     receipt: ReceiptPreview | null;
     onOpenChange: (open: boolean) => void;
 }) {
-    const [zoom, setZoom] = useState(1);
+    const receiptKey = receipt?.url || receipt?.fileName || "";
+    const [zoomState, setZoomState] = useState({ key: "", value: 1 });
+    const zoom = zoomState.key === receiptKey ? zoomState.value : 1;
     const isImage = isImageReceipt(receipt?.fileName, receipt?.url);
 
-    useEffect(() => {
-        if (receipt) setZoom(1);
-    }, [receipt]);
+    const setReceiptZoom = (nextZoom: number) => {
+        setZoomState({ key: receiptKey, value: nextZoom });
+    };
 
     return (
         <Dialog open={Boolean(receipt)} onOpenChange={onOpenChange}>
@@ -1270,11 +1237,11 @@ function ReceiptPreviewDialog({
                     <div className="flex flex-wrap gap-2">
                         {isImage ? (
                             <>
-                                <Button type="button" variant="outline" size="sm" onClick={() => setZoom((current) => Math.max(0.5, current - 0.25))}>
+                                <Button type="button" variant="outline" size="sm" onClick={() => setReceiptZoom(Math.max(0.5, zoom - 0.25))}>
                                     <ZoomOut className="h-4 w-4" />
                                     Alejar
                                 </Button>
-                                <Button type="button" variant="outline" size="sm" onClick={() => setZoom((current) => Math.min(3, current + 0.25))}>
+                                <Button type="button" variant="outline" size="sm" onClick={() => setReceiptZoom(Math.min(3, zoom + 0.25))}>
                                     <ZoomIn className="h-4 w-4" />
                                     Acercar
                                 </Button>

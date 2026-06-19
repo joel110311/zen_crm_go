@@ -264,6 +264,7 @@ export type Conversation = {
     lastMessageType: string;
     sessionExpiresAt?: string | null;
     leadIntelligence?: LeadIntelligenceSnapshot | null;
+    isDeepLinkedTarget?: boolean;
     currentDeal?: {
         id: string;
         stageName: string | null;
@@ -349,6 +350,7 @@ type ConversationRecord = {
     leadIntelligence?: LeadIntelligenceSnapshot | null;
     currentDeal?: Conversation["currentDeal"];
     sessionExpiresAt?: string | null;
+    isDeepLinkedTarget?: boolean;
 };
 
 function transformConversation(conv: ConversationRecord): Conversation {
@@ -390,6 +392,7 @@ function transformConversation(conv: ConversationRecord): Conversation {
         lastMessageType: conv.lastMessageType || "text",
         sessionExpiresAt: typeof conv.sessionExpiresAt === "string" ? conv.sessionExpiresAt : null,
         leadIntelligence: conv.leadIntelligence ?? null,
+        isDeepLinkedTarget: Boolean(conv.isDeepLinkedTarget),
         currentDeal: conv.currentDeal ?? null,
     };
 }
@@ -1569,6 +1572,12 @@ export default function InboxPage() {
             try {
                 const url = new URL("/api/chat", window.location.origin);
                 url.searchParams.set("limit", String(INBOX_CONVERSATION_LIMIT));
+                if (mode === "full") {
+                    const targetConversationId = searchParams.get("conversationId");
+                    const targetContactId = searchParams.get("contactId");
+                    if (targetConversationId) url.searchParams.set("targetConversationId", targetConversationId);
+                    if (targetContactId) url.searchParams.set("targetContactId", targetContactId);
+                }
                 if (mode === "delta" && conversationsCursorRef.current) {
                     url.searchParams.set("updatedSince", conversationsCursorRef.current);
                 }
@@ -1578,10 +1587,11 @@ export default function InboxPage() {
                 if (!Array.isArray(data) || disposed) return;
 
                 const transformed: Conversation[] = data.map(transformConversation);
+                const paginationConversations = transformed.filter((conversation) => !conversation.isDeepLinkedTarget);
                 updateConversationCursor(transformed);
                 if (mode === "full" && !oldestConversationCursorRef.current) {
-                    oldestConversationCursorRef.current = getOldestConversationCursor(transformed);
-                    setHasMoreConversationsState(transformed.length >= INBOX_CONVERSATION_LIMIT);
+                    oldestConversationCursorRef.current = getOldestConversationCursor(paginationConversations);
+                    setHasMoreConversationsState(paginationConversations.length >= INBOX_CONVERSATION_LIMIT);
                 }
 
                 if (mode === "full") {

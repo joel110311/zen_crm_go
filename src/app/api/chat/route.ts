@@ -80,6 +80,8 @@ function getConversationContactName(contact: {
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const conversationId = searchParams.get("conversationId");
+    const targetConversationId = searchParams.get("targetConversationId");
+    const targetContactId = searchParams.get("targetContactId");
 
     const since = searchParams.get("since");
     const updatedSince = parseIsoDate(searchParams.get("updatedSince"));
@@ -127,43 +129,67 @@ export async function GET(request: NextRequest) {
                 conversationWhere.updatedAt = { lt: beforeUpdatedAt };
             }
 
-            // Get all conversations with last message
-            const conversations = await prisma.conversation.findMany({
-                where: conversationWhere,
-                include: {
-                    contact: {
-                        include: {
-                            deals: {
-                                orderBy: { updatedAt: "desc" },
-                                take: 1,
-                                include: {
-                                    stage: true,
-                                    intelligence: true,
-                                },
+            const conversationInclude = {
+                contact: {
+                    include: {
+                        deals: {
+                            orderBy: { updatedAt: "desc" as const },
+                            take: 1,
+                            include: {
+                                stage: true,
+                                intelligence: true,
                             },
                         },
-                    },
-                    assignedUser: {
-                        select: {
-                            id: true,
-                            name: true,
-                            email: true,
-                            role: true,
-                        },
-                    },
-                    messages: {
-                        where: {
-                            type: {
-                                not: "system",
-                            },
-                        },
-                        orderBy: { createdAt: "desc" },
-                        take: 1,
                     },
                 },
+                assignedUser: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        role: true,
+                    },
+                },
+                messages: {
+                    where: {
+                        type: {
+                            not: "system",
+                        },
+                    },
+                    orderBy: { createdAt: "desc" as const },
+                    take: 1,
+                },
+            } satisfies Prisma.ConversationInclude;
+
+            // Get all conversations with last message
+            let conversations = await prisma.conversation.findMany({
+                where: conversationWhere,
+                include: conversationInclude,
                 orderBy: { updatedAt: "desc" },
                 take: conversationLimit,
             });
+            const regularConversationIds = new Set(conversations.map((conversation) => conversation.id));
+
+            if (!updatedSince && !beforeUpdatedAt && (targetConversationId || targetContactId)) {
+                const targetWhere: Prisma.ConversationWhereInput[] = [];
+                if (targetConversationId) targetWhere.push({ id: targetConversationId });
+                if (targetContactId) targetWhere.push({ contactId: targetContactId });
+
+                const targetConversations = await prisma.conversation.findMany({
+                    where: { OR: targetWhere },
+                    include: conversationInclude,
+                    orderBy: { updatedAt: "desc" },
+                    take: targetConversationId ? 10 : 25,
+                });
+
+                if (targetConversations.length > 0) {
+                    const byId = new Map(conversations.map((conversation) => [conversation.id, conversation]));
+                    for (const conversation of targetConversations) {
+                        byId.set(conversation.id, conversation);
+                    }
+                    conversations = Array.from(byId.values()).sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime());
+                }
+            }
 
             // Transform for frontend
             const result = conversations.map((conv) => ({
@@ -199,6 +225,7 @@ export async function GET(request: NextRequest) {
                 botActive: conv.botActive,
                 assignedUserId: conv.assignedUserId,
                 assignedUser: conv.assignedUser,
+                isDeepLinkedTarget: !regularConversationIds.has(conv.id),
                 leadIntelligence: conv.contact?.deals?.[0]?.intelligence
                     ? {
                         score: conv.contact.deals[0].intelligence.score,
