@@ -156,11 +156,20 @@ function shortDate(value?: string | null) {
     return date.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+function formatDateInput(date = new Date()) {
+    return [
+        date.getFullYear(),
+        String(date.getMonth() + 1).padStart(2, "0"),
+        String(date.getDate()).padStart(2, "0"),
+    ].join("-");
+}
+
 function inputDate(value?: string | null) {
     if (!value) return "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "";
-    return date.toISOString().slice(0, 10);
+    return formatDateInput(date);
 }
 
 function contactName(contact?: OrderContactOption | null) {
@@ -453,11 +462,11 @@ export function OrderManagerPanel({
             <div className="rounded-2xl border bg-card px-5 py-3 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)]">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div>
-                        <h1 className="flex items-center gap-2.5 text-[1.85rem] font-semibold tracking-tight">
-                            <ReceiptText className="h-6 w-6 text-primary" />
+                        <h1 className="flex items-center gap-2.5 text-2xl font-semibold tracking-tight">
+                            <ReceiptText className="h-5 w-5 text-primary" />
                             Pedidos y cobranza
                         </h1>
-                        <p className="mt-1.5 max-w-3xl text-sm leading-6 text-muted-foreground">
+                        <p className="mt-1 max-w-3xl text-sm leading-5 text-muted-foreground">
                             Administra pedidos, abonos, saldos y fechas de pago sin tocar la operacion de WhatsApp.
                         </p>
                     </div>
@@ -804,7 +813,7 @@ function StatCard({ icon: Icon, label, value, tone }: { icon: React.ElementType;
         emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
     };
     return (
-        <div className="flex min-h-[5.5rem] items-center gap-3 rounded-2xl border bg-card p-3 shadow-sm">
+        <div className="flex min-h-[4.75rem] items-center gap-3 rounded-2xl border bg-card p-3 shadow-sm">
             <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border", tones[tone])}>
                 <Icon className="h-4 w-4" />
             </div>
@@ -1077,7 +1086,7 @@ function PaymentDialog({
 }) {
     const [amount, setAmount] = useState(() => order.balanceAmount > 0 ? String(order.balanceAmount) : "");
     const [method, setMethod] = useState("transferencia");
-    const [paidAt, setPaidAt] = useState(inputDate(new Date().toISOString()));
+    const [paidAt, setPaidAt] = useState(formatDateInput());
     const [reference, setReference] = useState("");
     const [notes, setNotes] = useState("");
     const [receiptUrl, setReceiptUrl] = useState("");

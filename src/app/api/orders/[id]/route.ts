@@ -8,6 +8,7 @@ import {
     normalizeOrderItems,
     refreshOrderRollup,
     serializeOrder,
+    toDateOrNull,
     toMoneyNumber,
 } from "@/lib/orders";
 
@@ -20,12 +21,6 @@ function ensureAuthenticated(session: unknown) {
         return NextResponse.json({ error: "No autorizado" }, { status: 401 });
     }
     return null;
-}
-
-function toDateOrNull(value: unknown) {
-    if (!value || typeof value !== "string") return null;
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function toOptionalString(value: unknown) {

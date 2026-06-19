@@ -1,7 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { refreshOrderRollup, serializeOrder, toMoneyNumber } from "@/lib/orders";
+import { refreshOrderRollup, serializeOrder, toDateOrNull, toMoneyNumber } from "@/lib/orders";
 
 function getSessionUserId(session: unknown) {
     return (session as { user?: { id?: string } } | null)?.user?.id || null;
@@ -12,12 +12,6 @@ function ensureAuthenticated(session: unknown) {
         return NextResponse.json({ error: "No autorizado" }, { status: 401 });
     }
     return null;
-}
-
-function toDateOrNull(value: unknown) {
-    if (!value || typeof value !== "string") return null;
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function toOptionalString(value: unknown) {

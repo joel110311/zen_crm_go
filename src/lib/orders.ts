@@ -148,8 +148,14 @@ function toOptionalString(value: unknown) {
     return trimmed || null;
 }
 
-function toDateOrNull(value: unknown) {
+export function toDateOrNull(value: unknown) {
     if (!value || typeof value !== "string") return null;
+    const dateOnly = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dateOnly) {
+        const [, year, month, day] = dateOnly;
+        return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), 12, 0, 0));
+    }
+
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? null : date;
 }
