@@ -459,19 +459,19 @@ export function OrderManagerPanel({
 
     return (
         <div className="mx-auto flex h-full w-full max-w-none flex-col gap-3">
-            <div className="rounded-2xl border bg-card px-5 py-3 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)]">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="rounded-2xl border bg-card px-4 py-2.5 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)]">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div>
-                        <h1 className="flex items-center gap-2.5 text-2xl font-semibold tracking-tight">
+                        <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
                             <ReceiptText className="h-5 w-5 text-primary" />
                             Pedidos y cobranza
                         </h1>
-                        <p className="mt-1 max-w-3xl text-sm leading-5 text-muted-foreground">
-                            Administra pedidos, abonos, saldos y fechas de pago sin tocar la operacion de WhatsApp.
+                        <p className="mt-0.5 max-w-3xl text-sm leading-5 text-muted-foreground">
+                            Administra pedidos, abonos, saldos y fechas de pago.
                         </p>
                     </div>
                     <Button
-                        className="h-11 rounded-xl px-4"
+                        className="h-9 rounded-xl px-4"
                         onClick={openCreateOrderDialog}
                     >
                         <Plus className="h-4 w-4" />
@@ -480,40 +480,41 @@ export function OrderManagerPanel({
                 </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-4">
-                <StatCard icon={ReceiptText} label="Pedidos" value={String(stats.total)} tone="slate" />
-                <StatCard icon={WalletCards} label="Saldo por cobrar" value={currency(stats.pending)} tone="amber" />
-                <StatCard icon={AlertCircle} label="Pagos vencidos" value={String(stats.overdue)} tone="rose" />
-                <StatCard icon={CheckCircle2} label="Liquidados" value={String(stats.paid)} tone="emerald" />
-            </div>
-
             <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_26rem]">
-                <div className="min-h-0 rounded-2xl border bg-card shadow-sm">
-                    <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="relative w-full max-w-xl">
-                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                            <Input
-                                value={query}
-                                onChange={(event) => setQuery(event.target.value)}
-                                placeholder="Buscar por cliente, folio o telefono..."
-                                className="h-11 rounded-xl pl-9"
-                            />
-                        </div>
-                        <Select value={statusFilter} onValueChange={setStatusFilter}>
-                            <SelectTrigger className="h-11 w-full rounded-xl lg:w-56">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Todos los estados</SelectItem>
-                                {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                                    <SelectItem key={value} value={value}>{label}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                <div className="flex min-h-0 flex-col gap-3">
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                        <StatCard icon={ReceiptText} label="Pedidos" value={String(stats.total)} tone="slate" />
+                        <StatCard icon={WalletCards} label="Saldo por cobrar" value={currency(stats.pending)} tone="amber" />
+                        <StatCard icon={AlertCircle} label="Pagos vencidos" value={String(stats.overdue)} tone="rose" />
+                        <StatCard icon={CheckCircle2} label="Liquidados" value={String(stats.paid)} tone="emerald" />
                     </div>
 
-                    <ScrollArea className="h-[calc(100vh-22rem)] min-h-[24rem]">
-                        <Table>
+                    <div className="min-h-0 flex-1 rounded-2xl border bg-card shadow-sm">
+                        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="relative w-full max-w-xl">
+                                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <Input
+                                    value={query}
+                                    onChange={(event) => setQuery(event.target.value)}
+                                    placeholder="Buscar por cliente, folio o telefono..."
+                                    className="h-11 rounded-xl pl-9"
+                                />
+                            </div>
+                            <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                <SelectTrigger className="h-11 w-full rounded-xl lg:w-56">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todos los estados</SelectItem>
+                                    {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                                        <SelectItem key={value} value={value}>{label}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <ScrollArea className="h-[calc(100vh-22rem)] min-h-[24rem]">
+                            <Table>
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Pedido</TableHead>
@@ -568,8 +569,9 @@ export function OrderManagerPanel({
                                     </TableRow>
                                 ))}
                             </TableBody>
-                        </Table>
-                    </ScrollArea>
+                            </Table>
+                        </ScrollArea>
+                    </div>
                 </div>
 
                 <OrderDetail
@@ -813,13 +815,13 @@ function StatCard({ icon: Icon, label, value, tone }: { icon: React.ElementType;
         emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
     };
     return (
-        <div className="flex min-h-[4.75rem] items-center gap-3 rounded-2xl border bg-card p-3 shadow-sm">
-            <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border", tones[tone])}>
-                <Icon className="h-4 w-4" />
+        <div className="flex min-h-[3.75rem] items-center gap-2.5 rounded-xl border bg-card px-2.5 py-2 shadow-sm">
+            <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border", tones[tone])}>
+                <Icon className="h-3.5 w-3.5" />
             </div>
             <div className="min-w-0">
-                <div className="truncate text-sm text-muted-foreground">{label}</div>
-                <div className="mt-1 truncate text-2xl font-bold tracking-tight">{value}</div>
+                <div className="truncate text-xs text-muted-foreground">{label}</div>
+                <div className="truncate text-lg font-bold leading-6 tracking-tight">{value}</div>
             </div>
         </div>
     );
