@@ -904,7 +904,7 @@ function OrderDetail({
             </div>
 
             <ScrollArea className="h-[calc(100vh-22rem)] min-h-[28rem]">
-                <div className="space-y-4 p-3">
+                <div className="space-y-3 p-3">
                     <section>
                         <h3 className="flex items-center gap-2 font-semibold"><CalendarClock className="h-4 w-4 text-primary" /> Fechas</h3>
                         <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
@@ -917,11 +917,11 @@ function OrderDetail({
 
                     <section>
                         <h3 className="flex items-center gap-2 font-semibold"><ReceiptText className="h-4 w-4 text-primary" /> Conceptos</h3>
-                        <div className="mt-2 overflow-hidden rounded-xl border">
+                        <div className="mt-2 max-h-[8rem] overflow-y-auto overscroll-contain rounded-xl border">
                             {order.items.map((item) => (
-                                <div key={item.id || item.description} className="grid grid-cols-[1fr_auto] gap-3 border-b p-2.5 text-sm last:border-0">
-                                    <div>
-                                        <div className="font-medium">{item.description}</div>
+                                <div key={item.id || item.description} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b px-2.5 py-2 text-sm last:border-0">
+                                    <div className="min-w-0">
+                                        <div className="truncate font-medium">{item.description}</div>
                                         <div className="text-xs text-muted-foreground">{item.quantity} x {currency(item.unitPrice, order.currency)}</div>
                                     </div>
                                     <div className="font-semibold">{currency(item.totalAmount, order.currency)}</div>
@@ -932,27 +932,27 @@ function OrderDetail({
 
                     <section>
                         <h3 className="flex items-center gap-2 font-semibold"><CreditCard className="h-4 w-4 text-primary" /> Pagos y abonos</h3>
-                        <div className="mt-2 max-h-[12.75rem] overflow-y-auto overscroll-contain rounded-2xl border bg-background/70">
+                        <div className="mt-2 max-h-[10.5rem] overflow-y-auto overscroll-contain rounded-xl border bg-background/70">
                             {order.payments.map((payment) => {
                                 const overdue = isOverdue(payment);
                                 return (
-                                    <div key={payment.id} className="border-b p-2.5 last:border-0">
-                                        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                                    <div key={payment.id} className="border-b px-2.5 py-2 last:border-0">
+                                        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                                             <div className="min-w-0">
-                                                <div className="truncate font-semibold">{payment.label}</div>
-                                                <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                                                <div className="truncate text-sm font-semibold">{payment.label}</div>
+                                                <div className="flex flex-wrap gap-x-2 text-[11px] leading-4 text-muted-foreground">
                                                     <span>Vence: {shortDate(payment.dueDate)}</span>
                                                     {payment.paidAt ? <span>Pagado: {shortDate(payment.paidAt)}</span> : null}
                                                     {payment.reference ? <span>Ref: {payment.reference}</span> : null}
                                                     {payment.method ? <span>{payment.method}</span> : null}
                                                 </div>
                                             </div>
-                                            <div className="flex items-center justify-between gap-3 sm:justify-end sm:text-right">
-                                                <div className="font-bold">{currency(payment.amount, order.currency)}</div>
+                                            <div className="flex items-center justify-between gap-2 sm:justify-end sm:text-right">
+                                                <div className="text-sm font-bold">{currency(payment.amount, order.currency)}</div>
                                                 <PaymentBadge status={payment.status} overdue={overdue} />
                                             </div>
                                         </div>
-                                        <div className="mt-2 flex flex-wrap justify-end gap-1.5">
+                                        <div className="mt-1 flex flex-wrap justify-end gap-1">
                                             <input
                                                 id={`receipt-${payment.id}`}
                                                 type="file"
@@ -967,7 +967,7 @@ function OrderDetail({
                                                 <Button
                                                     size="sm"
                                                     variant="outline"
-                                                    className="h-7 rounded-lg px-2 text-xs"
+                                                    className="h-6 rounded-md px-2 text-[11px]"
                                                     onClick={() => onPreviewReceipt({ url: payment.receiptUrl || "", fileName: payment.receiptFileName })}
                                                 >
                                                     <ImageIcon className="h-4 w-4" />
@@ -977,7 +977,7 @@ function OrderDetail({
                                             <Button
                                                 size="sm"
                                                 variant="outline"
-                                                className="h-7 rounded-lg px-2 text-xs"
+                                                className="h-6 rounded-md px-2 text-[11px]"
                                                 onClick={() => document.getElementById(`receipt-${payment.id}`)?.click()}
                                                 disabled={isBusy || uploadingReceiptId === payment.id}
                                             >
@@ -985,11 +985,11 @@ function OrderDetail({
                                                 {payment.receiptUrl ? "Cambiar" : "Agregar comprobante"}
                                             </Button>
                                             {payment.status === "paid" ? (
-                                                <Button size="sm" variant="outline" className="h-7 rounded-lg px-2 text-xs" onClick={() => onMarkPayment(order.id, payment.id, "pending")} disabled={isBusy}>
+                                                <Button size="sm" variant="outline" className="h-6 rounded-md px-2 text-[11px]" onClick={() => onMarkPayment(order.id, payment.id, "pending")} disabled={isBusy}>
                                                     Reabrir
                                                 </Button>
                                             ) : (
-                                                <Button size="sm" className="h-7 rounded-lg px-2 text-xs" onClick={() => onMarkPayment(order.id, payment.id, "paid")} disabled={isBusy}>
+                                                <Button size="sm" className="h-6 rounded-md px-2 text-[11px]" onClick={() => onMarkPayment(order.id, payment.id, "paid")} disabled={isBusy}>
                                                     Marcar pagado
                                                 </Button>
                                             )}
@@ -1003,7 +1003,7 @@ function OrderDetail({
                     {order.notes ? (
                         <section>
                             <h3 className="font-semibold">Notas</h3>
-                            <p className="mt-2 rounded-xl border bg-background/70 p-3 text-sm text-muted-foreground whitespace-pre-wrap">{order.notes}</p>
+                            <p className="mt-2 max-h-[4.75rem] overflow-y-auto overscroll-contain rounded-xl border bg-background/70 p-2.5 text-sm text-muted-foreground whitespace-pre-wrap">{order.notes}</p>
                         </section>
                     ) : null}
                 </div>
