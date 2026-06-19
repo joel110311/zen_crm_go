@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import NextImage from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
-    Search, MoreVertical, Phone, Video, Paperclip, Send, Mic, X,
-    FileText, Download, Square, Star, BellOff, Bell, Archive, Trash2,
-    Info, Users, MessageSquare, ChevronRight, ChevronDown, Mail, Tag, Clock,
+    Search, MoreVertical, Phone, Paperclip, Send, Mic, X,
+    FileText, Download, Star, BellOff, Bell, Archive, Trash2,
+    Info, Users, MessageSquare, ChevronDown, Mail, Tag, Clock,
     Eraser, Image as ImageIcon, Play, Pause, Bot, User as UserIcon, AlertTriangle, LayoutTemplate,
     Reply, Copy, SmilePlus, Forward, CheckCircle2, ReceiptText
 } from "lucide-react";
@@ -49,7 +50,8 @@ const REACTION_EMOJIS = [
     "👀", "🙌", "👌", "💪", "🥳", "😴", "🤯", "😡",
 ];
 
-const INBOX_CONVERSATION_LIMIT = 300;
+const INBOX_CONVERSATION_LIMIT = 75;
+const INBOX_SEARCH_LIMIT = 100;
 const INBOX_MAX_LOADED_CONVERSATIONS = 5000;
 const INBOX_MESSAGE_PAGE_SIZE = 75;
 const INBOX_DELTA_POLL_INTERVAL_MS = 3000;
@@ -421,42 +423,6 @@ function getOldestConversationCursor(items: Conversation[]) {
 }
 
 // ──────────── WhatsApp Text Formatter ────────────
-function formatWhatsAppText(text: string): React.ReactNode {
-    if (!text) return null;
-    // Split by newlines first to preserve line breaks
-    const lines = text.split('\n');
-    return lines.map((line, lineIdx) => {
-        // Parse inline formatting: *bold*, _italic_, ~strikethrough~
-        const parts: React.ReactNode[] = [];
-        const remaining = line;
-        let partKey = 0;
-        const regex = /(\*([^*]+)\*)|(_([^_]+)_)|(~([^~]+)~)/g;
-        let lastIndex = 0;
-        let match;
-        while ((match = regex.exec(remaining)) !== null) {
-            if (match.index > lastIndex) {
-                parts.push(<React.Fragment key={partKey++}>{remaining.slice(lastIndex, match.index)}</React.Fragment>);
-            }
-            if (match[1]) {
-                parts.push(<strong key={partKey++}>{match[2]}</strong>);
-            } else if (match[3]) {
-                parts.push(<em key={partKey++}>{match[4]}</em>);
-            } else if (match[5]) {
-                parts.push(<s key={partKey++}>{match[6]}</s>);
-            }
-            lastIndex = match.index + match[0].length;
-        }
-        if (lastIndex < remaining.length) {
-            parts.push(<React.Fragment key={partKey++}>{remaining.slice(lastIndex)}</React.Fragment>);
-        }
-        return (
-            <React.Fragment key={lineIdx}>
-                {parts.length > 0 ? parts : line}
-                {lineIdx < lines.length - 1 && <br />}
-            </React.Fragment>
-        );
-    });
-}
 // ──────────── Helpers ────────────
 function formatPhone(phone: string | null | undefined): string {
     if (!phone) return "";
@@ -835,9 +801,12 @@ function MediaContent({ msg, onImageClick }: { msg: Message, onImageClick?: (msg
     if (msg.type === "image" && cleanUrl) {
         return (
             <div className="space-y-1">
-                <img
+                <NextImage
                     src={cleanUrl}
                     alt={msg.content || "Image"}
+                    width={280}
+                    height={280}
+                    unoptimized
                     className="max-w-[280px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={() => onImageClick ? onImageClick(msg.id) : window.open(cleanUrl, "_blank")}
                 />
@@ -1185,6 +1154,8 @@ export default function InboxPage() {
     } | null>(null);
     const [showContactInfo, setShowContactInfo] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
+    const [searchResults, setSearchResults] = useState<Conversation[]>([]);
+    const [isSearchingConversations, setIsSearchingConversations] = useState(false);
     const [viewFilter, setViewFilter] = useState<"all" | "mine" | "unassigned">("all");
     const [whatsAppSession, setWhatsAppSession] = useState<WhatsAppSessionStatus | null>(null);
     const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
@@ -1412,6 +1383,8 @@ export default function InboxPage() {
     const hasMoreConversationsRef = useRef(true);
     const isLoadingMoreConversationsRef = useRef(false);
     const conversationsPollInFlightRef = useRef(false);
+    const selectedChatMutedRef = useRef(false);
+    const scrollToBottomRef = useRef<(behavior?: ScrollBehavior) => void>(() => undefined);
 
     // Ref to keep the selected chat ID accessible inside polling closures
     const selectedChatIdRef = useRef<string | null>(null);
@@ -1431,6 +1404,7 @@ export default function InboxPage() {
     useEffect(() => {
         const activeChat = selectedChat;
         selectedChatIdRef.current = activeChat?.id ?? null;
+        selectedChatMutedRef.current = activeChat?.isMuted ?? false;
         selectedChatUpdatedAtRef.current = activeChat ? toIsoTimestamp(activeChat.updatedAt) : null;
         if (!activeChat?.sessionExpiresAt) {
             setIsWindowOpen(true);
@@ -1547,6 +1521,48 @@ export default function InboxPage() {
     useEffect(() => {
         setHighlightedSlashIndex(0);
     }, [slashQuery]);
+
+    useEffect(() => {
+        const query = searchQuery.trim();
+        if (query.length < 2) {
+            setSearchResults([]);
+            setIsSearchingConversations(false);
+            return;
+        }
+
+        const controller = new AbortController();
+        setSearchResults([]);
+        setIsSearchingConversations(true);
+        const timeout = window.setTimeout(async () => {
+            try {
+                const url = new URL("/api/chat", window.location.origin);
+                url.searchParams.set("limit", String(INBOX_SEARCH_LIMIT));
+                url.searchParams.set("query", query);
+                const response = await fetch(url.toString(), {
+                    cache: "no-store",
+                    signal: controller.signal,
+                });
+                const data = await response.json();
+                if (!controller.signal.aborted) {
+                    setSearchResults(Array.isArray(data) ? data.map(transformConversation) : []);
+                }
+            } catch (error) {
+                if (!controller.signal.aborted) {
+                    console.error("Failed to search conversations:", error);
+                    setSearchResults([]);
+                }
+            } finally {
+                if (!controller.signal.aborted) {
+                    setIsSearchingConversations(false);
+                }
+            }
+        }, 350);
+
+        return () => {
+            window.clearTimeout(timeout);
+            controller.abort();
+        };
+    }, [searchQuery]);
 
     // ──── Fetch conversations ────
     useEffect(() => {
@@ -1780,12 +1796,13 @@ export default function InboxPage() {
     }, [loadOlderConversations]);
 
     // ──── Fetch messages ────
+    const activeConversationId = selectedChat?.id ?? null;
+
     useEffect(() => {
-        if (!selectedChat) return;
+        if (!activeConversationId) return;
 
         // Reset messages state when chat changes to avoid showing old data
         setMessages([]);
-        selectedChatUpdatedAtRef.current = toIsoTimestamp(selectedChat.updatedAt);
         forceFullMessagesSyncRef.current = false;
         oldestMessageCursorRef.current = null;
         isLoadingOlderMessagesRef.current = false;
@@ -1804,7 +1821,7 @@ export default function InboxPage() {
                 }
 
                 const url = new URL("/api/chat", window.location.origin);
-                url.searchParams.append("conversationId", selectedChat.id);
+                url.searchParams.append("conversationId", activeConversationId);
                 if (!shouldFullSync && lastMessageDate) {
                     url.searchParams.append("since", lastMessageDate);
                 } else {
@@ -1853,7 +1870,7 @@ export default function InboxPage() {
                         // If there are genuinely new messages, show notifications or auto-scroll
                         if (prev.length > 0 && uniqueNew.some((m) => m.direction === "inbound")) {
                             // Play sound for incoming message in the active chat
-                            maybePlayNotification(selectedChat.isMuted);
+                            maybePlayNotification(selectedChatMutedRef.current);
 
                             const el = messagesContainerRef.current;
                             if (el) {
@@ -1862,7 +1879,7 @@ export default function InboxPage() {
                                 if (!atBottom) {
                                     setNewMessageCount((c) => c + uniqueNew.filter((m) => m.direction === "inbound").length);
                                 } else {
-                                    setTimeout(() => scrollToBottom("smooth"), 100);
+                                    setTimeout(() => scrollToBottomRef.current("smooth"), 100);
                                 }
                             }
                         }
@@ -1880,7 +1897,7 @@ export default function InboxPage() {
         fetchMessages(true);
         const interval = setInterval(() => fetchMessages(false), 2000);
         return () => clearInterval(interval);
-    }, [selectedChat?.id, setHasMoreMessagesState]);
+    }, [activeConversationId, setHasMoreMessagesState]);
 
     // ──── Smart scroll logic ────
     const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
@@ -1892,6 +1909,10 @@ export default function InboxPage() {
         }
         setNewMessageCount(0);
     }, []);
+
+    useEffect(() => {
+        scrollToBottomRef.current = scrollToBottom;
+    }, [scrollToBottom]);
 
     const loadOlderMessages = useCallback(async () => {
         if (!selectedChat?.id || isLoadingOlderMessagesRef.current || !hasMoreMessagesRef.current) return;
@@ -2127,11 +2148,13 @@ export default function InboxPage() {
     };
 
     // ──── Filter conversations by search ────
-    const filteredConversations = conversations.filter(conv => {
+    const normalizedSearchQuery = searchQuery.trim();
+    const conversationSearchSource = normalizedSearchQuery.length >= 2 ? searchResults : conversations;
+    const filteredConversations = conversationSearchSource.filter(conv => {
         if (viewFilter === "mine" && conv.assignedUserId !== currentUserId) return false;
         if (viewFilter === "unassigned" && conv.assignedUserId) return false;
-        if (!searchQuery.trim()) return true;
-        const q = searchQuery.toLowerCase();
+        if (!normalizedSearchQuery || normalizedSearchQuery.length >= 2) return true;
+        const q = normalizedSearchQuery.toLowerCase();
         const name = (conv.contact?.name || "").toLowerCase();
         const phone = (conv.contact?.phone || "").toLowerCase();
         const lastMsg = (conv.messages[0]?.content || "").toLowerCase();
@@ -2736,7 +2759,11 @@ export default function InboxPage() {
                         <div className="flex flex-col gap-1.5">
                             {filteredConversations.length === 0 && (
                                 <div className="rounded-[1.6rem] border border-dashed border-border/60 bg-background/50 p-10 text-center text-sm text-muted-foreground">
-                                    {searchQuery ? "No se encontraron chats" : "Sin conversaciones"}
+                                    {isSearchingConversations
+                                        ? "Buscando en todo el historial..."
+                                        : searchQuery
+                                            ? "No se encontraron chats"
+                                            : "Sin conversaciones"}
                                 </div>
                             )}
                             {filteredConversations.map((chat) => {
@@ -2817,18 +2844,14 @@ export default function InboxPage() {
                                 </button>
                                 );
                             })}
-                            {hasMoreConversations && (
+                            {hasMoreConversations && !normalizedSearchQuery && (
                                 <button
                                     type="button"
                                     onClick={() => void loadOlderConversations()}
                                     disabled={isLoadingMoreConversations}
                                     className="mt-2 rounded-[1rem] border border-dashed border-border/60 bg-background/60 px-3 py-2 text-xs font-medium text-muted-foreground transition hover:border-border hover:bg-background disabled:cursor-wait disabled:opacity-70"
                                 >
-                                    {isLoadingMoreConversations
-                                        ? "Cargando mas chats..."
-                                        : searchQuery.trim()
-                                            ? "Cargar mas chats para buscar"
-                                            : "Cargar mas chats"}
+                                    {isLoadingMoreConversations ? "Cargando mas chats..." : "Cargar mas chats"}
                                 </button>
                             )}
                             {!hasMoreConversations && conversations.length > 0 && !searchQuery.trim() && (
@@ -3070,16 +3093,22 @@ export default function InboxPage() {
                                                                     {previewImageUrl ? (
                                                                         previewTargetUrl ? (
                                                                             <a href={previewTargetUrl} target="_blank" rel="noreferrer">
-                                                                                <img
+                                                                                <NextImage
                                                                                     src={previewImageUrl}
                                                                                     alt={previewTitle}
+                                                                                    width={416}
+                                                                                    height={160}
+                                                                                    unoptimized
                                                                                     className="h-40 w-full object-cover"
                                                                                 />
                                                                             </a>
                                                                         ) : (
-                                                                            <img
+                                                                            <NextImage
                                                                                 src={previewImageUrl}
                                                                                 alt={previewTitle}
+                                                                                width={416}
+                                                                                height={160}
+                                                                                unoptimized
                                                                                 className="h-40 w-full object-cover"
                                                                             />
                                                                         )
@@ -3312,9 +3341,12 @@ export default function InboxPage() {
                                 <div className="border-t border-border/50 bg-card/72 px-4 pt-3 backdrop-blur-2xl">
                                     <div className="mx-auto flex max-w-[54rem] items-center gap-3 rounded-[1.3rem] border border-border/50 bg-background/75 p-3 shadow-[0_18px_34px_-30px_rgba(15,23,42,0.45)]">
                                         {pendingFile.mediaCategory === "image" ? (
-                                            <img
-                                                src={pendingFile.previewUrl || getSafeMediaUrl(pendingFile.url)}
+                                            <NextImage
+                                                src={pendingFile.previewUrl || getSafeMediaUrl(pendingFile.url) || pendingFile.url}
                                                 alt="Preview"
+                                                width={64}
+                                                height={64}
+                                                unoptimized
                                                 className="h-16 w-16 rounded-xl object-cover"
                                             />
                                         ) : pendingFile.mediaCategory === "video" ? (

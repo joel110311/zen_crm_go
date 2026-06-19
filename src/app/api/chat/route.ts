@@ -82,6 +82,8 @@ export async function GET(request: NextRequest) {
     const conversationId = searchParams.get("conversationId");
     const targetConversationId = searchParams.get("targetConversationId");
     const targetContactId = searchParams.get("targetContactId");
+    const notificationOnly = searchParams.get("notificationOnly") === "true";
+    const query = searchParams.get("query")?.trim() || "";
 
     const since = searchParams.get("since");
     const updatedSince = parseIsoDate(searchParams.get("updatedSince"));
@@ -127,6 +129,63 @@ export async function GET(request: NextRequest) {
                 conversationWhere.updatedAt = { gt: new Date(updatedSince.getTime() - 1000) };
             } else if (beforeUpdatedAt) {
                 conversationWhere.updatedAt = { lt: beforeUpdatedAt };
+            }
+
+            if (query) {
+                const digits = query.replace(/\D/g, "");
+                const contactFilters: Prisma.ContactWhereInput[] = digits.length >= 5
+                    ? [{ phone: { contains: digits } }]
+                    : [
+                        { name: { contains: query, mode: "insensitive" } },
+                        { lastName: { contains: query, mode: "insensitive" } },
+                        { phone: { contains: query } },
+                        { email: { contains: query, mode: "insensitive" } },
+                        { company: { contains: query, mode: "insensitive" } },
+                    ];
+
+                conversationWhere.OR = [
+                    { contact: { is: { OR: contactFilters } } },
+                    ...(digits.length < 5 && query.length >= 3
+                        ? [{
+                            messages: {
+                                some: {
+                                    type: { not: "system" },
+                                    content: { contains: query, mode: "insensitive" as const },
+                                },
+                            },
+                        }]
+                        : []),
+                ];
+            }
+
+            if (notificationOnly) {
+                const conversations = await prisma.conversation.findMany({
+                    where: conversationWhere,
+                    orderBy: { updatedAt: "desc" },
+                    take: conversationLimit,
+                    select: {
+                        id: true,
+                        updatedAt: true,
+                        isMuted: true,
+                        messages: {
+                            where: { type: { not: "system" } },
+                            orderBy: { createdAt: "desc" },
+                            take: 1,
+                            select: {
+                                createdAt: true,
+                                direction: true,
+                            },
+                        },
+                    },
+                });
+
+                return NextResponse.json(conversations.map((conversation) => ({
+                    id: conversation.id,
+                    updatedAt: conversation.updatedAt,
+                    lastMessageTime: conversation.messages[0]?.createdAt || conversation.updatedAt,
+                    lastMessageDirection: conversation.messages[0]?.direction || null,
+                    isMuted: conversation.isMuted,
+                })));
             }
 
             const conversationInclude = {

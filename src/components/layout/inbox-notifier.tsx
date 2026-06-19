@@ -61,6 +61,7 @@ export function InboxNotifier() {
             try {
                 const url = new URL("/api/chat", window.location.origin);
                 url.searchParams.set("limit", String(NOTIFIER_CONVERSATION_LIMIT));
+                url.searchParams.set("notificationOnly", "true");
                 if (mode === "delta" && cursorRef.current) {
                     url.searchParams.set("updatedSince", cursorRef.current);
                 }
@@ -118,7 +119,7 @@ export function InboxNotifier() {
             }
         };
 
-        void poll("full");
+        void poll(cursorRef.current ? "delta" : "full");
         const deltaInterval = setInterval(() => {
             void poll("delta");
         }, NOTIFIER_DELTA_POLL_INTERVAL_MS);
