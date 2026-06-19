@@ -209,6 +209,67 @@ export async function getContacts(query?: string) {
     }
 }
 
+export async function getContactsPage({
+    query,
+    page = 1,
+    pageSize = 10,
+}: {
+    query?: string;
+    page?: number;
+    pageSize?: number;
+}) {
+    const safePageSize = Math.min(100, Math.max(10, Math.trunc(pageSize)));
+    const where = buildContactSearchWhere(query?.trim());
+
+    try {
+        const total = await prisma.contact.count({ where });
+        const totalPages = Math.max(1, Math.ceil(total / safePageSize));
+        const safePage = Math.min(totalPages, Math.max(1, Math.trunc(page)));
+        const contacts = await prisma.contact.findMany({
+            where,
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            skip: (safePage - 1) * safePageSize,
+            take: safePageSize,
+            include: CONTACT_LIST_INCLUDE,
+        });
+
+        refreshWhatsAppAvatarForContactsInBackground(
+            contacts.map((contact) => contact.id).slice(0, 20),
+            { limit: 6, concurrency: 2 },
+        );
+
+        return {
+            contacts,
+            total,
+            page: safePage,
+            pageSize: safePageSize,
+            totalPages,
+        };
+    } catch (error) {
+        console.error("Failed to fetch contacts page:", error);
+        return {
+            contacts: [] as ContactListItem[],
+            total: 0,
+            page: 1,
+            pageSize: safePageSize,
+            totalPages: 1,
+        };
+    }
+}
+
+export async function getContactsForBulk(query?: string) {
+    try {
+        return await prisma.contact.findMany({
+            where: buildContactSearchWhere(query?.trim()),
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            include: CONTACT_LIST_INCLUDE,
+        });
+    } catch (error) {
+        console.error("Failed to fetch contacts for bulk action:", error);
+        return [] as ContactListItem[];
+    }
+}
+
 export async function getContact(id: string) {
     try {
         await refreshWhatsAppAvatarForContact(id).catch((error) => {

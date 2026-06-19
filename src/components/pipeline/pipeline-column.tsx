@@ -5,23 +5,37 @@ import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { DealCard } from "./deal-card";
 import type { PipelineStageData, DealData } from "./pipeline-board";
-import { MessageSquare } from "lucide-react";
+import { Loader2, MessageSquare } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface PipelineColumnProps {
     stage: PipelineStageData;
     deals: DealData[];
     onDealClick: (deal: DealData) => void;
     activeDealId: string | null;
+    totalCount: number;
+    totalValue: number;
+    isLoadingMore: boolean;
+    onLoadMore: () => void;
 }
 
 const isClosed = (stage: PipelineStageData) => stage.isClosedWon || stage.isClosedLost;
 
-export function PipelineColumn({ stage, deals, onDealClick, activeDealId }: PipelineColumnProps) {
+export function PipelineColumn({
+    stage,
+    deals,
+    onDealClick,
+    activeDealId,
+    totalCount,
+    totalValue,
+    isLoadingMore,
+    onLoadMore,
+}: PipelineColumnProps) {
     const { isOver, setNodeRef } = useDroppable({
         id: stage.id,
     });
 
-    const totalValue = deals.reduce((sum, deal) => sum + deal.value, 0);
+    const hasMore = deals.length < totalCount;
 
     // Check if the active deal is currently in this column (dragged here via handleDragOver)
     const hasActiveDeal = activeDealId ? deals.some((d) => d.id === activeDealId) : false;
@@ -65,7 +79,7 @@ export function PipelineColumn({ stage, deals, onDealClick, activeDealId }: Pipe
                                 color: stage.color,
                             }}
                         >
-                            {deals.length}
+                            {totalCount}
                         </span>
                     </div>
                     {stage.isIncoming && (
@@ -78,8 +92,8 @@ export function PipelineColumn({ stage, deals, onDealClick, activeDealId }: Pipe
                 {/* Kommo-style summary */}
                 <p className="text-xs mt-1 text-muted-foreground">
                     {isClosed(stage)
-                        ? `${deals.length} ${deals.length === 1 ? "Lead cerrado" : "Leads cerrados"}`
-                        : `${deals.length} ${deals.length === 1 ? "Cliente potencial" : "Clientes potenciales"}: $${totalValue.toLocaleString("es-MX")}`
+                        ? `${totalCount} ${totalCount === 1 ? "Lead cerrado" : "Leads cerrados"}`
+                        : `${totalCount} ${totalCount === 1 ? "Cliente potencial" : "Clientes potenciales"}: $${totalValue.toLocaleString("es-MX")}`
                     }
                 </p>
             </div>
@@ -100,6 +114,25 @@ export function PipelineColumn({ stage, deals, onDealClick, activeDealId }: Pipe
                             onDealClick={onDealClick}
                         />
                     ))}
+                    {hasMore ? (
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-9 w-full rounded-xl border-dashed text-xs"
+                            onClick={onLoadMore}
+                            disabled={isLoadingMore}
+                        >
+                            {isLoadingMore ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                            {isLoadingMore
+                                ? "Cargando..."
+                                : `Cargar mas (${totalCount - deals.length})`}
+                        </Button>
+                    ) : totalCount > 0 ? (
+                        <p className="py-1 text-center text-[10px] text-muted-foreground/70">
+                            Todos los leads cargados
+                        </p>
+                    ) : null}
                 </div>
             </SortableContext>
         </div>

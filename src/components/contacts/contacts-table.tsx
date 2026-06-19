@@ -44,6 +44,7 @@ import { ContactsBulkCampaignDialog } from "@/components/contacts/contacts-bulk-
 import { ContactsBulkDeleteDialog } from "@/components/contacts/contacts-bulk-delete-dialog";
 import { getContactFullName, getContactInitial } from "@/lib/contact-name";
 import { cn } from "@/lib/utils";
+import { getContactsForBulk } from "@/app/actions/contacts";
 
 type ContactConversationSummary = {
     botActive: boolean;
@@ -83,9 +84,13 @@ type ContactTableItem = {
 
 interface ContactsPageProps {
     contacts: ContactTableItem[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+    query: string;
 }
 
-const DEFAULT_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
 function getHostMeta(contact: ContactTableItem) {
@@ -136,14 +141,14 @@ function getScoreMeta(contact: ContactTableItem) {
     return { score, tone };
 }
 
-export function ContactsTable({ contacts }: ContactsPageProps) {
+export function ContactsTable({ contacts, total, page, pageSize, totalPages, query }: ContactsPageProps) {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { data: session } = useSession();
     const [isPending, startTransition] = useTransition();
-    const [currentPage, setCurrentPage] = useState(1);
-    const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-    const [rawSelectedContactIds, setRawSelectedContactIds] = useState<string[]>([]);
+    const [selectedContactRecords, setSelectedContactRecords] = useState<Record<string, ContactTableItem>>({});
+    const [isExporting, setIsExporting] = useState(false);
+    const [isSelectingAll, setIsSelectingAll] = useState(false);
 
     const sessionUser = session?.user as { role?: string } | undefined;
     const isSuperadmin = sessionUser?.role === "SUPERADMIN";
@@ -155,29 +160,15 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
         } else {
             params.delete("query");
         }
-        setCurrentPage(1);
+        params.set("page", "1");
         startTransition(() => {
             router.replace(`/dashboard/contacts?${params.toString()}`);
         });
     }, 300);
 
-    const totalPages = Math.max(1, Math.ceil(contacts.length / pageSize));
-    const safePage = Math.min(currentPage, totalPages);
-
-    const pagedContacts = useMemo(() => {
-        const start = (safePage - 1) * pageSize;
-        return contacts.slice(start, start + pageSize);
-    }, [contacts, pageSize, safePage]);
-
-    const validContactIds = useMemo(
-        () => new Set(contacts.map((contact) => contact.id)),
-        [contacts],
-    );
-
-    const selectedContactIds = useMemo(
-        () => rawSelectedContactIds.filter((contactId) => validContactIds.has(contactId)),
-        [rawSelectedContactIds, validContactIds],
-    );
+    const pagedContacts = contacts;
+    const safePage = Math.min(page, totalPages);
+    const selectedContactIds = useMemo(() => Object.keys(selectedContactRecords), [selectedContactRecords]);
 
     const selectedContactIdSet = useMemo(
         () => new Set(selectedContactIds),
@@ -185,8 +176,8 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
     );
 
     const selectedContacts = useMemo(
-        () => contacts.filter((contact) => selectedContactIdSet.has(contact.id)),
-        [contacts, selectedContactIdSet],
+        () => Object.values(selectedContactRecords),
+        [selectedContactRecords],
     );
 
     const currentPageSelectedCount = useMemo(
@@ -204,7 +195,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                     : false;
 
     const areAllFilteredSelected =
-        contacts.length > 0 && selectedContacts.length === contacts.length;
+        total > 0 && selectedContacts.length === total;
 
     const handleRefresh = () => {
         startTransition(() => {
@@ -212,8 +203,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
         });
     };
 
-    const handleExport = () => {
-        const contactsToExport = selectedContacts.length > 0 ? selectedContacts : contacts;
+    const exportContacts = (contactsToExport: ContactTableItem[], selectedOnly: boolean) => {
 
         const rows = contactsToExport.map((contact) => {
             const host = getHostMeta(contact);
@@ -240,43 +230,72 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = selectedContacts.length > 0 ? "contactos-seleccionados.csv" : "contactos.csv";
+        link.download = selectedOnly ? "contactos-seleccionados.csv" : "contactos.csv";
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
     };
 
+    const handleExport = async () => {
+        setIsExporting(true);
+        try {
+            const selectedOnly = selectedContacts.length > 0;
+            const contactsToExport = selectedOnly ? selectedContacts : await getContactsForBulk(query);
+            exportContacts(contactsToExport as ContactTableItem[], selectedOnly);
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
     const handleRowSelection = (contactId: string, checked: boolean) => {
-        setRawSelectedContactIds((current) => {
-            const next = new Set(current.filter((entry) => validContactIds.has(entry)));
+        setSelectedContactRecords((current) => {
+            const next = { ...current };
             if (checked) {
-                next.add(contactId);
+                const contact = contacts.find((item) => item.id === contactId);
+                if (contact) next[contactId] = contact;
             } else {
-                next.delete(contactId);
+                delete next[contactId];
             }
-            return Array.from(next);
+            return next;
         });
     };
 
     const handlePageSelection = (checked: boolean) => {
-        setRawSelectedContactIds((current) => {
-            const next = new Set(current.filter((entry) => validContactIds.has(entry)));
+        setSelectedContactRecords((current) => {
+            const next = { ...current };
 
             for (const contact of pagedContacts) {
                 if (checked) {
-                    next.add(contact.id);
+                    next[contact.id] = contact;
                 } else {
-                    next.delete(contact.id);
+                    delete next[contact.id];
                 }
             }
 
-            return Array.from(next);
+            return next;
         });
     };
 
     const clearSelection = () => {
-        setRawSelectedContactIds([]);
+        setSelectedContactRecords({});
+    };
+
+    const handleSelectAllFiltered = async () => {
+        setIsSelectingAll(true);
+        try {
+            const allContacts = await getContactsForBulk(query) as ContactTableItem[];
+            setSelectedContactRecords(Object.fromEntries(allContacts.map((contact) => [contact.id, contact])));
+        } finally {
+            setIsSelectingAll(false);
+        }
+    };
+
+    const navigateToPage = (nextPage: number, nextPageSize = pageSize) => {
+        const params = new URLSearchParams(searchParams);
+        params.set("page", String(nextPage));
+        params.set("pageSize", String(nextPageSize));
+        startTransition(() => router.replace(`/dashboard/contacts?${params.toString()}`));
     };
 
     const handlePageSizeChange = (value: string) => {
@@ -286,12 +305,11 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
             return;
         }
 
-        setPageSize(nextPageSize);
-        setCurrentPage(1);
+        navigateToPage(1, nextPageSize);
     };
 
-    const currentRangeStart = contacts.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
-    const currentRangeEnd = Math.min(safePage * pageSize, contacts.length);
+    const currentRangeStart = total === 0 ? 0 : (safePage - 1) * pageSize + 1;
+    const currentRangeEnd = Math.min(safePage * pageSize, total);
 
     return (
         <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
@@ -299,7 +317,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                 <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                     <div className="flex items-center gap-2">
                         <h1 className="text-2xl font-bold tracking-tight text-foreground">Contactos</h1>
-                        <span className="text-sm text-muted-foreground">({contacts.length} total)</span>
+                        <span className="text-sm text-muted-foreground">({total} total)</span>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
@@ -319,8 +337,11 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                             size="icon"
                             className="h-9 w-9 rounded-xl"
                             onClick={handleExport}
+                            disabled={isExporting}
                         >
-                            <Download className="h-4 w-4" />
+                            {isExporting
+                                ? <RotateCw className="h-4 w-4 animate-spin" />
+                                : <Download className="h-4 w-4" />}
                         </Button>
                         <NewContactDialog />
                     </div>
@@ -338,7 +359,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                     </div>
 
                     <div className="text-sm text-muted-foreground">
-                        Mostrando {currentRangeStart}-{currentRangeEnd} de {contacts.length} contactos
+                        Mostrando {currentRangeStart}-{currentRangeEnd} de {total} contactos
                     </div>
                 </div>
 
@@ -354,19 +375,20 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                                 <p className="mt-1 text-sm text-muted-foreground">
                                     {areAllFilteredSelected
                                         ? "La seleccion cubre toda la lista filtrada actual."
-                                        : `Tienes ${contacts.length - selectedContacts.length} contacto${contacts.length - selectedContacts.length === 1 ? "" : "s"} mas dentro del filtro actual.`}
+                                        : `Tienes ${total - selectedContacts.length} contacto${total - selectedContacts.length === 1 ? "" : "s"} mas dentro del filtro actual.`}
                                 </p>
                             </div>
 
                             <div className="flex flex-wrap items-center gap-2">
-                                {!areAllFilteredSelected && contacts.length > selectedContacts.length ? (
+                                {!areAllFilteredSelected && total > selectedContacts.length ? (
                                     <Button
                                         type="button"
                                         variant="outline"
                                         className="h-10 rounded-xl bg-background px-4"
-                                        onClick={() => setRawSelectedContactIds(contacts.map((contact) => contact.id))}
+                                        onClick={() => void handleSelectAllFiltered()}
+                                        disabled={isSelectingAll}
                                     >
-                                        Seleccionar los {contacts.length} filtrados
+                                        {isSelectingAll ? "Seleccionando..." : `Seleccionar los ${total} filtrados`}
                                     </Button>
                                 ) : null}
 
@@ -567,7 +589,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                         variant="outline"
                         size="sm"
                         className="h-9 rounded-xl"
-                        onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                        onClick={() => navigateToPage(Math.max(1, safePage - 1))}
                         disabled={safePage === 1}
                     >
                         <ChevronLeft className="mr-1 h-4 w-4" />
@@ -582,7 +604,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                         variant="outline"
                         size="sm"
                         className="h-9 rounded-xl"
-                        onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                        onClick={() => navigateToPage(Math.min(totalPages, safePage + 1))}
                         disabled={safePage === totalPages}
                     >
                         Siguiente

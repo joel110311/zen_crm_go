@@ -21,7 +21,7 @@ import { DealDetailPanel } from "./deal-detail-panel";
 import { NewLeadDialog } from "./new-lead-dialog";
 import { StageAutomationDialog } from "./stage-automation-dialog";
 import { FunnelEditorDialog } from "./funnel-editor-dialog";
-import { moveDealToStage, getPipelineData } from "@/app/actions/pipeline";
+import { getPipelineData, getPipelineStageDeals, moveDealToStage } from "@/app/actions/pipeline";
 import { MoreHorizontal, Zap, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -82,6 +82,15 @@ export interface DealData {
 interface PipelineBoardProps {
     initialStages: PipelineStageData[];
     initialDeals: DealData[];
+    initialStageStats: PipelineStageStats;
+    initialSummary: PipelineSummary;
+}
+
+type PipelineStageStats = Record<string, { totalCount: number; totalValue: number }>;
+
+interface PipelineSummary {
+    totalCount: number;
+    totalValue: number;
 }
 
 type DealDataFromServer = Omit<DealData, "createdAt" | "updatedAt"> & {
@@ -96,9 +105,17 @@ const customCollision: CollisionDetection = (args) => {
     return closestCenter(args);
 };
 
-export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProps) {
+export function PipelineBoard({
+    initialStages,
+    initialDeals,
+    initialStageStats,
+    initialSummary,
+}: PipelineBoardProps) {
     const [stages, setStages] = useState<PipelineStageData[]>(initialStages);
     const [deals, setDeals] = useState<DealData[]>(initialDeals);
+    const [stageStats, setStageStats] = useState<PipelineStageStats>(initialStageStats);
+    const [summary, setSummary] = useState<PipelineSummary>(initialSummary);
+    const [loadingStageIds, setLoadingStageIds] = useState<Set<string>>(new Set());
     const [activeDeal, setActiveDeal] = useState<DealData | null>(null);
     const [selectedDeal, setSelectedDeal] = useState<DealData | null>(null);
     const [, startTransition] = useTransition();
@@ -112,10 +129,23 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
     const skipNextPollRef = useRef(false);
     const originalStageIdRef = useRef<string | null>(null);
     const dealsRef = useRef(deals);
+    const stagesRef = useRef(stages);
 
     useEffect(() => {
         dealsRef.current = deals;
     }, [deals]);
+
+    useEffect(() => {
+        stagesRef.current = stages;
+    }, [stages]);
+
+    const mapServerDeals = useCallback((serverDeals: DealDataFromServer[]) => (
+        serverDeals.map((deal) => ({
+            ...deal,
+            createdAt: typeof deal.createdAt === "string" ? deal.createdAt : deal.createdAt.toISOString(),
+            updatedAt: typeof deal.updatedAt === "string" ? deal.updatedAt : deal.updatedAt.toISOString(),
+        })) as DealData[]
+    ), []);
 
     // Refresh pipeline data from server
     const refreshPipelineData = useCallback(() => {
@@ -127,7 +157,11 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
         }
 
         startTransition(async () => {
-            const data = await getPipelineData();
+            const stageLimits = Object.fromEntries(stagesRef.current.map((stage) => [
+                stage.id,
+                Math.max(20, dealsRef.current.filter((deal) => deal.stageId === stage.id).length),
+            ]));
+            const data = await getPipelineData(stageLimits);
             // Double-check we're not mid-drag when the async response arrives
             if (isDraggingRef.current) return;
 
@@ -135,25 +169,62 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
                 setStages(data.stages as PipelineStageData[]);
             }
             if (data.deals) {
-                const mappedDeals = (data.deals as DealDataFromServer[]).map((d) => ({
-                    ...d,
-                    createdAt: typeof d.createdAt === "string" ? d.createdAt : d.createdAt.toISOString(),
-                    updatedAt: typeof d.updatedAt === "string" ? d.updatedAt : d.updatedAt.toISOString(),
-                })) as DealData[];
+                const mappedDeals = mapServerDeals(data.deals as DealDataFromServer[]);
                 setDeals(mappedDeals);
                 setSelectedDeal((prev) => prev ? mappedDeals.find((deal) => deal.id === prev.id) || prev : prev);
             }
+            setStageStats(data.stageStats);
+            setSummary(data.summary);
         });
-    }, []);
+    }, [mapServerDeals]);
 
-    // Polling for new deals every 5 seconds
+    // Keep the board fresh without repeatedly transferring every deal.
     useEffect(() => {
         const interval = setInterval(() => {
             refreshPipelineData();
-        }, 5000);
+        }, 10000);
 
         return () => clearInterval(interval);
     }, [refreshPipelineData]);
+
+    const handleLoadMoreStage = useCallback(async (stageId: string) => {
+        if (loadingStageIds.has(stageId)) return;
+
+        setLoadingStageIds((current) => new Set(current).add(stageId));
+        try {
+            const loadedDealIds = dealsRef.current
+                .filter((deal) => deal.stageId === stageId)
+                .map((deal) => deal.id);
+            const result = await getPipelineStageDeals(stageId, loadedDealIds, 20);
+
+            if (!result.success) return;
+
+            const incomingDeals = mapServerDeals(result.deals as DealDataFromServer[]);
+            setDeals((current) => {
+                const byId = new Map(current.map((deal) => [deal.id, deal]));
+                for (const deal of incomingDeals) byId.set(deal.id, deal);
+                return Array.from(byId.values());
+            });
+            setStageStats((current) => ({
+                ...current,
+                [stageId]: {
+                    totalCount: result.totalCount,
+                    totalValue: result.totalValue,
+                },
+            }));
+        } finally {
+            setLoadingStageIds((current) => {
+                const next = new Set(current);
+                next.delete(stageId);
+                return next;
+            });
+        }
+    }, [loadingStageIds, mapServerDeals]);
+
+    const isActiveStage = useCallback((stageId: string) => {
+        const stage = stagesRef.current.find((item) => item.id === stageId);
+        return Boolean(stage && !stage.isClosedWon && !stage.isClosedLost);
+    }, []);
 
     const sensors = useSensors(
         useSensor(PointerSensor, {
@@ -277,6 +348,7 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
                 // Server update
                 startTransition(async () => {
                     const targetStage = overStageId;
+                    const movedDeal = dealsRef.current.find((deal) => deal.id === activeId);
                     const result = await moveDealToStage(activeId, targetStage);
                     if (!result.success) {
                         // Revert on failure using the stable ref
@@ -287,11 +359,32 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
                                 )
                             );
                         }
+                    } else if (origStageId && origStageId !== targetStage && movedDeal) {
+                        setStageStats((current) => ({
+                            ...current,
+                            [origStageId]: {
+                                totalCount: Math.max(0, (current[origStageId]?.totalCount || 0) - 1),
+                                totalValue: Math.max(0, (current[origStageId]?.totalValue || 0) - movedDeal.value),
+                            },
+                            [targetStage]: {
+                                totalCount: (current[targetStage]?.totalCount || 0) + 1,
+                                totalValue: (current[targetStage]?.totalValue || 0) + movedDeal.value,
+                            },
+                        }));
+
+                        const sourceIsActive = isActiveStage(origStageId);
+                        const targetIsActive = isActiveStage(targetStage);
+                        if (sourceIsActive !== targetIsActive) {
+                            setSummary((current) => ({
+                                totalCount: Math.max(0, current.totalCount + (targetIsActive ? 1 : -1)),
+                                totalValue: Math.max(0, current.totalValue + (targetIsActive ? movedDeal.value : -movedDeal.value)),
+                            }));
+                        }
                     }
                 });
             }
         },
-        [findStageId]
+        [findStageId, isActiveStage]
     );
 
     const handleDealClick = useCallback((deal: DealData) => {
@@ -299,18 +392,53 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
     }, []);
 
     const handleDealUpdate = useCallback((updatedDeal: DealData) => {
+        const previousDeal = dealsRef.current.find((deal) => deal.id === updatedDeal.id);
         setDeals((prev) =>
             prev.map((d) => (d.id === updatedDeal.id ? updatedDeal : d))
         );
         setSelectedDeal(updatedDeal);
-    }, []);
+        if (previousDeal) {
+            const valueDifference = updatedDeal.value - previousDeal.value;
+            if (valueDifference !== 0) {
+                setStageStats((current) => ({
+                    ...current,
+                    [updatedDeal.stageId]: {
+                        totalCount: current[updatedDeal.stageId]?.totalCount || 0,
+                        totalValue: Math.max(0, (current[updatedDeal.stageId]?.totalValue || 0) + valueDifference),
+                    },
+                }));
+                if (isActiveStage(updatedDeal.stageId)) {
+                    setSummary((current) => ({
+                        ...current,
+                        totalValue: Math.max(0, current.totalValue + valueDifference),
+                    }));
+                }
+            }
+        }
+    }, [isActiveStage]);
 
     const handleDealRemove = useCallback((dealId: string) => {
+        const removedDeal = dealsRef.current.find((deal) => deal.id === dealId);
         setDeals((prev) => prev.filter((d) => d.id !== dealId));
         if (selectedDeal?.id === dealId) {
             setSelectedDeal(null);
         }
-    }, [selectedDeal]);
+        if (removedDeal) {
+            setStageStats((current) => ({
+                ...current,
+                [removedDeal.stageId]: {
+                    totalCount: Math.max(0, (current[removedDeal.stageId]?.totalCount || 0) - 1),
+                    totalValue: Math.max(0, (current[removedDeal.stageId]?.totalValue || 0) - removedDeal.value),
+                },
+            }));
+            if (isActiveStage(removedDeal.stageId)) {
+                setSummary((current) => ({
+                    totalCount: Math.max(0, current.totalCount - 1),
+                    totalValue: Math.max(0, current.totalValue - removedDeal.value),
+                }));
+            }
+        }
+    }, [isActiveStage, selectedDeal]);
 
     const activeDealId = activeDeal?.id ?? null;
 
@@ -327,18 +455,9 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
                 </div>
                 <div className="flex items-center gap-2">
                     {/* Global summary bar — excludes closed stages */}
-                    {(() => {
-                        const closedStageIds = new Set(
-                            stages.filter((s) => s.isClosedWon || s.isClosedLost).map((s) => s.id)
-                        );
-                        const activeDeals = deals.filter((d) => !closedStageIds.has(d.stageId));
-                        const totalValue = activeDeals.reduce((s, d) => s + d.value, 0);
-                        return (
-                            <span className="text-sm font-medium text-foreground">
-                                {activeDeals.length} leads: ${totalValue.toLocaleString("es-MX")}
-                            </span>
-                        );
-                    })()}
+                    <span className="text-sm font-medium text-foreground">
+                        {summary.totalCount} leads: ${summary.totalValue.toLocaleString("es-MX")}
+                    </span>
 
                     {/* ⋯ Three-dot menu */}
                     <DropdownMenu>
@@ -384,6 +503,10 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
                     <div className="flex h-full min-w-max gap-4 pb-4">
                         {stages.map((stage) => {
                             const stageDeals = deals.filter((d) => d.stageId === stage.id);
+                            const stats = stageStats[stage.id] || {
+                                totalCount: stageDeals.length,
+                                totalValue: stageDeals.reduce((total, deal) => total + deal.value, 0),
+                            };
                             return (
                                 <PipelineColumn
                                     key={stage.id}
@@ -391,6 +514,10 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
                                     deals={stageDeals}
                                     onDealClick={handleDealClick}
                                     activeDealId={activeDealId}
+                                    totalCount={stats.totalCount}
+                                    totalValue={stats.totalValue}
+                                    isLoadingMore={loadingStageIds.has(stage.id)}
+                                    onLoadMore={() => void handleLoadMoreStage(stage.id)}
                                 />
                             );
                         })}

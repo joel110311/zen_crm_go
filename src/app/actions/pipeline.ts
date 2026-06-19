@@ -9,6 +9,63 @@ import {
 } from "@/lib/pipeline-presets";
 import { revalidatePath } from "next/cache";
 
+const DEFAULT_PIPELINE_STAGE_LIMIT = 20;
+const MAX_PIPELINE_STAGE_LIMIT = 1000;
+
+const PIPELINE_DEAL_INCLUDE = {
+    contact: {
+        select: {
+            id: true,
+            phone: true,
+            name: true,
+            lastName: true,
+            email: true,
+            company: true,
+        },
+    },
+    stage: true,
+    intelligence: true,
+    dealTags: { include: { tag: true } },
+} as const;
+
+function normalizeStageLimit(value: number | undefined) {
+    if (!Number.isFinite(value)) return DEFAULT_PIPELINE_STAGE_LIMIT;
+    return Math.min(MAX_PIPELINE_STAGE_LIMIT, Math.max(DEFAULT_PIPELINE_STAGE_LIMIT, Math.trunc(value || 0)));
+}
+
+async function attachLatestInboundMessages<T extends { contactId: string | null }>(deals: T[]) {
+    const contactIds = [...new Set(deals.map((deal) => deal.contactId).filter(Boolean))] as string[];
+    if (contactIds.length === 0) {
+        return deals.map((deal) => ({ ...deal, lastMessage: null as string | null }));
+    }
+
+    const conversations = await prisma.conversation.findMany({
+        where: { contactId: { in: contactIds } },
+        orderBy: { updatedAt: "desc" },
+        select: {
+            contactId: true,
+            messages: {
+                where: { direction: "inbound" },
+                orderBy: { createdAt: "desc" },
+                take: 1,
+                select: { content: true },
+            },
+        },
+    });
+
+    const lastMessageByContact = new Map<string, string | null>();
+    for (const conversation of conversations) {
+        if (!lastMessageByContact.has(conversation.contactId)) {
+            lastMessageByContact.set(conversation.contactId, conversation.messages[0]?.content || null);
+        }
+    }
+
+    return deals.map((deal) => ({
+        ...deal,
+        lastMessage: deal.contactId ? lastMessageByContact.get(deal.contactId) || null : null,
+    }));
+}
+
 // ── Pipeline Stages ──
 
 export async function getPipelineStages() {
@@ -237,57 +294,96 @@ export async function deleteDeal(id: string) {
 
 // ── Pipeline Data (all-in-one for the board) ──
 
-export async function getPipelineData() {
+export async function getPipelineData(stageLimits: Record<string, number> = {}) {
     try {
-        const [stages, deals] = await Promise.all([
-            prisma.pipelineStage.findMany({ orderBy: { order: "asc" } }),
+        const stages = await prisma.pipelineStage.findMany({ orderBy: { order: "asc" } });
+        const [dealGroups, stageDealPages] = await Promise.all([
+            prisma.deal.groupBy({
+                by: ["stageId"],
+                _count: { _all: true },
+                _sum: { value: true },
+            }),
+            Promise.all(stages.map((stage) => prisma.deal.findMany({
+                where: { stageId: stage.id },
+                include: PIPELINE_DEAL_INCLUDE,
+                orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+                take: normalizeStageLimit(stageLimits[stage.id]),
+            }))),
+        ]);
+
+        const deals = stageDealPages.flat();
+        const dealsWithMessage = await attachLatestInboundMessages(deals);
+        const groupedByStage = new Map(dealGroups.map((group) => [group.stageId, group]));
+        const stageStats = Object.fromEntries(stages.map((stage) => {
+            const group = groupedByStage.get(stage.id);
+            return [stage.id, {
+                totalCount: group?._count._all || 0,
+                totalValue: Number(group?._sum.value || 0),
+            }];
+        }));
+        const activeStageIds = new Set(stages
+            .filter((stage) => !stage.isClosedWon && !stage.isClosedLost)
+            .map((stage) => stage.id));
+        const summary = dealGroups.reduce((totals, group) => {
+            if (activeStageIds.has(group.stageId)) {
+                totals.totalCount += group._count._all;
+                totals.totalValue += Number(group._sum.value || 0);
+            }
+            return totals;
+        }, { totalCount: 0, totalValue: 0 });
+
+        return { stages, deals: dealsWithMessage, stageStats, summary };
+    } catch (error) {
+        console.error("Failed to fetch pipeline data:", error);
+        return {
+            stages: [],
+            deals: [],
+            stageStats: {} as Record<string, { totalCount: number; totalValue: number }>,
+            summary: { totalCount: 0, totalValue: 0 },
+        };
+    }
+}
+
+export async function getPipelineStageDeals(
+    stageId: string,
+    loadedDealIds: string[],
+    limit = DEFAULT_PIPELINE_STAGE_LIMIT,
+) {
+    try {
+        const safeLimit = normalizeStageLimit(limit);
+        const where = {
+            stageId,
+            ...(loadedDealIds.length > 0 ? { id: { notIn: loadedDealIds } } : {}),
+        };
+        const [deals, aggregate] = await Promise.all([
             prisma.deal.findMany({
-                include: {
-                    contact: true,
-                    stage: true,
-                    intelligence: true,
-                    dealTags: { include: { tag: true } },
-                },
-                orderBy: { createdAt: "desc" },
+                where,
+                include: PIPELINE_DEAL_INCLUDE,
+                orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+                take: safeLimit,
+            }),
+            prisma.deal.aggregate({
+                where: { stageId },
+                _count: { _all: true },
+                _sum: { value: true },
             }),
         ]);
 
-        // --- N+1 Optimization ---
-        // Extract all unique contact IDs from the deals
-        const contactIds = [...new Set(deals.map((d: any) => d.contactId).filter(Boolean))] as string[];
-
-        // Fetch all relevant conversations & their latest message in ONE single query
-        const conversations = await prisma.conversation.findMany({
-            where: {
-                contactId: { in: contactIds },
-            },
-            include: {
-                messages: {
-                    where: { direction: "inbound" },
-                    orderBy: { createdAt: "desc" },
-                    take: 1,
-                },
-            },
-        });
-
-        // Create a fast lookup map: contactId -> lastMessage
-        const lastMessageMap = new Map<string, string | null>();
-        for (const conv of conversations) {
-            if (conv.messages && conv.messages.length > 0) {
-                lastMessageMap.set(conv.contactId, conv.messages[0].content);
-            }
-        }
-
-        // Apply the map to the deals in memory
-        const dealsWithMessage = deals.map((deal: any) => {
-            const lastMessage = deal.contactId ? (lastMessageMap.get(deal.contactId) || null) : null;
-            return { ...deal, lastMessage };
-        });
-
-        return { stages, deals: dealsWithMessage };
+        return {
+            success: true,
+            deals: await attachLatestInboundMessages(deals),
+            totalCount: aggregate._count._all,
+            totalValue: Number(aggregate._sum.value || 0),
+        };
     } catch (error) {
-        console.error("Failed to fetch pipeline data:", error);
-        return { stages: [], deals: [] };
+        console.error("Failed to progressively fetch pipeline stage:", error);
+        return {
+            success: false,
+            deals: [],
+            totalCount: 0,
+            totalValue: 0,
+            error: "No se pudieron cargar mas leads de esta etapa.",
+        };
     }
 }
 
@@ -332,7 +428,7 @@ export async function addTagToDeal(dealId: string, tagId: string) {
         });
         revalidatePath("/dashboard/pipeline");
         return { success: true };
-    } catch (error) {
+    } catch {
         // Might be duplicate — ignore
         return { success: true };
     }
