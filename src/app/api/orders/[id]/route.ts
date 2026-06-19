@@ -121,7 +121,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-    _request: NextRequest,
+    request: NextRequest,
     { params }: { params: Promise<{ id: string }> },
 ) {
     try {
@@ -130,6 +130,11 @@ export async function DELETE(
         if (unauthorized) return unauthorized;
 
         const { id } = await params;
+        const body = await request.json().catch(() => ({}));
+        if (body?.confirmation !== "ELIMINAR") {
+            return NextResponse.json({ error: "Escribe ELIMINAR para confirmar el borrado." }, { status: 400 });
+        }
+
         await prisma.customerOrder.delete({ where: { id } });
         return NextResponse.json({ success: true });
     } catch (error) {

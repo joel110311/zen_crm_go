@@ -11,14 +11,19 @@ import {
     ChevronsUpDown,
     ClipboardList,
     CreditCard,
+    Download,
     DollarSign,
+    ImageIcon,
     Loader2,
     MessageSquare,
+    Pencil,
     Plus,
     ReceiptText,
     Search,
     Trash2,
     WalletCards,
+    ZoomIn,
+    ZoomOut,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -68,6 +73,8 @@ type OrderPaymentView = {
     paidAt?: string | null;
     method?: string | null;
     reference?: string | null;
+    receiptUrl?: string | null;
+    receiptFileName?: string | null;
 };
 
 export type OrderRecordView = {
@@ -95,6 +102,7 @@ export type OrderRecordView = {
 
 type OrderFormItem = { description: string; quantity: string; unitPrice: string };
 type OrderFormPayment = { label: string; amount: string; dueDate: string; status: string };
+type ReceiptPreview = { url: string; fileName?: string | null };
 type OrderFormState = {
     contactId: string;
     conversationId: string | null;
@@ -170,6 +178,25 @@ function toNumber(value: string | number) {
     return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
 }
 
+function isImageReceipt(fileName?: string | null, url?: string | null) {
+    const value = `${fileName || ""} ${url || ""}`.toLowerCase();
+    return /\.(png|jpe?g|webp|gif|bmp|avif)(\?|$|\s)/i.test(value);
+}
+
+async function uploadReceiptFile(file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await fetch("/api/upload", { method: "POST", body: formData });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.success || !result.url) {
+        throw new Error(result.error || "No se pudo subir el comprobante.");
+    }
+    return {
+        receiptUrl: String(result.url),
+        receiptFileName: String(result.fileName || file.name),
+    };
+}
+
 function isOverdue(payment: OrderPaymentView) {
     if (payment.status !== "pending" || !payment.dueDate) return false;
     const due = new Date(payment.dueDate);
@@ -190,6 +217,37 @@ function makeEmptyForm(contactId = "", conversationId: string | null = null): Or
         notes: "",
         items: [{ description: "Producto o servicio", quantity: "1", unitPrice: "0" }],
         payments: [{ label: "Anticipo", amount: "0", dueDate: "", status: "pending" }],
+    };
+}
+
+function numberInput(value: number) {
+    return Number.isInteger(value) ? String(value) : String(value || 0);
+}
+
+function makeFormFromOrder(order: OrderRecordView): OrderFormState {
+    return {
+        contactId: order.contactId,
+        conversationId: order.conversationId || null,
+        title: order.title || "Pedido",
+        status: order.status || "quoted",
+        eventDate: inputDate(order.eventDate),
+        deliveryDate: inputDate(order.deliveryDate),
+        notes: order.notes || "",
+        items: order.items.length > 0
+            ? order.items.map((item) => ({
+                description: item.description || "Producto o servicio",
+                quantity: numberInput(item.quantity),
+                unitPrice: numberInput(item.unitPrice),
+            }))
+            : [{ description: "Producto o servicio", quantity: "1", unitPrice: "0" }],
+        payments: order.payments.length > 0
+            ? order.payments.map((payment) => ({
+                label: payment.label || "Pago",
+                amount: numberInput(payment.amount),
+                dueDate: inputDate(payment.dueDate),
+                status: payment.status || "pending",
+            }))
+            : [{ label: "Anticipo", amount: "0", dueDate: "", status: "pending" }],
     };
 }
 
@@ -228,12 +286,19 @@ export function OrderManagerPanel({
     const [query, setQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
     const [newDialogOpen, setNewDialogOpen] = useState(false);
+    const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+    const [deleteOrder, setDeleteOrder] = useState<OrderRecordView | null>(null);
+    const [deleteConfirmation, setDeleteConfirmation] = useState("");
+    const [deleteError, setDeleteError] = useState<string | null>(null);
     const [contactComboboxOpen, setContactComboboxOpen] = useState(false);
     const [contactQuery, setContactQuery] = useState("");
     const [paymentDialogOrderId, setPaymentDialogOrderId] = useState<string | null>(null);
+    const [receiptPreview, setReceiptPreview] = useState<ReceiptPreview | null>(null);
+    const [uploadingReceiptId, setUploadingReceiptId] = useState<string | null>(null);
     const [form, setForm] = useState<OrderFormState>(() => makeEmptyForm(initialContactId || "", initialConversationId || null));
     const [isPending, startTransition] = useTransition();
     const [error, setError] = useState<string | null>(null);
+    const [copiedReminderOrderId, setCopiedReminderOrderId] = useState<string | null>(null);
 
     useEffect(() => {
         if (openNew) {
@@ -259,6 +324,8 @@ export function OrderManagerPanel({
 
     const selectedOrder = orders.find((order) => order.id === selectedOrderId) || filteredOrders[0] || null;
     const selectedPaymentOrder = orders.find((order) => order.id === paymentDialogOrderId) || null;
+    const editingOrder = editingOrderId ? orders.find((order) => order.id === editingOrderId) || null : null;
+    const isEditingOrder = Boolean(editingOrderId);
     const selectedContact = contacts.find((contact) => contact.id === form.contactId) || null;
     const contactSearchResults = useMemo(() => {
         const term = contactQuery.trim().toLowerCase();
@@ -292,12 +359,27 @@ export function OrderManagerPanel({
         setSelectedOrderId(nextOrder.id);
     };
 
-    const handleCreateOrder = () => {
+    const openCreateOrderDialog = () => {
+        setEditingOrderId(null);
+        setForm(makeEmptyForm(initialContactId || "", initialConversationId || null));
+        setError(null);
+        setNewDialogOpen(true);
+    };
+
+    const openEditOrderDialog = (order: OrderRecordView) => {
+        setEditingOrderId(order.id);
+        setForm(makeFormFromOrder(order));
+        setError(null);
+        setNewDialogOpen(true);
+    };
+
+    const handleSaveOrder = () => {
         setError(null);
         startTransition(async () => {
             try {
-                const response = await fetch("/api/orders", {
-                    method: "POST",
+                const isEditing = Boolean(editingOrderId);
+                const response = await fetch(isEditing ? `/api/orders/${editingOrderId}` : "/api/orders", {
+                    method: isEditing ? "PATCH" : "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         ...form,
@@ -309,16 +391,42 @@ export function OrderManagerPanel({
                             totalAmount: toNumber(item.quantity) * toNumber(item.unitPrice),
                             sortOrder: index,
                         })),
-                        payments: form.payments.map((payment) => ({ ...payment, amount: payment.amount || "0" })),
+                        ...(isEditing ? {} : { payments: form.payments.map((payment) => ({ ...payment, amount: payment.amount || "0" })) }),
                     }),
                 });
                 const result = await response.json().catch(() => ({}));
-                if (!response.ok || !result.order) throw new Error(result.error || "No se pudo crear el pedido.");
+                if (!response.ok || !result.order) throw new Error(result.error || (isEditing ? "No se pudo actualizar el pedido." : "No se pudo crear el pedido."));
                 updateOrderInList(result.order);
                 setNewDialogOpen(false);
+                setEditingOrderId(null);
                 setForm(makeEmptyForm(initialContactId || "", initialConversationId || null));
             } catch (createError) {
-                setError(createError instanceof Error ? createError.message : "No se pudo crear el pedido.");
+                setError(createError instanceof Error ? createError.message : "No se pudo guardar el pedido.");
+            }
+        });
+    };
+
+    const handleDeleteOrder = () => {
+        if (!deleteOrder || deleteConfirmation !== "ELIMINAR") return;
+        setDeleteError(null);
+        startTransition(async () => {
+            try {
+                const response = await fetch(`/api/orders/${deleteOrder.id}`, {
+                    method: "DELETE",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ confirmation: deleteConfirmation }),
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(result.error || "No se pudo eliminar el pedido.");
+
+                setOrders((current) => current.filter((order) => order.id !== deleteOrder.id));
+                if (selectedOrderId === deleteOrder.id) {
+                    setSelectedOrderId("");
+                }
+                setDeleteOrder(null);
+                setDeleteConfirmation("");
+            } catch (deleteErrorCaught) {
+                setDeleteError(deleteErrorCaught instanceof Error ? deleteErrorCaught.message : "No se pudo eliminar el pedido.");
             }
         });
     };
@@ -335,10 +443,32 @@ export function OrderManagerPanel({
         });
     };
 
+    const handleUploadPaymentReceipt = async (orderId: string, paymentId: string, file: File | null | undefined) => {
+        if (!file) return;
+        setUploadingReceiptId(paymentId);
+        try {
+            const receipt = await uploadReceiptFile(file);
+            const response = await fetch(`/api/orders/${orderId}/payments/${paymentId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(receipt),
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.order) throw new Error(result.error || "No se pudo guardar el comprobante.");
+            updateOrderInList(result.order);
+        } catch (uploadError) {
+            setError(uploadError instanceof Error ? uploadError.message : "No se pudo guardar el comprobante.");
+        } finally {
+            setUploadingReceiptId(null);
+        }
+    };
+
     const copyReminder = async (order: OrderRecordView) => {
         const text = buildReminder(order);
         try {
             await navigator.clipboard.writeText(text);
+            setCopiedReminderOrderId(order.id);
+            window.setTimeout(() => setCopiedReminderOrderId((current) => current === order.id ? null : current), 1800);
         } catch {
             window.prompt("Copia el recordatorio:", text);
         }
@@ -359,11 +489,7 @@ export function OrderManagerPanel({
                     </div>
                     <Button
                         className="h-11 rounded-xl px-4"
-                        onClick={() => {
-                            setForm(makeEmptyForm(initialContactId || "", initialConversationId || null));
-                            setError(null);
-                            setNewDialogOpen(true);
-                        }}
+                        onClick={openCreateOrderDialog}
                     >
                         <Plus className="h-4 w-4" />
                         Nuevo pedido
@@ -466,18 +592,38 @@ export function OrderManagerPanel({
                 <OrderDetail
                     order={selectedOrder}
                     isBusy={isPending}
+                    reminderCopied={selectedOrder ? copiedReminderOrderId === selectedOrder.id : false}
+                    uploadingReceiptId={uploadingReceiptId}
+                    onEdit={openEditOrderDialog}
+                    onDelete={(order) => {
+                        setDeleteOrder(order);
+                        setDeleteConfirmation("");
+                        setDeleteError(null);
+                    }}
                     onAddPayment={(orderId) => setPaymentDialogOrderId(orderId)}
                     onMarkPayment={handleMarkPayment}
+                    onUploadReceipt={handleUploadPaymentReceipt}
+                    onPreviewReceipt={setReceiptPreview}
                     onCopyReminder={copyReminder}
                 />
             </div>
 
-            <Dialog open={newDialogOpen} onOpenChange={setNewDialogOpen}>
+            <Dialog open={newDialogOpen} onOpenChange={(open) => {
+                setNewDialogOpen(open);
+                if (!open) {
+                    setEditingOrderId(null);
+                    setContactComboboxOpen(false);
+                    setContactQuery("");
+                    setError(null);
+                }
+            }}>
                 <DialogContent className="max-h-[94vh] w-[calc(100vw-2rem)] !max-w-5xl gap-0 overflow-hidden p-0">
                     <DialogHeader className="border-b px-5 py-4 pr-12">
-                        <DialogTitle>Nuevo pedido</DialogTitle>
+                        <DialogTitle>{isEditingOrder ? "Editar pedido" : "Nuevo pedido"}</DialogTitle>
                         <DialogDescription className="max-w-3xl leading-5">
-                            Captura conceptos, fechas y pagos programados. Luego podras registrar abonos desde el detalle.
+                            {isEditingOrder
+                                ? `Actualiza los datos del pedido${editingOrder ? ` ${editingOrder.orderNumber}` : ""}. Los abonos se conservan como historial.`
+                                : "Captura conceptos, fechas y pagos programados. Luego podras registrar abonos desde el detalle."}
                         </DialogDescription>
                     </DialogHeader>
                     <ScrollArea className="max-h-[calc(94vh-9rem)] overflow-x-hidden px-5 py-4">
@@ -490,6 +636,7 @@ export function OrderManagerPanel({
                                             type="button"
                                             variant="outline"
                                             role="combobox"
+                                            disabled={isEditingOrder}
                                             aria-expanded={contactComboboxOpen}
                                             className="h-11 w-full justify-between rounded-xl bg-background px-3 font-normal"
                                         >
@@ -536,7 +683,11 @@ export function OrderManagerPanel({
                                         </Command>
                                     </PopoverContent>
                                 </Popover>
-                                {selectedContact ? <p className="text-xs text-muted-foreground">Se vinculara a {contactName(selectedContact)}.</p> : null}
+                                {selectedContact ? (
+                                    <p className="text-xs text-muted-foreground">
+                                        {isEditingOrder ? "El cliente del pedido no se cambia desde edicion." : `Se vinculara a ${contactName(selectedContact)}.`}
+                                    </p>
+                                ) : null}
                             </div>
                             <Field label="Nombre del pedido" value={form.title} onChange={(value) => setForm((current) => ({ ...current, title: value }))} />
                             <div className="space-y-2">
@@ -573,30 +724,36 @@ export function OrderManagerPanel({
                             <div className="mt-4 flex justify-end text-lg font-bold">Total: {currency(total)}</div>
                         </FormSection>
 
-                        <FormSection title="Pagos programados" subtitle="Define anticipo, parcialidades o saldo por fecha.">
-                            <Button type="button" variant="outline" size="sm" onClick={() => setForm((current) => ({ ...current, payments: [...current.payments, { label: "Pago", amount: "0", dueDate: "", status: "pending" }] }))}>
-                                <Plus className="h-4 w-4" /> Pago
-                            </Button>
-                            <div className="mt-4 space-y-3">
-                                {form.payments.map((payment, index) => (
-                                    <div key={index} className="grid min-w-0 gap-2 rounded-xl border bg-card p-3 sm:grid-cols-[minmax(0,1fr)_8rem_10rem] lg:grid-cols-[minmax(0,1fr)_8rem_10rem_9rem_2.5rem]">
-                                        <Input value={payment.label} placeholder="Anticipo" onChange={(event) => updatePayment(index, "label", event.target.value, setForm)} />
-                                        <Input value={payment.amount} inputMode="decimal" placeholder="Monto" onChange={(event) => updatePayment(index, "amount", event.target.value, setForm)} />
-                                        <Input value={payment.dueDate} type="date" onChange={(event) => updatePayment(index, "dueDate", event.target.value, setForm)} />
-                                        <Select value={payment.status} onValueChange={(value) => updatePayment(index, "status", value, setForm)}>
-                                            <SelectTrigger className="min-w-0"><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="pending">Pendiente</SelectItem>
-                                                <SelectItem value="paid">Pagado</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                        <Button type="button" variant="ghost" size="icon" className="justify-self-end lg:justify-self-auto" disabled={form.payments.length === 1} onClick={() => setForm((current) => ({ ...current, payments: current.payments.filter((_, paymentIndex) => paymentIndex !== index) }))}>
-                                            <Trash2 className="h-4 w-4 text-muted-foreground" />
-                                        </Button>
-                                    </div>
-                                ))}
+                        {isEditingOrder ? (
+                            <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50/60 p-4 text-sm text-amber-900">
+                                Los pagos y abonos no se reemplazan desde edicion para conservar el historial contable. Puedes registrar abonos, reabrir pagos o marcarlos como pagados desde el detalle del pedido.
                             </div>
-                        </FormSection>
+                        ) : (
+                            <FormSection title="Pagos programados" subtitle="Define anticipo, parcialidades o saldo por fecha.">
+                                <Button type="button" variant="outline" size="sm" onClick={() => setForm((current) => ({ ...current, payments: [...current.payments, { label: "Pago", amount: "0", dueDate: "", status: "pending" }] }))}>
+                                    <Plus className="h-4 w-4" /> Pago
+                                </Button>
+                                <div className="mt-4 space-y-3">
+                                    {form.payments.map((payment, index) => (
+                                        <div key={index} className="grid min-w-0 gap-2 rounded-xl border bg-card p-3 sm:grid-cols-[minmax(0,1fr)_8rem_10rem] lg:grid-cols-[minmax(0,1fr)_8rem_10rem_9rem_2.5rem]">
+                                            <Input value={payment.label} placeholder="Anticipo" onChange={(event) => updatePayment(index, "label", event.target.value, setForm)} />
+                                            <Input value={payment.amount} inputMode="decimal" placeholder="Monto" onChange={(event) => updatePayment(index, "amount", event.target.value, setForm)} />
+                                            <Input value={payment.dueDate} type="date" onChange={(event) => updatePayment(index, "dueDate", event.target.value, setForm)} />
+                                            <Select value={payment.status} onValueChange={(value) => updatePayment(index, "status", value, setForm)}>
+                                                <SelectTrigger className="min-w-0"><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="pending">Pendiente</SelectItem>
+                                                    <SelectItem value="paid">Pagado</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            <Button type="button" variant="ghost" size="icon" className="justify-self-end lg:justify-self-auto" disabled={form.payments.length === 1} onClick={() => setForm((current) => ({ ...current, payments: current.payments.filter((_, paymentIndex) => paymentIndex !== index) }))}>
+                                                <Trash2 className="h-4 w-4 text-muted-foreground" />
+                                            </Button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </FormSection>
+                        )}
 
                         <div className="mt-5 space-y-2">
                             <Label>Notas internas</Label>
@@ -606,9 +763,42 @@ export function OrderManagerPanel({
                     </ScrollArea>
                     <DialogFooter className="border-t bg-background/95 px-5 py-4">
                         <Button type="button" variant="outline" onClick={() => setNewDialogOpen(false)}>Cancelar</Button>
-                        <Button type="button" onClick={handleCreateOrder} disabled={isPending || !form.contactId}>
-                            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                            Crear pedido
+                        <Button type="button" onClick={handleSaveOrder} disabled={isPending || !form.contactId}>
+                            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : isEditingOrder ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                            {isEditingOrder ? "Guardar cambios" : "Crear pedido"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={Boolean(deleteOrder)} onOpenChange={(open) => {
+                if (!open) {
+                    setDeleteOrder(null);
+                    setDeleteConfirmation("");
+                    setDeleteError(null);
+                }
+            }}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>Eliminar pedido</DialogTitle>
+                        <DialogDescription>
+                            Esta accion eliminara el pedido {deleteOrder?.orderNumber}. Para confirmar, escribe ELIMINAR en mayusculas.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <Input
+                            value={deleteConfirmation}
+                            onChange={(event) => setDeleteConfirmation(event.target.value)}
+                            placeholder="ELIMINAR"
+                            className="h-11 rounded-xl"
+                        />
+                        {deleteError ? <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{deleteError}</div> : null}
+                    </div>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setDeleteOrder(null)}>Cancelar</Button>
+                        <Button type="button" variant="destructive" onClick={handleDeleteOrder} disabled={isPending || deleteConfirmation !== "ELIMINAR"}>
+                            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                            Eliminar pedido
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -625,8 +815,11 @@ export function OrderManagerPanel({
                         updateOrderInList(order);
                         setPaymentDialogOrderId(null);
                     }}
+                    onPreviewReceipt={setReceiptPreview}
                 />
             ) : null}
+
+            <ReceiptPreviewDialog receipt={receiptPreview} onOpenChange={(open) => !open && setReceiptPreview(null)} />
         </div>
     );
 }
@@ -662,14 +855,26 @@ function PaymentBadge({ status, overdue }: { status: string; overdue?: boolean }
 function OrderDetail({
     order,
     isBusy,
+    reminderCopied,
+    uploadingReceiptId,
+    onEdit,
+    onDelete,
     onAddPayment,
     onMarkPayment,
+    onUploadReceipt,
+    onPreviewReceipt,
     onCopyReminder,
 }: {
     order: OrderRecordView | null;
     isBusy: boolean;
+    reminderCopied: boolean;
+    uploadingReceiptId: string | null;
+    onEdit: (order: OrderRecordView) => void;
+    onDelete: (order: OrderRecordView) => void;
     onAddPayment: (orderId: string) => void;
     onMarkPayment: (orderId: string, paymentId: string, status: "paid" | "pending") => void;
+    onUploadReceipt: (orderId: string, paymentId: string, file: File | null | undefined) => void;
+    onPreviewReceipt: (receipt: ReceiptPreview) => void;
     onCopyReminder: (order: OrderRecordView) => void;
 }) {
     if (!order) {
@@ -704,13 +909,19 @@ function OrderDetail({
                         <DollarSign className="h-4 w-4" /> Registrar abono
                     </Button>
                     <Button size="sm" variant="outline" className="rounded-xl" onClick={() => onCopyReminder(order)}>
-                        <ClipboardList className="h-4 w-4" /> Copiar recordatorio
+                        <ClipboardList className="h-4 w-4" /> {reminderCopied ? "Recordatorio copiado" : "Copiar recordatorio"}
+                    </Button>
+                    <Button size="sm" variant="outline" className="rounded-xl" onClick={() => onEdit(order)} disabled={isBusy}>
+                        <Pencil className="h-4 w-4" /> Editar
                     </Button>
                     <Link href={order.conversationId ? `/dashboard/inbox?conversationId=${encodeURIComponent(order.conversationId)}` : `/dashboard/inbox?contactId=${encodeURIComponent(order.contact.id)}`}>
                         <Button size="sm" variant="outline" className="rounded-xl">
                             <MessageSquare className="h-4 w-4" /> Chat
                         </Button>
                     </Link>
+                    <Button size="sm" variant="outline" className="rounded-xl border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => onDelete(order)} disabled={isBusy}>
+                        <Trash2 className="h-4 w-4" /> Eliminar
+                    </Button>
                 </div>
             </div>
 
@@ -743,25 +954,58 @@ function OrderDetail({
 
                     <section>
                         <h3 className="flex items-center gap-2 font-semibold"><CreditCard className="h-4 w-4 text-primary" /> Pagos y abonos</h3>
-                        <div className="mt-3 space-y-3">
+                        <div className="mt-3 overflow-hidden rounded-2xl border bg-background/70">
                             {order.payments.map((payment) => {
                                 const overdue = isOverdue(payment);
                                 return (
-                                    <div key={payment.id} className="rounded-xl border bg-background/70 p-3">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div>
-                                                <div className="font-semibold">{payment.label}</div>
-                                                <div className="text-xs text-muted-foreground">
-                                                    Vence: {shortDate(payment.dueDate)} {payment.paidAt ? `- Pagado: ${shortDate(payment.paidAt)}` : ""}
+                                    <div key={payment.id} className="border-b p-3 last:border-0">
+                                        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                                            <div className="min-w-0">
+                                                <div className="truncate font-semibold">{payment.label}</div>
+                                                <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                                                    <span>Vence: {shortDate(payment.dueDate)}</span>
+                                                    {payment.paidAt ? <span>Pagado: {shortDate(payment.paidAt)}</span> : null}
+                                                    {payment.reference ? <span>Ref: {payment.reference}</span> : null}
+                                                    {payment.method ? <span>{payment.method}</span> : null}
                                                 </div>
-                                                {payment.reference ? <div className="text-xs text-muted-foreground">Ref: {payment.reference}</div> : null}
                                             </div>
-                                            <div className="text-right">
+                                            <div className="flex items-center justify-between gap-3 sm:justify-end sm:text-right">
                                                 <div className="font-bold">{currency(payment.amount, order.currency)}</div>
                                                 <PaymentBadge status={payment.status} overdue={overdue} />
                                             </div>
                                         </div>
-                                        <div className="mt-3 flex justify-end gap-2">
+                                        <div className="mt-2 flex flex-wrap justify-end gap-2">
+                                            <input
+                                                id={`receipt-${payment.id}`}
+                                                type="file"
+                                                accept="image/*,application/pdf"
+                                                className="hidden"
+                                                onChange={(event) => {
+                                                    onUploadReceipt(order.id, payment.id, event.target.files?.[0]);
+                                                    event.currentTarget.value = "";
+                                                }}
+                                            />
+                                            {payment.receiptUrl ? (
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="h-8 rounded-lg"
+                                                    onClick={() => onPreviewReceipt({ url: payment.receiptUrl || "", fileName: payment.receiptFileName })}
+                                                >
+                                                    <ImageIcon className="h-4 w-4" />
+                                                    Ver comprobante
+                                                </Button>
+                                            ) : null}
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="h-8 rounded-lg"
+                                                onClick={() => document.getElementById(`receipt-${payment.id}`)?.click()}
+                                                disabled={isBusy || uploadingReceiptId === payment.id}
+                                            >
+                                                {uploadingReceiptId === payment.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
+                                                {payment.receiptUrl ? "Cambiar" : "Agregar comprobante"}
+                                            </Button>
                                             {payment.status === "paid" ? (
                                                 <Button size="sm" variant="outline" className="h-8 rounded-lg" onClick={() => onMarkPayment(order.id, payment.id, "pending")} disabled={isBusy}>
                                                     Reabrir
@@ -855,26 +1099,56 @@ function PaymentDialog({
     busy,
     onOpenChange,
     onSaved,
+    onPreviewReceipt,
 }: {
     order: OrderRecordView;
     open: boolean;
     busy: boolean;
     onOpenChange: (open: boolean) => void;
     onSaved: (order: OrderRecordView) => void;
+    onPreviewReceipt: (receipt: ReceiptPreview) => void;
 }) {
     const [amount, setAmount] = useState(() => order.balanceAmount > 0 ? String(order.balanceAmount) : "");
     const [method, setMethod] = useState("transferencia");
     const [paidAt, setPaidAt] = useState(inputDate(new Date().toISOString()));
     const [reference, setReference] = useState("");
     const [notes, setNotes] = useState("");
+    const [receiptUrl, setReceiptUrl] = useState("");
+    const [receiptFileName, setReceiptFileName] = useState("");
+    const [uploadingReceipt, setUploadingReceipt] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const attachReceipt = async (file: File | null | undefined) => {
+        if (!file) return;
+        setError(null);
+        setUploadingReceipt(true);
+        try {
+            const receipt = await uploadReceiptFile(file);
+            setReceiptUrl(receipt.receiptUrl);
+            setReceiptFileName(receipt.receiptFileName);
+        } catch (uploadError) {
+            setError(uploadError instanceof Error ? uploadError.message : "No se pudo subir el comprobante.");
+        } finally {
+            setUploadingReceipt(false);
+        }
+    };
 
     const save = async () => {
         setError(null);
         const response = await fetch(`/api/orders/${order.id}/payments`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ label: "Abono", amount, status: "paid", paidAt, method, reference, notes }),
+            body: JSON.stringify({
+                label: "Abono",
+                amount,
+                status: "paid",
+                paidAt,
+                method,
+                reference,
+                notes,
+                receiptUrl: receiptUrl || null,
+                receiptFileName: receiptFileName || null,
+            }),
         });
         const result = await response.json().catch(() => ({}));
         if (!response.ok || !result.order) {
@@ -914,15 +1188,134 @@ function PaymentDialog({
                         <Label>Notas</Label>
                         <Textarea value={notes} onChange={(event) => setNotes(event.target.value)} className="min-h-20 rounded-xl" />
                     </div>
+                    <div className="space-y-2 sm:col-span-2">
+                        <Label>Comprobante opcional</Label>
+                        <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-background/70 p-3">
+                            <input
+                                id={`new-payment-receipt-${order.id}`}
+                                type="file"
+                                accept="image/*,application/pdf"
+                                className="hidden"
+                                onChange={(event) => {
+                                    void attachReceipt(event.target.files?.[0]);
+                                    event.currentTarget.value = "";
+                                }}
+                            />
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="rounded-xl"
+                                onClick={() => document.getElementById(`new-payment-receipt-${order.id}`)?.click()}
+                                disabled={uploadingReceipt}
+                            >
+                                {uploadingReceipt ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
+                                {receiptUrl ? "Cambiar comprobante" : "Agregar comprobante"}
+                            </Button>
+                            {receiptUrl ? (
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    className="rounded-xl"
+                                    onClick={() => onPreviewReceipt({ url: receiptUrl, fileName: receiptFileName })}
+                                >
+                                    Ver comprobante
+                                </Button>
+                            ) : (
+                                <span className="text-sm text-muted-foreground">Puedes guardar el abono sin imagen.</span>
+                            )}
+                            {receiptFileName ? <span className="max-w-full truncate text-sm text-muted-foreground">{receiptFileName}</span> : null}
+                        </div>
+                    </div>
                 </div>
                 {error ? <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div> : null}
                 <DialogFooter>
                     <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-                    <Button type="button" onClick={save} disabled={busy || !toNumber(amount)}>
+                    <Button type="button" onClick={save} disabled={busy || uploadingReceipt || !toNumber(amount)}>
                         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <DollarSign className="h-4 w-4" />}
                         Guardar abono
                     </Button>
                 </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function ReceiptPreviewDialog({
+    receipt,
+    onOpenChange,
+}: {
+    receipt: ReceiptPreview | null;
+    onOpenChange: (open: boolean) => void;
+}) {
+    const [zoom, setZoom] = useState(1);
+    const isImage = isImageReceipt(receipt?.fileName, receipt?.url);
+
+    useEffect(() => {
+        if (receipt) setZoom(1);
+    }, [receipt]);
+
+    return (
+        <Dialog open={Boolean(receipt)} onOpenChange={onOpenChange}>
+            <DialogContent className="max-h-[92vh] w-[calc(100vw-2rem)] !max-w-4xl gap-0 overflow-hidden p-0">
+                <DialogHeader className="border-b px-5 py-4 pr-12">
+                    <DialogTitle>Comprobante de pago</DialogTitle>
+                    <DialogDescription className="truncate">
+                        {receipt?.fileName || "Vista previa del comprobante"}
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-5 py-3">
+                    <div className="text-sm text-muted-foreground">
+                        {isImage ? `Zoom ${Math.round(zoom * 100)}%` : "Archivo adjunto"}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {isImage ? (
+                            <>
+                                <Button type="button" variant="outline" size="sm" onClick={() => setZoom((current) => Math.max(0.5, current - 0.25))}>
+                                    <ZoomOut className="h-4 w-4" />
+                                    Alejar
+                                </Button>
+                                <Button type="button" variant="outline" size="sm" onClick={() => setZoom((current) => Math.min(3, current + 0.25))}>
+                                    <ZoomIn className="h-4 w-4" />
+                                    Acercar
+                                </Button>
+                            </>
+                        ) : null}
+                        {receipt?.url ? (
+                            <a href={receipt.url} target="_blank" rel="noreferrer">
+                                <Button type="button" variant="outline" size="sm">
+                                    <Download className="h-4 w-4" />
+                                    Abrir archivo
+                                </Button>
+                            </a>
+                        ) : null}
+                    </div>
+                </div>
+                <div className="max-h-[calc(92vh-9rem)] overflow-auto bg-slate-950/95 p-4">
+                    {receipt?.url && isImage ? (
+                        <div className="flex min-h-[28rem] items-center justify-center">
+                            <img
+                                src={receipt.url}
+                                alt={receipt.fileName || "Comprobante de pago"}
+                                className="h-auto rounded-xl bg-white shadow-2xl"
+                                style={{ width: `${zoom * 100}%`, maxWidth: "none" }}
+                            />
+                        </div>
+                    ) : receipt?.url ? (
+                        <div className="flex min-h-[24rem] items-center justify-center rounded-2xl border border-white/10 bg-white p-6 text-center">
+                            <div>
+                                <ReceiptText className="mx-auto h-12 w-12 text-muted-foreground" />
+                                <p className="mt-3 font-semibold">Este comprobante no es una imagen.</p>
+                                <p className="mt-1 text-sm text-muted-foreground">Abre el archivo para revisarlo o descargarlo.</p>
+                                <a href={receipt.url} target="_blank" rel="noreferrer" className="mt-4 inline-flex">
+                                    <Button type="button">
+                                        <Download className="h-4 w-4" />
+                                        Abrir archivo
+                                    </Button>
+                                </a>
+                            </div>
+                        </div>
+                    ) : null}
+                </div>
             </DialogContent>
         </Dialog>
     );

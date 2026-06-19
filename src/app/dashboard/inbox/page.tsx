@@ -1644,10 +1644,20 @@ export default function InboxPage() {
                 if (isFirstFetchRef.current && mode === "full") {
                     isFirstFetchRef.current = false;
 
+                    const conversationIdParam = searchParams.get("conversationId");
                     const contactIdParam = searchParams.get("contactId");
                     const phoneParam = searchParams.get("phone");
                     const sourceParam = searchParams.get("sourceType") || searchParams.get("source");
                     const requestedSource = sourceParam === "ycloud" || sourceParam === "wuzapi" ? sourceParam : null;
+
+                    if (conversationIdParam && transformed.length > 0) {
+                        const match = transformed.find((conversation) => conversation.id === conversationIdParam);
+                        if (match) {
+                            setSelectedChat(match);
+                            return;
+                        }
+                    }
+
                     if ((contactIdParam || phoneParam) && transformed.length > 0) {
                         const contactMatches = transformed.filter((conversation) => {
                             if (contactIdParam && conversation.contact?.id === contactIdParam) return true;
