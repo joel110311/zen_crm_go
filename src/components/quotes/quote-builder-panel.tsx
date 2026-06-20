@@ -34,6 +34,7 @@ type QuoteItem = {
     description: string;
     quantity: number;
     unitPrice: number;
+    kind?: "charge" | "deduction";
 };
 
 type OptionalFlags = {
@@ -172,6 +173,7 @@ const DEFAULT_ITEMS: QuoteItem[] = [
         description: "Descripcion breve del alcance o beneficio.",
         quantity: 1,
         unitPrice: 0,
+        kind: "charge",
     },
 ];
 
@@ -205,6 +207,19 @@ function normalizeVariableKey(key: string) {
 
 function safeNumber(value: number) {
     return Number.isFinite(value) ? value : 0;
+}
+
+function isDeductionItem(item: QuoteItem) {
+    return item.kind === "deduction";
+}
+
+function getQuoteItemAmount(item: QuoteItem) {
+    return Math.max(0, safeNumber(item.quantity)) * Math.max(0, safeNumber(item.unitPrice));
+}
+
+function getSignedQuoteItemAmount(item: QuoteItem) {
+    const amount = getQuoteItemAmount(item);
+    return isDeductionItem(item) ? -amount : amount;
 }
 
 function formatClientPhoneForQuote(value: string | null | undefined) {
@@ -265,11 +280,15 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
 
     const template = QUOTE_TEMPLATES.find((entry) => entry.id === selectedTemplate) || QUOTE_TEMPLATES[0];
     const subtotal = useMemo(
-        () => items.reduce((sum, item) => sum + Math.max(0, safeNumber(item.quantity)) * Math.max(0, safeNumber(item.unitPrice)), 0),
+        () => items.reduce((sum, item) => isDeductionItem(item) ? sum : sum + getQuoteItemAmount(item), 0),
+        [items],
+    );
+    const deductionTotal = useMemo(
+        () => items.reduce((sum, item) => isDeductionItem(item) ? sum + getQuoteItemAmount(item) : sum, 0),
         [items],
     );
     const ivaAmount = optionalFlags.iva ? subtotal * Math.max(0, ivaPercent) / 100 : 0;
-    const total = subtotal + ivaAmount;
+    const total = Math.max(0, subtotal + ivaAmount - deductionTotal);
 
     const renderedVariables = useMemo(() => {
         const quantityValue = variableValues.cantidad || String(items[0]?.quantity || "");
@@ -321,6 +340,21 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                 description: "Descripcion breve.",
                 quantity: 1,
                 unitPrice: 0,
+                kind: "charge",
+            },
+        ]);
+    };
+
+    const addDeductionItem = () => {
+        setItems((current) => [
+            ...current,
+            {
+                id: `deduction-${Date.now()}`,
+                concept: "",
+                description: "",
+                quantity: 1,
+                unitPrice: 0,
+                kind: "deduction",
             },
         ]);
     };
@@ -357,11 +391,13 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
             ...items.map((item) => {
                 const quantity = safeNumber(item.quantity);
                 const unitPrice = safeNumber(item.unitPrice);
-                return `- ${renderText(item.concept)}: ${quantity} x ${formatCurrency(unitPrice)} = ${formatCurrency(quantity * unitPrice)}`;
+                const signedUnitPrice = isDeductionItem(item) ? -unitPrice : unitPrice;
+                return `- ${renderText(item.concept) || "Concepto"}: ${quantity} x ${formatCurrency(signedUnitPrice)} = ${formatCurrency(getSignedQuoteItemAmount(item))}`;
             }),
             "",
             `Subtotal: ${formatCurrency(subtotal)}`,
             optionalFlags.iva ? `IVA (${ivaPercent}%): ${formatCurrency(ivaAmount)}` : null,
+            deductionTotal > 0 ? `Anticipos y descuentos: ${formatCurrency(-deductionTotal)}` : null,
             `*Total: ${formatCurrency(total)}*`,
             `Vigencia: ${renderText(validUntil)}`,
             optionalFlags.notes && renderText(notes) ? `Notas: ${renderText(notes)}` : null,
@@ -794,24 +830,43 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                     <h3 className="font-semibold">Conceptos</h3>
                                     <p className="text-sm text-muted-foreground">Agrega productos o servicios a cotizar.</p>
                                 </div>
-                                <Button variant="outline" size="sm" className="rounded-xl" onClick={addItem}>
-                                    <Plus className="h-4 w-4" />
-                                    Concepto
-                                </Button>
+                                <div className="flex flex-wrap justify-end gap-2">
+                                    <Button variant="outline" size="sm" className="rounded-xl" onClick={addItem}>
+                                        <Plus className="h-4 w-4" />
+                                        Concepto
+                                    </Button>
+                                    <Button variant="outline" size="sm" className="rounded-xl" onClick={addDeductionItem}>
+                                        <Plus className="h-4 w-4" />
+                                        Anticipo / descuento
+                                    </Button>
+                                </div>
                             </div>
                             <div className="space-y-2">
                                 {items.map((item) => (
-                                    <div key={item.id} className="grid gap-2 rounded-2xl border bg-card p-3 md:grid-cols-[1fr_6rem_9rem_2.5rem]">
+                                    <div
+                                        key={item.id}
+                                        className={cn(
+                                            "grid gap-2 rounded-2xl border bg-card p-3 md:grid-cols-[minmax(16rem,1fr)_6rem_9rem_2.5rem]",
+                                            isDeductionItem(item) && "border-amber-300/70 bg-amber-50/40",
+                                        )}
+                                    >
                                         <div className="space-y-2">
-                                            <Input
-                                                value={item.concept}
-                                                onChange={(event) => updateItem(item.id, { concept: event.target.value })}
-                                                placeholder="Concepto"
-                                            />
+                                            <div className="flex items-center gap-2">
+                                                <Input
+                                                    value={item.concept}
+                                                    onChange={(event) => updateItem(item.id, { concept: event.target.value })}
+                                                    placeholder={isDeductionItem(item) ? "Anticipo, apartado, liquidacion..." : "Concepto"}
+                                                />
+                                                {isDeductionItem(item) ? (
+                                                    <Badge variant="outline" className="shrink-0 border-amber-300 bg-amber-100 text-amber-800">
+                                                        Resta
+                                                    </Badge>
+                                                ) : null}
+                                            </div>
                                             <Input
                                                 value={item.description}
                                                 onChange={(event) => updateItem(item.id, { description: event.target.value })}
-                                                placeholder="Descripcion breve"
+                                                placeholder={isDeductionItem(item) ? "Detalle opcional" : "Descripcion breve"}
                                             />
                                         </div>
                                         <Input
@@ -992,7 +1047,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                         </section>
 
                                         <section className="mt-4">
-                                            <div className="grid grid-cols-[1fr_4.5rem_8rem_8rem] border-b border-slate-200 pb-2 text-[0.7rem] font-black uppercase tracking-[0.08em] text-slate-400">
+                                            <div className="grid grid-cols-[minmax(0,1fr)_3.75rem_6.5rem_6.5rem] border-b border-slate-200 pb-2 text-[0.7rem] font-black uppercase tracking-[0.08em] text-slate-400">
                                                 <div>Descripcion</div>
                                                 <div className="text-right">Cant.</div>
                                                 <div className="text-right">Precio unitario</div>
@@ -1002,7 +1057,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                 const quantity = safeNumber(item.quantity);
                                                 const unitPrice = safeNumber(item.unitPrice);
                                                 return (
-                                                    <div key={item.id} className="grid grid-cols-[1fr_4.5rem_8rem_8rem] border-b border-slate-100 py-3 text-sm">
+                                                    <div key={item.id} className="grid grid-cols-[minmax(0,1fr)_3.75rem_6.5rem_6.5rem] border-b border-slate-100 py-3 text-sm">
                                                         <div className="pr-4">
                                                             <p className="font-semibold leading-tight text-slate-900">{renderText(item.concept) || "Concepto"}</p>
                                                             {renderText(item.description) ? (
@@ -1010,8 +1065,12 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                             ) : null}
                                                         </div>
                                                         <div className="text-right font-semibold">{quantity}</div>
-                                                        <div className="text-right">{formatCurrency(unitPrice)}</div>
-                                                        <div className="text-right font-black">{formatCurrency(quantity * unitPrice)}</div>
+                                                        <div className={cn("text-right", isDeductionItem(item) && "text-amber-700")}>
+                                                            {formatCurrency(isDeductionItem(item) ? -unitPrice : unitPrice)}
+                                                        </div>
+                                                        <div className={cn("text-right font-black", isDeductionItem(item) && "text-amber-700")}>
+                                                            {formatCurrency(getSignedQuoteItemAmount(item))}
+                                                        </div>
                                                     </div>
                                                 );
                                             })}
@@ -1026,6 +1085,12 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                 <div className="flex justify-between text-slate-600">
                                                     <span>IVA {ivaPercent}%</span>
                                                     <span>{formatCurrency(ivaAmount)}</span>
+                                                </div>
+                                            ) : null}
+                                            {deductionTotal > 0 ? (
+                                                <div className="flex justify-between text-amber-700">
+                                                    <span>Anticipos y descuentos</span>
+                                                    <span>{formatCurrency(-deductionTotal)}</span>
                                                 </div>
                                             ) : null}
                                             <div className="h-px bg-slate-900" />
@@ -1138,12 +1203,12 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                         </section>
 
                                         <section className="overflow-hidden border">
-                                            <div className="grid grid-cols-[3rem_1fr_5rem_7rem_7rem] text-xs font-black uppercase text-white" style={{ backgroundColor: template.dark }}>
-                                                <div className="px-4 py-3" style={{ backgroundColor: template.accent }}>No.</div>
-                                                <div className="px-4 py-3" style={{ backgroundColor: template.accent }}>Descripcion</div>
-                                                <div className="px-3 py-3 text-right">Unitario</div>
-                                                <div className="px-3 py-3 text-right">Cant.</div>
-                                                <div className="px-3 py-3 text-right">Total</div>
+                                            <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_5.25rem_3.5rem_5.75rem] text-[0.7rem] font-black uppercase text-white" style={{ backgroundColor: template.dark }}>
+                                                <div className="px-3 py-3" style={{ backgroundColor: template.accent }}>No.</div>
+                                                <div className="px-2 py-3" style={{ backgroundColor: template.accent }}>Descripcion</div>
+                                                <div className="px-2 py-3 text-right">Unitario</div>
+                                                <div className="px-2 py-3 text-right">Cant.</div>
+                                                <div className="px-2 py-3 text-right">Total</div>
                                             </div>
                                             {items.map((item, index) => {
                                                 const quantity = safeNumber(item.quantity);
@@ -1151,17 +1216,21 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                 return (
                                                     <div
                                                         key={item.id}
-                                                        className="grid grid-cols-[3rem_1fr_5rem_7rem_7rem] border-b text-sm last:border-b-0"
+                                                        className="grid grid-cols-[2.5rem_minmax(0,1fr)_5.25rem_3.5rem_5.75rem] border-b text-sm last:border-b-0"
                                                         style={{ backgroundColor: "#ffffff" }}
                                                     >
-                                                        <div className="px-4 py-4 text-xs font-semibold text-slate-700">{String(index + 1).padStart(2, "0")}</div>
-                                                        <div className="px-4 py-3">
+                                                        <div className="px-3 py-4 text-xs font-semibold text-slate-700">{String(index + 1).padStart(2, "0")}</div>
+                                                        <div className="px-2 py-3">
                                                             <p className="font-bold">{renderText(item.concept) || "Concepto"}</p>
                                                             <p className="mt-1 text-[10px] leading-4 text-slate-500">{renderText(item.description)}</p>
                                                         </div>
-                                                        <div className="px-3 py-4 text-right">{formatCurrency(unitPrice)}</div>
-                                                        <div className="px-3 py-4 text-right font-semibold">{quantity}</div>
-                                                        <div className="px-3 py-4 text-right font-semibold">{formatCurrency(quantity * unitPrice)}</div>
+                                                        <div className={cn("px-2 py-4 text-right", isDeductionItem(item) && "text-amber-700")}>
+                                                            {formatCurrency(isDeductionItem(item) ? -unitPrice : unitPrice)}
+                                                        </div>
+                                                        <div className="px-2 py-4 text-right font-semibold">{quantity}</div>
+                                                        <div className={cn("px-2 py-4 text-right font-semibold", isDeductionItem(item) && "text-amber-700")}>
+                                                            {formatCurrency(getSignedQuoteItemAmount(item))}
+                                                        </div>
                                                     </div>
                                                 );
                                             })}
@@ -1176,6 +1245,12 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                 <div className="flex justify-between">
                                                     <span>IVA {ivaPercent}%</span>
                                                     <span>{formatCurrency(ivaAmount)}</span>
+                                                </div>
+                                            ) : null}
+                                            {deductionTotal > 0 ? (
+                                                <div className="flex justify-between text-amber-700">
+                                                    <span>Anticipos y descuentos</span>
+                                                    <span>{formatCurrency(-deductionTotal)}</span>
                                                 </div>
                                             ) : null}
                                             <div className="mt-2 flex justify-between px-4 py-3 text-base font-black text-white" style={{ backgroundColor: template.accent }}>

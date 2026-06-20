@@ -102,6 +102,7 @@ export type OrderRecordView = {
 type OrderFormItem = { description: string; quantity: string; unitPrice: string };
 type OrderFormPayment = { label: string; amount: string; dueDate: string; status: string };
 type ReceiptPreview = { url: string; fileName?: string | null };
+type PaymentDialogIntent = "direct" | "status" | "edit";
 type OrderFormState = {
     contactId: string;
     conversationId: string | null;
@@ -288,6 +289,10 @@ export function OrderManagerPanel({
     const [contactComboboxOpen, setContactComboboxOpen] = useState(false);
     const [contactQuery, setContactQuery] = useState("");
     const [paymentDialogOrderId, setPaymentDialogOrderId] = useState<string | null>(null);
+    const [paymentDialogIntent, setPaymentDialogIntent] = useState<PaymentDialogIntent>("direct");
+    const [statusDialogOrderId, setStatusDialogOrderId] = useState<string | null>(null);
+    const [statusDialogValue, setStatusDialogValue] = useState("quoted");
+    const [statusDialogError, setStatusDialogError] = useState<string | null>(null);
     const [receiptPreview, setReceiptPreview] = useState<ReceiptPreview | null>(null);
     const [uploadingReceiptId, setUploadingReceiptId] = useState<string | null>(null);
     const [form, setForm] = useState<OrderFormState>(() => makeEmptyForm(initialContactId || "", initialConversationId || null));
@@ -318,6 +323,7 @@ export function OrderManagerPanel({
 
     const selectedOrder = orders.find((order) => order.id === selectedOrderId) || filteredOrders[0] || null;
     const selectedPaymentOrder = orders.find((order) => order.id === paymentDialogOrderId) || null;
+    const selectedStatusOrder = orders.find((order) => order.id === statusDialogOrderId) || null;
     const editingOrder = editingOrderId ? orders.find((order) => order.id === editingOrderId) || null : null;
     const isEditingOrder = Boolean(editingOrderId);
     const selectedContact = contacts.find((contact) => contact.id === form.contactId) || null;
@@ -367,8 +373,52 @@ export function OrderManagerPanel({
         setNewDialogOpen(true);
     };
 
+    const openPaymentDialog = (orderId: string, intent: PaymentDialogIntent = "direct") => {
+        setPaymentDialogIntent(intent);
+        setPaymentDialogOrderId(orderId);
+    };
+
+    const openStatusDialog = (order: OrderRecordView) => {
+        setStatusDialogOrderId(order.id);
+        setStatusDialogValue(order.status);
+        setStatusDialogError(null);
+    };
+
+    const handleStatusDialogValueChange = (value: string) => {
+        if (!selectedStatusOrder) return;
+        if (value === "paid" && selectedStatusOrder.balanceAmount > 0) {
+            setStatusDialogOrderId(null);
+            openPaymentDialog(selectedStatusOrder.id, "status");
+            return;
+        }
+        setStatusDialogValue(value);
+    };
+
+    const handleSaveStatus = () => {
+        if (!selectedStatusOrder) return;
+        setStatusDialogError(null);
+        startTransition(async () => {
+            const response = await fetch(`/api/orders/${selectedStatusOrder.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: statusDialogValue }),
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.order) {
+                setStatusDialogError(result.error || "No se pudo cambiar el estado del pedido.");
+                return;
+            }
+            updateOrderInList(result.order);
+            setStatusDialogOrderId(null);
+        });
+    };
+
     const handleSaveOrder = () => {
         setError(null);
+        if (editingOrder && form.status === "paid" && editingOrder.balanceAmount > 0) {
+            openPaymentDialog(editingOrder.id, "edit");
+            return;
+        }
         startTransition(async () => {
             try {
                 const isEditing = Boolean(editingOrderId);
@@ -579,12 +629,13 @@ export function OrderManagerPanel({
                     isBusy={isPending}
                     uploadingReceiptId={uploadingReceiptId}
                     onEdit={openEditOrderDialog}
+                    onChangeStatus={openStatusDialog}
                     onDelete={(order) => {
                         setDeleteOrder(order);
                         setDeleteConfirmation("");
                         setDeleteError(null);
                     }}
-                    onAddPayment={(orderId) => setPaymentDialogOrderId(orderId)}
+                    onAddPayment={(orderId) => openPaymentDialog(orderId)}
                     onMarkPayment={handleMarkPayment}
                     onUploadReceipt={handleUploadPaymentReceipt}
                     onPreviewReceipt={setReceiptPreview}
@@ -675,7 +726,16 @@ export function OrderManagerPanel({
                             <Field label="Nombre del pedido" value={form.title} onChange={(value) => setForm((current) => ({ ...current, title: value }))} />
                             <div className="space-y-2">
                                 <Label>Estado</Label>
-                                <Select value={form.status} onValueChange={(value) => setForm((current) => ({ ...current, status: value }))}>
+                                <Select
+                                    value={form.status}
+                                    onValueChange={(value) => {
+                                        if (value === "paid" && editingOrder && editingOrder.balanceAmount > 0) {
+                                            openPaymentDialog(editingOrder.id, "edit");
+                                            return;
+                                        }
+                                        setForm((current) => ({ ...current, status: value }));
+                                    }}
+                                >
                                     <SelectTrigger className="h-11 min-w-0 rounded-xl"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         {Object.entries(STATUS_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
@@ -787,16 +847,71 @@ export function OrderManagerPanel({
                 </DialogContent>
             </Dialog>
 
+            <Dialog open={Boolean(selectedStatusOrder)} onOpenChange={(open) => {
+                if (!open) {
+                    setStatusDialogOrderId(null);
+                    setStatusDialogError(null);
+                }
+            }}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Cambiar estado</DialogTitle>
+                        <DialogDescription>
+                            {selectedStatusOrder
+                                ? `${selectedStatusOrder.orderNumber} - ${selectedStatusOrder.title}`
+                                : "Selecciona el nuevo estado del pedido."}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <Label>Estado del pedido</Label>
+                        <Select value={statusDialogValue} onValueChange={handleStatusDialogValueChange}>
+                            <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        {selectedStatusOrder?.balanceAmount ? (
+                            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                                Para elegir Pagado primero se registrara el saldo pendiente de {currency(selectedStatusOrder.balanceAmount, selectedStatusOrder.currency)}.
+                            </p>
+                        ) : null}
+                        {statusDialogError ? (
+                            <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                                {statusDialogError}
+                            </div>
+                        ) : null}
+                    </div>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setStatusDialogOrderId(null)}>Cancelar</Button>
+                        <Button type="button" onClick={handleSaveStatus} disabled={isPending || !selectedStatusOrder || statusDialogValue === selectedStatusOrder.status}>
+                            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <StatusFlowIcon />}
+                            Guardar estado
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {selectedPaymentOrder ? (
                 <PaymentDialog
-                    key={selectedPaymentOrder.id}
+                    key={`${selectedPaymentOrder.id}-${selectedPaymentOrder.balanceAmount}-${paymentDialogIntent}`}
                     order={selectedPaymentOrder}
                     open
                     busy={isPending}
-                    onOpenChange={(open) => !open && setPaymentDialogOrderId(null)}
+                    onOpenChange={(open) => {
+                        if (!open) {
+                            setPaymentDialogOrderId(null);
+                            setPaymentDialogIntent("direct");
+                        }
+                    }}
                     onSaved={(order) => {
                         updateOrderInList(order);
+                        if (paymentDialogIntent === "edit" && order.balanceAmount <= 0) {
+                            setForm((current) => ({ ...current, status: "paid" }));
+                        }
                         setPaymentDialogOrderId(null);
+                        setPaymentDialogIntent("direct");
                     }}
                     onPreviewReceipt={setReceiptPreview}
                 />
@@ -837,11 +952,23 @@ function PaymentBadge({ status, overdue }: { status: string; overdue?: boolean }
     return <Badge variant="outline" className={cn("border px-2.5 py-1", className)}>{label}</Badge>;
 }
 
+function StatusFlowIcon() {
+    return (
+        <span className="relative inline-flex h-4 w-4 shrink-0 items-center justify-center" aria-hidden="true">
+            <span className="absolute left-0 top-0.5 h-1.5 w-1.5 rounded-full border border-current" />
+            <span className="absolute right-0 top-[0.3125rem] h-px w-2 bg-current" />
+            <span className="absolute bottom-0.5 right-0 h-1.5 w-1.5 rounded-full bg-current" />
+            <span className="absolute bottom-[0.3125rem] left-0 h-px w-2 bg-current" />
+        </span>
+    );
+}
+
 function OrderDetail({
     order,
     isBusy,
     uploadingReceiptId,
     onEdit,
+    onChangeStatus,
     onDelete,
     onAddPayment,
     onMarkPayment,
@@ -852,6 +979,7 @@ function OrderDetail({
     isBusy: boolean;
     uploadingReceiptId: string | null;
     onEdit: (order: OrderRecordView) => void;
+    onChangeStatus: (order: OrderRecordView) => void;
     onDelete: (order: OrderRecordView) => void;
     onAddPayment: (orderId: string) => void;
     onMarkPayment: (orderId: string, paymentId: string, status: "paid" | "pending") => void;
@@ -878,7 +1006,14 @@ function OrderDetail({
                         <h2 className="mt-0.5 truncate text-lg font-bold tracking-tight">{order.title}</h2>
                         <p className="truncate text-sm text-muted-foreground">{contactName(order.contact)}</p>
                     </div>
-                    <StatusBadge status={order.status} />
+                    <div className="flex shrink-0 flex-col items-end gap-1.5">
+                        <StatusBadge status={order.status} />
+                        <Link href={order.conversationId ? `/dashboard/inbox?conversationId=${encodeURIComponent(order.conversationId)}` : `/dashboard/inbox?contactId=${encodeURIComponent(order.contact.id)}`}>
+                            <Button size="sm" variant="ghost" className="h-7 rounded-lg px-2 text-xs">
+                                <MessageSquare className="h-3.5 w-3.5" /> Chat
+                            </Button>
+                        </Link>
+                    </div>
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
                     <MiniMoney label="Total" value={currency(order.totalAmount, order.currency)} />
@@ -892,11 +1027,9 @@ function OrderDetail({
                     <Button size="sm" variant="outline" className="h-9 rounded-xl" onClick={() => onEdit(order)} disabled={isBusy}>
                         <Pencil className="h-4 w-4" /> Editar
                     </Button>
-                    <Link href={order.conversationId ? `/dashboard/inbox?conversationId=${encodeURIComponent(order.conversationId)}` : `/dashboard/inbox?contactId=${encodeURIComponent(order.contact.id)}`}>
-                        <Button size="sm" variant="outline" className="h-9 w-full rounded-xl">
-                            <MessageSquare className="h-4 w-4" /> Chat
-                        </Button>
-                    </Link>
+                    <Button size="sm" variant="outline" className="h-9 rounded-xl" onClick={() => onChangeStatus(order)} disabled={isBusy}>
+                        <StatusFlowIcon /> Estado
+                    </Button>
                     <Button size="sm" variant="outline" className="h-9 rounded-xl border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => onDelete(order)} disabled={isBusy}>
                         <Trash2 className="h-4 w-4" /> Eliminar
                     </Button>

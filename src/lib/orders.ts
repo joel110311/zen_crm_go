@@ -344,6 +344,10 @@ export function normalizeOrderPayload(body: OrderPayload) {
     const rollup = calculateOrderRollup(totalAmount, payments);
     const status = toCleanString(body.status, "quoted");
 
+    if (status === "paid" && toMoneyNumber(rollup.balanceAmount) > 0) {
+        throw new Error("Registra el saldo pendiente como abono antes de marcar el pedido como Pagado.");
+    }
+
     return {
         contactId,
         conversationId: toOptionalString(body.conversationId),
@@ -371,12 +375,13 @@ export async function refreshOrderRollup(orderId: string) {
 
     const rollup = calculateOrderRollup(order.totalAmount, order.payments);
     const balance = toMoneyNumber(rollup.balanceAmount);
+    const paid = decimalToNumber(rollup.paidAmount);
     const nextStatus = order.status === "cancelled" || order.status === "delivered"
         ? order.status
         : balance <= 0
             ? "paid"
-            : decimalToNumber(rollup.paidAmount) > 0
-                ? "pending_balance"
+            : order.status === "paid"
+                ? paid > 0 ? "pending_balance" : "quoted"
                 : order.status;
 
     return prisma.customerOrder.update({

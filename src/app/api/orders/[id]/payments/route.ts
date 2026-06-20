@@ -1,7 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { refreshOrderRollup, serializeOrder, toDateOrNull, toMoneyNumber } from "@/lib/orders";
+import { calculateOrderRollup, refreshOrderRollup, serializeOrder, toDateOrNull, toMoneyNumber } from "@/lib/orders";
 
 function getSessionUserId(session: unknown) {
     return (session as { user?: { id?: string } } | null)?.user?.id || null;
@@ -34,6 +34,23 @@ export async function POST(
         const amount = toMoneyNumber(body.amount);
         if (amount <= 0) {
             return NextResponse.json({ error: "El abono debe ser mayor a cero" }, { status: 400 });
+        }
+
+        const existingOrder = await prisma.customerOrder.findUnique({
+            where: { id },
+            select: { totalAmount: true, payments: { select: { amount: true, status: true, dueDate: true } } },
+        });
+        if (!existingOrder) {
+            return NextResponse.json({ error: "Pedido no encontrado" }, { status: 404 });
+        }
+
+        const currentRollup = calculateOrderRollup(existingOrder.totalAmount, existingOrder.payments);
+        const currentBalance = toMoneyNumber(currentRollup.balanceAmount);
+        if (body.status !== "pending" && amount > currentBalance) {
+            return NextResponse.json(
+                { error: `El abono no puede superar el saldo pendiente de ${currentBalance.toFixed(2)}.` },
+                { status: 400 },
+            );
         }
 
         const status = body.status === "pending" ? "pending" : "paid";

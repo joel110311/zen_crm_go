@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import {
     CUSTOMER_ORDER_INCLUDE,
     ORDER_STATUSES,
+    calculateOrderRollup,
     getCustomerOrder,
     normalizeOrderItems,
     refreshOrderRollup,
@@ -87,6 +88,16 @@ export async function PATCH(
             nextData.totalAmount = totalAmount.toFixed(2);
         } else if (body.totalAmount !== undefined) {
             nextData.totalAmount = toMoneyNumber(body.totalAmount).toFixed(2);
+        }
+
+        if (body.status === "paid") {
+            const rollup = calculateOrderRollup(nextData.totalAmount ?? existing.totalAmount, existing.payments);
+            if (toMoneyNumber(rollup.balanceAmount) > 0) {
+                return NextResponse.json(
+                    { error: "Registra el saldo pendiente como abono antes de marcar el pedido como Pagado." },
+                    { status: 409 },
+                );
+            }
         }
 
         await prisma.$transaction(async (tx) => {
