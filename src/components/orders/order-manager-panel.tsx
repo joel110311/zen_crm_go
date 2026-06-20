@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
     AlertCircle,
     CalendarClock,
@@ -298,6 +298,7 @@ export function OrderManagerPanel({
     const [form, setForm] = useState<OrderFormState>(() => makeEmptyForm(initialContactId || "", initialConversationId || null));
     const [isPending, startTransition] = useTransition();
     const [error, setError] = useState<string | null>(null);
+    const detailSectionRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (openNew) {
@@ -357,6 +358,15 @@ export function OrderManagerPanel({
             return next.sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime());
         });
         setSelectedOrderId(nextOrder.id);
+    };
+
+    const selectOrder = (orderId: string, revealDetail = false) => {
+        setSelectedOrderId(orderId);
+        if (revealDetail) {
+            window.requestAnimationFrame(() => {
+                detailSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+            });
+        }
     };
 
     const openCreateOrderDialog = () => {
@@ -508,11 +518,11 @@ export function OrderManagerPanel({
     };
 
     return (
-        <div className="mx-auto flex h-full w-full max-w-none flex-col gap-3">
-            <div className="rounded-2xl border bg-card px-4 py-2.5 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)]">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="mx-auto flex h-auto w-full min-w-0 max-w-none flex-col gap-3 overflow-x-hidden xl:h-full">
+            <div className="rounded-2xl border bg-card px-3 py-3 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)] sm:px-4 sm:py-2.5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                        <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
+                        <h1 className="flex items-center gap-2 text-lg font-semibold tracking-tight sm:text-xl">
                             <ReceiptText className="h-5 w-5 text-primary" />
                             Pedidos y cobranza
                         </h1>
@@ -521,7 +531,7 @@ export function OrderManagerPanel({
                         </p>
                     </div>
                     <Button
-                        className="h-9 rounded-xl px-4"
+                        className="h-10 w-full rounded-xl px-4 sm:h-9 sm:w-auto"
                         onClick={openCreateOrderDialog}
                     >
                         <Plus className="h-4 w-4" />
@@ -530,17 +540,17 @@ export function OrderManagerPanel({
                 </div>
             </div>
 
-            <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_26rem]">
-                <div className="flex min-h-0 flex-col gap-3">
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid min-h-0 min-w-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_26rem] xl:gap-4">
+                <div className="flex min-h-0 min-w-0 flex-col gap-3">
+                    <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
                         <StatCard icon={ReceiptText} label="Pedidos" value={String(stats.total)} tone="slate" />
                         <StatCard icon={WalletCards} label="Saldo por cobrar" value={currency(stats.pending)} tone="amber" />
                         <StatCard icon={AlertCircle} label="Pagos vencidos" value={String(stats.overdue)} tone="rose" />
                         <StatCard icon={CheckCircle2} label="Liquidados" value={String(stats.paid)} tone="emerald" />
                     </div>
 
-                    <div className="min-h-0 flex-1 rounded-2xl border bg-card shadow-sm">
-                        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-2xl border bg-card shadow-sm">
+                        <div className="flex flex-col gap-3 border-b p-3 lg:flex-row lg:items-center lg:justify-between lg:p-4">
                             <div className="relative w-full max-w-xl">
                                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                                 <Input
@@ -563,7 +573,7 @@ export function OrderManagerPanel({
                             </Select>
                         </div>
 
-                        <ScrollArea className="h-[calc(100vh-22rem)] min-h-[24rem]">
+                        <ScrollArea className="hidden h-[24rem] lg:block xl:h-[calc(100vh-22rem)] xl:min-h-[24rem]">
                             <Table>
                             <TableHeader>
                                 <TableRow>
@@ -587,7 +597,7 @@ export function OrderManagerPanel({
                                     <TableRow
                                         key={order.id}
                                         className={cn("cursor-pointer", selectedOrder?.id === order.id && "bg-primary/5 hover:bg-primary/8")}
-                                        onClick={() => setSelectedOrderId(order.id)}
+                                        onClick={() => selectOrder(order.id)}
                                     >
                                         <TableCell>
                                             <div className="font-semibold text-foreground">{order.orderNumber}</div>
@@ -621,25 +631,73 @@ export function OrderManagerPanel({
                             </TableBody>
                             </Table>
                         </ScrollArea>
+
+                        <div className="max-h-[34rem] divide-y overflow-y-auto lg:hidden">
+                            {filteredOrders.length === 0 ? (
+                                <div className="px-4 py-16 text-center text-sm text-muted-foreground">
+                                    Aun no hay pedidos con estos filtros.
+                                </div>
+                            ) : filteredOrders.map((order) => (
+                                <button
+                                    key={order.id}
+                                    type="button"
+                                    className={cn(
+                                        "w-full space-y-3 px-3 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset",
+                                        selectedOrder?.id === order.id && "bg-primary/5",
+                                    )}
+                                    onClick={() => selectOrder(order.id, true)}
+                                >
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <div className="truncate text-sm font-bold text-foreground">{order.orderNumber}</div>
+                                            <div className="truncate text-xs text-muted-foreground">{order.title}</div>
+                                        </div>
+                                        <StatusBadge status={order.status} />
+                                    </div>
+                                    <div className="flex items-center gap-2.5">
+                                        <Avatar className="h-9 w-9 border">
+                                            <AvatarImage src={order.contact.whatsappAvatarUrl || undefined} />
+                                            <AvatarFallback>{contactInitial(order.contact)}</AvatarFallback>
+                                        </Avatar>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="truncate text-sm font-medium">{contactName(order.contact)}</div>
+                                            {order.contact.phone ? <div className="truncate text-xs text-muted-foreground">{order.contact.phone}</div> : null}
+                                        </div>
+                                        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-1.5">
+                                        <MobileOrderMetric label="Total" value={currency(order.totalAmount, order.currency)} />
+                                        <MobileOrderMetric
+                                            label="Saldo"
+                                            value={currency(order.balanceAmount, order.currency)}
+                                            tone={order.balanceAmount > 0 ? "amber" : "emerald"}
+                                        />
+                                        <MobileOrderMetric label="Proximo pago" value={shortDate(order.nextPaymentDueDate)} />
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
 
-                <OrderDetail
-                    order={selectedOrder}
-                    isBusy={isPending}
-                    uploadingReceiptId={uploadingReceiptId}
-                    onEdit={openEditOrderDialog}
-                    onChangeStatus={openStatusDialog}
-                    onDelete={(order) => {
-                        setDeleteOrder(order);
-                        setDeleteConfirmation("");
-                        setDeleteError(null);
-                    }}
-                    onAddPayment={(orderId) => openPaymentDialog(orderId)}
-                    onMarkPayment={handleMarkPayment}
-                    onUploadReceipt={handleUploadPaymentReceipt}
-                    onPreviewReceipt={setReceiptPreview}
-                />
+                <div ref={detailSectionRef} className="min-w-0 scroll-mt-3">
+                    <OrderDetail
+                        order={selectedOrder}
+                        isBusy={isPending}
+                        uploadingReceiptId={uploadingReceiptId}
+                        onEdit={openEditOrderDialog}
+                        onChangeStatus={openStatusDialog}
+                        onDelete={(order) => {
+                            setDeleteOrder(order);
+                            setDeleteConfirmation("");
+                            setDeleteError(null);
+                        }}
+                        onAddPayment={(orderId) => openPaymentDialog(orderId)}
+                        onMarkPayment={handleMarkPayment}
+                        onUploadReceipt={handleUploadPaymentReceipt}
+                        onPreviewReceipt={setReceiptPreview}
+                    />
+                </div>
             </div>
 
             <Dialog open={newDialogOpen} onOpenChange={(open) => {
@@ -930,13 +988,28 @@ function StatCard({ icon: Icon, label, value, tone }: { icon: React.ElementType;
         emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
     };
     return (
-        <div className="flex min-h-[3.75rem] items-center gap-2.5 rounded-xl border bg-card px-2.5 py-2 shadow-sm">
-            <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border", tones[tone])}>
+        <div className="flex min-h-[3.75rem] min-w-0 items-center gap-2 rounded-xl border bg-card px-2 py-2 shadow-sm sm:gap-2.5 sm:px-2.5">
+            <div className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border sm:h-8 sm:w-8", tones[tone])}>
                 <Icon className="h-3.5 w-3.5" />
             </div>
             <div className="min-w-0">
-                <div className="truncate text-xs text-muted-foreground">{label}</div>
-                <div className="truncate text-lg font-bold leading-6 tracking-tight">{value}</div>
+                <div className="truncate text-[11px] text-muted-foreground sm:text-xs">{label}</div>
+                <div className="truncate text-sm font-bold leading-5 tracking-tight sm:text-lg sm:leading-6">{value}</div>
+            </div>
+        </div>
+    );
+}
+
+function MobileOrderMetric({ label, value, tone }: { label: string; value: string; tone?: "amber" | "emerald" }) {
+    return (
+        <div className="min-w-0 rounded-lg border bg-muted/30 px-2 py-1.5">
+            <div className="truncate text-[10px] text-muted-foreground">{label}</div>
+            <div className={cn(
+                "break-words text-[11px] font-semibold leading-tight tabular-nums sm:text-xs",
+                tone === "amber" && "text-amber-700",
+                tone === "emerald" && "text-emerald-700",
+            )}>
+                {value}
             </div>
         </div>
     );
@@ -998,11 +1071,11 @@ function OrderDetail({
     }
 
     return (
-        <div className="min-h-0 rounded-2xl border bg-card shadow-sm">
+        <div className="min-h-0 min-w-0 overflow-hidden rounded-2xl border bg-card shadow-sm">
             <div className="border-b p-3">
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{order.orderNumber}</div>
+                        <div className="truncate text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground sm:tracking-[0.16em]">{order.orderNumber}</div>
                         <h2 className="mt-0.5 truncate text-lg font-bold tracking-tight">{order.title}</h2>
                         <p className="truncate text-sm text-muted-foreground">{contactName(order.contact)}</p>
                     </div>
@@ -1015,7 +1088,7 @@ function OrderDetail({
                         </Link>
                     </div>
                 </div>
-                <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                <div className="mt-3 grid min-w-0 grid-cols-3 gap-1.5 text-sm sm:gap-2">
                     <MiniMoney label="Total" value={currency(order.totalAmount, order.currency)} />
                     <MiniMoney label="Pagado" value={currency(order.paidAmount, order.currency)} tone="emerald" />
                     <MiniMoney label="Saldo" value={currency(order.balanceAmount, order.currency)} tone="amber" />
@@ -1036,9 +1109,8 @@ function OrderDetail({
                 </div>
             </div>
 
-            <ScrollArea className="h-[calc(100vh-22rem)] min-h-[28rem]">
-                <div className="space-y-3 p-3">
-                    <section>
+            <div className="min-w-0 space-y-3 p-3 xl:h-[calc(100vh-22rem)] xl:min-h-[28rem] xl:overflow-y-auto">
+                    <section className="min-w-0">
                         <h3 className="flex items-center gap-2 font-semibold"><CalendarClock className="h-4 w-4 text-primary" /> Fechas</h3>
                         <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
                             <InfoBox label="Evento" value={shortDate(order.eventDate)} />
@@ -1048,24 +1120,24 @@ function OrderDetail({
                         </div>
                     </section>
 
-                    <section>
+                    <section className="min-w-0">
                         <h3 className="flex items-center gap-2 font-semibold"><ReceiptText className="h-4 w-4 text-primary" /> Conceptos</h3>
-                        <div className="mt-2 max-h-[8rem] overflow-y-auto overscroll-contain rounded-xl border">
+                        <div className="mt-2 min-w-0 max-h-[8rem] overflow-y-auto overscroll-contain rounded-xl border">
                             {order.items.map((item) => (
-                                <div key={item.id || item.description} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b px-2.5 py-2 text-sm last:border-0">
+                                <div key={item.id || item.description} className="grid min-w-0 gap-1 border-b px-2.5 py-2 text-sm last:border-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-3">
                                     <div className="min-w-0">
-                                        <div className="truncate font-medium">{item.description}</div>
+                                        <div className="break-words font-medium">{item.description}</div>
                                         <div className="text-xs text-muted-foreground">{item.quantity} x {currency(item.unitPrice, order.currency)}</div>
                                     </div>
-                                    <div className="font-semibold">{currency(item.totalAmount, order.currency)}</div>
+                                    <div className="font-semibold tabular-nums sm:justify-self-end">{currency(item.totalAmount, order.currency)}</div>
                                 </div>
                             ))}
                         </div>
                     </section>
 
-                    <section>
+                    <section className="min-w-0">
                         <h3 className="flex items-center gap-2 font-semibold"><CreditCard className="h-4 w-4 text-primary" /> Pagos y abonos</h3>
-                        <div className="mt-2 max-h-[10.5rem] overflow-y-auto overscroll-contain rounded-xl border bg-background/70">
+                        <div className="mt-2 min-w-0 max-h-[10.5rem] overflow-y-auto overscroll-contain rounded-xl border bg-background/70">
                             {order.payments.map((payment) => {
                                 const overdue = isOverdue(payment);
                                 return (
@@ -1080,12 +1152,12 @@ function OrderDetail({
                                                     {payment.method ? <span>{payment.method}</span> : null}
                                                 </div>
                                             </div>
-                                            <div className="flex items-center justify-between gap-2 sm:justify-end sm:text-right">
-                                                <div className="text-sm font-bold">{currency(payment.amount, order.currency)}</div>
+                                            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 sm:justify-end sm:text-right">
+                                                <div className="text-sm font-bold tabular-nums">{currency(payment.amount, order.currency)}</div>
                                                 <PaymentBadge status={payment.status} overdue={overdue} />
                                             </div>
                                         </div>
-                                        <div className="mt-1 flex flex-wrap justify-end gap-1">
+                                        <div className="mt-1 flex min-w-0 flex-wrap justify-end gap-1">
                                             <input
                                                 id={`receipt-${payment.id}`}
                                                 type="file"
@@ -1139,8 +1211,7 @@ function OrderDetail({
                             <p className="mt-2 max-h-[4.75rem] overflow-y-auto overscroll-contain rounded-xl border bg-background/70 p-2.5 text-sm text-muted-foreground whitespace-pre-wrap">{order.notes}</p>
                         </section>
                     ) : null}
-                </div>
-            </ScrollArea>
+            </div>
         </div>
     );
 }
@@ -1148,18 +1219,18 @@ function OrderDetail({
 function MiniMoney({ label, value, tone = "slate" }: { label: string; value: string; tone?: "slate" | "emerald" | "amber" }) {
     const tones = { slate: "text-foreground", emerald: "text-emerald-700", amber: "text-amber-700" };
     return (
-        <div className="rounded-xl border bg-background/80 p-2.5">
-            <div className="text-xs text-muted-foreground">{label}</div>
-            <div className={cn("mt-1 font-bold", tones[tone])}>{value}</div>
+        <div className="min-w-0 overflow-hidden rounded-xl border bg-background/80 p-2 sm:p-2.5">
+            <div className="truncate text-[11px] text-muted-foreground sm:text-xs">{label}</div>
+            <div className={cn("mt-1 break-words text-[clamp(0.7rem,3vw,1rem)] font-bold leading-tight tabular-nums", tones[tone])}>{value}</div>
         </div>
     );
 }
 
 function InfoBox({ label, value }: { label: string; value: string }) {
     return (
-        <div className="rounded-xl border bg-background/70 p-2.5">
+        <div className="min-w-0 overflow-hidden rounded-xl border bg-background/70 p-2.5">
             <div className="text-xs text-muted-foreground">{label}</div>
-            <div className="mt-1 font-medium">{value}</div>
+            <div className="mt-1 break-words font-medium">{value}</div>
         </div>
     );
 }
