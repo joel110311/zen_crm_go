@@ -46,6 +46,15 @@ type ImportWhatsAppHistorySummary = {
     messagesSkipped: number;
 };
 
+type RecentWuzapiHistoryReconcileResult = {
+    messagesCreated: number;
+    latestInboundMessage: {
+        id: string;
+        content: string;
+        createdAt: Date;
+    } | null;
+};
+
 function sleep(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -81,6 +90,23 @@ function getPhoneFromChatJid(chatJid: string) {
         ? normalized.split("@")[0]
         : normalized;
     return normalizePhoneDigits(phone);
+}
+
+function resolveDirectChatJidCandidates(phone: string) {
+    const normalized = normalizePhoneDigits(phone);
+    if (!normalized) return [];
+
+    const variants = new Set<string>([normalized]);
+
+    // Mexico WhatsApp JIDs may appear as 52xxxxxxxxxx or 521xxxxxxxxxx.
+    if (normalized.startsWith("52") && normalized.length === 12) {
+        variants.add(`521${normalized.slice(2)}`);
+    }
+    if (normalized.startsWith("521") && normalized.length === 13) {
+        variants.add(`52${normalized.slice(3)}`);
+    }
+
+    return [...variants].map((value) => `${value}@s.whatsapp.net`);
 }
 
 function phonesLikelyMatch(left: string, right: string) {
@@ -163,6 +189,21 @@ function normalizeHistoryContent(message: WuzapiHistoryMessageRecord) {
     return "[Mensaje de WhatsApp]";
 }
 
+function buildHistoryMessageDedupeKey(message: WuzapiHistoryMessageRecord) {
+    const providerMessageId = (message.message_id || "").trim();
+    if (providerMessageId) return providerMessageId;
+
+    const fallbackParts = [
+        message.chat_jid || "",
+        message.sender_jid || "",
+        String(message.timestamp || ""),
+        message.message_type || "",
+        normalizeHistoryContent(message),
+    ];
+
+    return fallbackParts.join("|");
+}
+
 async function waitForHistoryIndex() {
     let latestEntries: WuzapiHistoryIndexRecord[] = [];
     let lastSignature = "";
@@ -202,6 +243,178 @@ async function waitForHistoryIndex() {
     }
 
     return latestEntries;
+}
+
+export async function reconcileRecentWuzapiChatHistoryForConversation(params: {
+    conversationId: string;
+    lookbackMs?: number;
+    historyLimit?: number;
+    requestSync?: boolean;
+}): Promise<RecentWuzapiHistoryReconcileResult> {
+    const lookbackMs = Math.max(30_000, params.lookbackMs || 10 * 60 * 1000);
+    const historyLimit = Math.min(Math.max(Math.trunc(params.historyLimit || 60), 1), 200);
+    const cutoff = new Date(Date.now() - lookbackMs);
+
+    const conversation = await prisma.conversation.findUnique({
+        where: { id: params.conversationId },
+        select: {
+            id: true,
+            sourceType: true,
+            sourceId: true,
+            contact: {
+                select: {
+                    phone: true,
+                },
+            },
+        },
+    });
+
+    if (!conversation || conversation.sourceType !== "wuzapi" || !conversation.contact?.phone) {
+        return { messagesCreated: 0, latestInboundMessage: null };
+    }
+
+    const chatJidCandidates = resolveDirectChatJidCandidates(conversation.contact.phone);
+    if (chatJidCandidates.length === 0) {
+        return { messagesCreated: 0, latestInboundMessage: null };
+    }
+
+    const byProviderOrFallback = new Map<string, WuzapiHistoryMessageRecord & { parsedTimestamp: Date }>();
+
+    for (const chatJid of chatJidCandidates) {
+        if (params.requestSync !== false) {
+            try {
+                await requestWuzapiHistorySync({
+                    chatJid,
+                    count: Math.min(historyLimit, 60),
+                });
+                await sleep(900);
+            } catch (error) {
+                console.warn("[WhatsAppHistoryImport] Recent history sync request failed", {
+                    conversationId: params.conversationId,
+                    chatJid,
+                    error,
+                });
+            }
+        }
+
+        const rawMessages = await getWuzapiChatHistory(chatJid, historyLimit).catch((error) => {
+            console.warn("[WhatsAppHistoryImport] Failed to read recent chat history", {
+                conversationId: params.conversationId,
+                chatJid,
+                error,
+            });
+            return [];
+        });
+
+        for (const message of rawMessages) {
+            const parsedTimestamp = parseHistoryTimestamp(message.timestamp);
+            if (!parsedTimestamp || parsedTimestamp < cutoff) continue;
+
+            const key = buildHistoryMessageDedupeKey(message);
+            if (!key || byProviderOrFallback.has(key)) continue;
+
+            byProviderOrFallback.set(key, {
+                ...message,
+                parsedTimestamp,
+            });
+        }
+    }
+
+    const relevantMessages = [...byProviderOrFallback.values()]
+        .sort((left, right) => left.parsedTimestamp.getTime() - right.parsedTimestamp.getTime());
+
+    if (relevantMessages.length === 0) {
+        return { messagesCreated: 0, latestInboundMessage: null };
+    }
+
+    const providerMessageIds = relevantMessages
+        .map((message) => (message.message_id || "").trim())
+        .filter(Boolean);
+
+    const existingMessages = providerMessageIds.length > 0
+        ? await prisma.message.findMany({
+            where: {
+                providerMessageId: {
+                    in: providerMessageIds,
+                },
+                sourceType: "wuzapi",
+            },
+            select: {
+                providerMessageId: true,
+            },
+        })
+        : [];
+
+    const existingMessageIds = new Set(
+        existingMessages
+            .map((message) => message.providerMessageId)
+            .filter((value): value is string => Boolean(value)),
+    );
+
+    let messagesCreated = 0;
+    let createdHumanOutbound = false;
+    let latestInboundMessage: RecentWuzapiHistoryReconcileResult["latestInboundMessage"] = null;
+
+    await prisma.$transaction(async (tx) => {
+        for (const message of relevantMessages) {
+            const providerMessageId = (message.message_id || "").trim();
+            if (!providerMessageId || existingMessageIds.has(providerMessageId)) {
+                continue;
+            }
+
+            const chatPhone = getPhoneFromChatJid(message.chat_jid || "") || conversation.contact.phone;
+            const direction = resolveDirection(chatPhone, message.sender_jid || "");
+            const createdAt = new Date(Date.now() + messagesCreated);
+            const created = await tx.message.create({
+                data: {
+                    conversationId: conversation.id,
+                    content: normalizeHistoryContent(message),
+                    direction,
+                    status: direction === "outbound" ? "sent" : "delivered",
+                    type: mapHistoryMessageType(message.message_type),
+                    sourceType: "wuzapi",
+                    sourceId: conversation.sourceId,
+                    senderType: direction === "outbound" ? "human" : null,
+                    providerMessageId,
+                    createdAt,
+                },
+                select: {
+                    id: true,
+                    content: true,
+                    createdAt: true,
+                    direction: true,
+                },
+            });
+
+            existingMessageIds.add(providerMessageId);
+            messagesCreated += 1;
+
+            if (created.direction === "inbound") {
+                latestInboundMessage = {
+                    id: created.id,
+                    content: created.content,
+                    createdAt: created.createdAt,
+                };
+            } else {
+                createdHumanOutbound = true;
+            }
+        }
+
+        if (messagesCreated > 0) {
+            await tx.conversation.update({
+                where: { id: conversation.id },
+                data: {
+                    updatedAt: new Date(),
+                    ...(createdHumanOutbound ? { botActive: false } : {}),
+                },
+            });
+        }
+    });
+
+    return {
+        messagesCreated,
+        latestInboundMessage,
+    };
 }
 
 async function importDirectChatHistory(params: {

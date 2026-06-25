@@ -16,6 +16,7 @@ import {
     splitCatalogAssets,
 } from "@/lib/catalog/catalog";
 import { sendWuzapiMediaMessage, sendWuzapiTextMessage } from "@/lib/wuzapi";
+import { reconcileRecentWuzapiChatHistoryForConversation } from "@/lib/whatsapp-history-import";
 import { generateConversationReply } from "@/lib/ai/chatbot";
 import { getSystemSettingsOrDefaults, type AppSystemSettings } from "@/lib/system-settings";
 import { buildInboundMediaContext, shouldSkipAutoReplyText } from "@/lib/ai/media-understanding";
@@ -24,6 +25,7 @@ import { processLeadAutomationTurn } from "@/lib/ai/lead-intelligence";
 import { buildPhoneMatchClauses, normalizePhoneDigits } from "@/lib/phone";
 import { sendYCloudMediaMessage, sendYCloudTextMessage } from "@/lib/ycloud";
 import {
+    MESSAGE_SOURCE_WUZAPI,
     normalizeMessageSourceType,
     resolveMessageSourceId,
     type MessageSourceType,
@@ -41,6 +43,8 @@ import {
 } from "@/lib/inbound-ad-preview";
 
 const CATALOG_OFFER_EXPIRY_MS = 1000 * 60 * 90;
+const RECENT_WUZAPI_HISTORY_LOOKBACK_MS = 15 * 60 * 1000;
+const WUZAPI_HISTORY_MONITOR_DELAYS_MS = [6000, 12000, 25000, 45000, 90000, 180000];
 const KNOWLEDGE_IMAGE_URL_REGEX = /https?:\/\/[^\s<>"']+/gi;
 const KNOWLEDGE_MARKDOWN_LINK_WITH_URL_REGEX = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/gi;
 const KNOWLEDGE_IMAGE_MIN_SCORE = 3;
@@ -141,6 +145,8 @@ export type InboundMessageSource = {
     sourceType?: MessageSourceType | null;
     sourceId?: string | null;
 };
+
+const activeWuzapiHistoryMonitors = new Set<string>();
 
 const FALLBACK_EXTENSION_BY_MIME: Record<string, string> = {
     "image/jpeg": ".jpg",
@@ -1087,6 +1093,100 @@ async function getAutomatedConversationSource(conversationId: string): Promise<{
     };
 }
 
+async function reconcileRecentWuzapiHistoryForBot(conversationId: string) {
+    try {
+        return await reconcileRecentWuzapiChatHistoryForConversation({
+            conversationId,
+            lookbackMs: RECENT_WUZAPI_HISTORY_LOOKBACK_MS,
+            historyLimit: 80,
+            requestSync: true,
+        });
+    } catch (error) {
+        console.warn("[Bot] Failed to reconcile recent WhatsApp history", {
+            conversationId,
+            error,
+        });
+        return {
+            messagesCreated: 0,
+            latestInboundMessage: null,
+        };
+    }
+}
+
+function queueRecentWuzapiHistoryMonitor(conversationId: string) {
+    if (activeWuzapiHistoryMonitors.has(conversationId)) {
+        return;
+    }
+
+    activeWuzapiHistoryMonitors.add(conversationId);
+
+    void (async () => {
+        try {
+            for (const delayMs of WUZAPI_HISTORY_MONITOR_DELAYS_MS) {
+                await sleep(delayMs);
+
+                const conversation = await prisma.conversation.findUnique({
+                    where: { id: conversationId },
+                    select: {
+                        botActive: true,
+                        sourceType: true,
+                        contact: {
+                            select: {
+                                phone: true,
+                            },
+                        },
+                    },
+                });
+
+                if (
+                    !conversation?.botActive ||
+                    normalizeMessageSourceType(conversation.sourceType) !== MESSAGE_SOURCE_WUZAPI ||
+                    !conversation.contact?.phone
+                ) {
+                    return;
+                }
+
+                const reconciled = await reconcileRecentWuzapiHistoryForBot(conversationId);
+                if (reconciled.messagesCreated <= 0 || !reconciled.latestInboundMessage) {
+                    continue;
+                }
+
+                const latestMessage = await prisma.message.findFirst({
+                    where: {
+                        conversationId,
+                        type: { not: "system" },
+                    },
+                    orderBy: { createdAt: "desc" },
+                    select: {
+                        id: true,
+                        content: true,
+                        direction: true,
+                    },
+                });
+
+                if (
+                    latestMessage?.id === reconciled.latestInboundMessage.id &&
+                    latestMessage.direction === "inbound"
+                ) {
+                    void maybeSendAutomatedReply(
+                        conversationId,
+                        reconciled.latestInboundMessage.id,
+                        reconciled.latestInboundMessage.content,
+                    );
+                    return;
+                }
+            }
+        } catch (error) {
+            console.error("[Bot] Recent WhatsApp history monitor failed", {
+                conversationId,
+                error,
+            });
+        } finally {
+            activeWuzapiHistoryMonitors.delete(conversationId);
+        }
+    })();
+}
+
 function buildPublicMediaUrl(mediaUrl: string) {
     if (/^https?:\/\//i.test(mediaUrl)) {
         return mediaUrl;
@@ -1216,6 +1316,9 @@ async function sendAutomatedBotText(params: {
             },
         });
         queueAvatarRefreshForConversation(params.conversationId);
+        if (source.sourceType === MESSAGE_SOURCE_WUZAPI) {
+            queueRecentWuzapiHistoryMonitor(params.conversationId);
+        }
     } catch (error) {
         await prisma.message.create({
             data: {
@@ -1634,7 +1737,6 @@ async function maybeSendAutomatedReply(
         const settings = await getSystemSettingsOrDefaults();
         const catalogAssistantEnabled = isCatalogAssistantEnabled(settings);
         if (!settings.isBotEnabled) return;
-        if (shouldSkipAutoReplyText(latestUserMessage)) return;
 
         const initialConversation = await prisma.conversation.findUnique({
             where: { id: conversationId },
@@ -1648,6 +1750,16 @@ async function maybeSendAutomatedReply(
         if (settings.autoReplyDelayMs > 0) {
             await sleep(settings.autoReplyDelayMs);
         }
+
+        let effectiveInboundMessageId = inboundMessageId;
+        let effectiveLatestUserMessage = latestUserMessage;
+        const reconciledHistory = await reconcileRecentWuzapiHistoryForBot(conversationId);
+        if (reconciledHistory.messagesCreated > 0 && reconciledHistory.latestInboundMessage) {
+            effectiveInboundMessageId = reconciledHistory.latestInboundMessage.id;
+            effectiveLatestUserMessage = reconciledHistory.latestInboundMessage.content;
+        }
+
+        if (shouldSkipAutoReplyText(effectiveLatestUserMessage)) return;
 
         const [latestConversation, latestMessage, previousInboundMessage] = await Promise.all([
             prisma.conversation.findUnique({
@@ -1690,7 +1802,7 @@ async function maybeSendAutomatedReply(
                 where: {
                     conversationId,
                     direction: "inbound",
-                    id: { not: inboundMessageId },
+                    id: { not: effectiveInboundMessageId },
                 },
                 orderBy: { createdAt: "desc" },
                 select: { createdAt: true },
@@ -1698,11 +1810,11 @@ async function maybeSendAutomatedReply(
         ]);
 
         if (!latestConversation?.botActive || !latestConversation.contact?.phone) return;
-        if (!latestMessage || latestMessage.id !== inboundMessageId || latestMessage.direction !== "inbound") {
+        if (!latestMessage || latestMessage.id !== effectiveInboundMessageId || latestMessage.direction !== "inbound") {
             return;
         }
 
-        const modelUserMessage = latestUserMessage;
+        const modelUserMessage = effectiveLatestUserMessage;
 
         if (
             shouldSendAutomatedWelcome(
@@ -1710,7 +1822,7 @@ async function maybeSendAutomatedReply(
                 previousInboundMessage?.createdAt,
                 settings.welcomeRepeatHours || 24,
             ) &&
-            shouldSendWelcomeForLatestMessage(latestUserMessage, {
+            shouldSendWelcomeForLatestMessage(modelUserMessage, {
                 forceSkipWelcome: hasFacebookAdsAttribution(inboundAttribution),
             })
         ) {
@@ -1722,7 +1834,7 @@ async function maybeSendAutomatedReply(
                 const canSendAfterPacing = await waitForBotReplyPacing({
                     settings,
                     conversationId,
-                    inboundMessageId,
+                    inboundMessageId: effectiveInboundMessageId,
                     cancelIfNewerInbound: false,
                 });
                 if (!canSendAfterPacing) return;
@@ -1740,9 +1852,9 @@ async function maybeSendAutomatedReply(
         const handledCatalogReply = catalogAssistantEnabled
             ? await maybeHandleCatalogAssetReply({
                 conversationId,
-                inboundMessageId,
+                inboundMessageId: effectiveInboundMessageId,
                 phone: latestConversation.contact.phone,
-                latestUserMessage,
+                latestUserMessage: modelUserMessage,
                 settings,
                 catalogState: latestConversation.catalogState,
             })
@@ -1799,8 +1911,8 @@ async function maybeSendAutomatedReply(
                 const activeCatalogItem = latestConversation.catalogState?.catalogItem || null;
                 const shouldStickToCurrentDevelopment = activeCatalogItem
                     ? (
-                        latestMessageMentionsDevelopment(latestUserMessage, activeCatalogItem.development) ||
-                        isCatalogDetailFollowUp(latestUserMessage)
+                        latestMessageMentionsDevelopment(modelUserMessage, activeCatalogItem.development) ||
+                        isCatalogDetailFollowUp(modelUserMessage)
                     )
                     : false;
                 const catalogLookupQuery = shouldStickToCurrentDevelopment
@@ -1826,7 +1938,7 @@ async function maybeSendAutomatedReply(
                 const catalogAvailabilitySummary = latestCatalogAvailabilitySummary ||
                     (
                         !shouldStickToCurrentDevelopment &&
-                        catalogLookupQuery !== latestUserMessage &&
+                        catalogLookupQuery !== modelUserMessage &&
                         !latestRequestedLocation
                             ? await findCatalogAvailabilitySummary(catalogLookupQuery)
                             : null
@@ -1849,11 +1961,11 @@ async function maybeSendAutomatedReply(
                             ? activeCatalogItem
                             : null
                     );
-                const catalogIntent = parseCatalogAssetIntent(latestUserMessage);
+                const catalogIntent = parseCatalogAssetIntent(modelUserMessage);
                 const shouldPreferCatalogSummary =
                     Boolean(catalogAvailabilitySummary) &&
                     !shouldStickToCurrentDevelopment &&
-                    (!catalogItem || !latestMessageMentionsDevelopment(latestUserMessage, catalogItem.development));
+                    (!catalogItem || !latestMessageMentionsDevelopment(modelUserMessage, catalogItem.development));
 
                 if (shouldPreferCatalogSummary) {
                     reply = buildCatalogAvailabilityReply(catalogAvailabilitySummary);
@@ -1863,7 +1975,7 @@ async function maybeSendAutomatedReply(
                     catalogDevelopmentContext = await getCatalogDevelopmentContext(
                         catalogItem.id,
                         6,
-                        latestUserMessage,
+                        modelUserMessage,
                     );
                     const { imageAssets, pdfAsset, linkAsset } = splitCatalogAssets(
                         catalogItem.assets,
@@ -1991,7 +2103,7 @@ async function maybeSendAutomatedReply(
         const canSendAfterPacing = await waitForBotReplyPacing({
             settings,
             conversationId,
-            inboundMessageId,
+            inboundMessageId: effectiveInboundMessageId,
             cancelIfNewerInbound: false,
         });
         if (!canSendAfterPacing) return;
@@ -2017,7 +2129,7 @@ async function maybeSendAutomatedReply(
                 knowledgeImageSent = await maybeSendKnowledgeImageFromTextSources({
                     conversationId,
                     phone: latestConversation.contact.phone,
-                    latestUserMessage,
+                    latestUserMessage: modelUserMessage,
                     assistantReplyText: reply,
                     preferredImageUrls: preferredKnowledgeImageUrls,
                 });
@@ -2045,7 +2157,7 @@ async function maybeSendAutomatedReply(
                 contactPhone: latestConversation.contact.phone,
                 brandName: settings.agentName,
                 contact: latestConversation.contact,
-                latestUserMessage,
+                latestUserMessage: modelUserMessage,
             });
         }
 
