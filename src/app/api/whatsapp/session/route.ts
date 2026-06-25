@@ -61,8 +61,14 @@ export async function GET(request: NextRequest) {
         }
 
         return NextResponse.json(
-            { configured: true, ...ycloud, error: error instanceof Error ? error.message : "No se pudo consultar WhatsApp" },
-            { status: 500 },
+            {
+                configured: true,
+                connected: false,
+                loggedIn: false,
+                ...ycloud,
+                error: error instanceof Error ? error.message : "No se pudo consultar WhatsApp",
+            },
+            { status: 200 },
         );
     }
 }

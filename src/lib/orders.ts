@@ -292,17 +292,22 @@ export async function listCustomerOrders(filters: { contactId?: string | null; s
             : {}),
     };
 
-    const orders = await prisma.customerOrder.findMany({
-        where,
-        include: CUSTOMER_ORDER_INCLUDE,
-        orderBy: [
-            { updatedAt: "desc" },
-            { createdAt: "desc" },
-        ],
-        take: 300,
-    });
+    try {
+        const orders = await prisma.customerOrder.findMany({
+            where,
+            include: CUSTOMER_ORDER_INCLUDE,
+            orderBy: [
+                { updatedAt: "desc" },
+                { createdAt: "desc" },
+            ],
+            take: 300,
+        });
 
-    return orders.map(serializeOrder);
+        return orders.map(serializeOrder);
+    } catch (error) {
+        console.error("[Orders] Failed to list customer orders:", error);
+        return [];
+    }
 }
 
 export async function getCustomerOrder(orderId: string) {
