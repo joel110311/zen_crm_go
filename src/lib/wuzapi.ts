@@ -4,13 +4,21 @@ import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 
 type WuzapiUser = {
     id?: string | number;
+    ID?: string | number;
     name?: string;
+    Name?: string;
     token?: string;
+    Token?: string;
     webhook?: string;
+    Webhook?: string;
     events?: string;
+    Events?: string;
     jid?: string;
+    JID?: string;
     connected?: boolean;
+    Connected?: boolean;
     qrcode?: string;
+    QRCode?: string;
 };
 
 type WuzapiConfig = {
@@ -271,6 +279,63 @@ function normalizeWuzapiSessionStatus(payload: unknown): WuzapiSessionStatus {
     };
 }
 
+function normalizeWuzapiUserSessionStatus(user: WuzapiUser): WuzapiSessionStatus {
+    const status = normalizeWuzapiSessionStatus(user);
+    const loggedIn = status.loggedIn || Boolean(status.jid);
+
+    return {
+        ...status,
+        connected: status.connected || loggedIn,
+        loggedIn,
+    };
+}
+
+function getWuzapiUserName(user: WuzapiUser) {
+    return readString(user.name) || readString(user.Name) || "";
+}
+
+function getWuzapiUserToken(user: WuzapiUser) {
+    return readString(user.token) || readString(user.Token) || "";
+}
+
+function getWuzapiUserId(user: WuzapiUser) {
+    return readString(user.id) || readString(user.ID);
+}
+
+async function syncStoredWuzapiUserToken(token: string) {
+    const nextToken = token.trim();
+    if (!nextToken) return;
+
+    const settings = await prisma.systemSettings.findFirst();
+    if (!settings || settings.whatsappUserToken === nextToken) return;
+
+    await prisma.systemSettings.update({
+        where: { id: settings.id },
+        data: { whatsappUserToken: nextToken },
+    });
+}
+
+function findConfiguredWuzapiUser(users: WuzapiUser[], config: WuzapiConfig) {
+    const configuredToken = config.userToken.trim();
+    const configuredName = config.instanceName.trim().toLowerCase();
+
+    return (
+        users.find((user) => getWuzapiUserToken(user) === configuredToken) ||
+        users.find((user) => getWuzapiUserName(user).trim().toLowerCase() === configuredName) ||
+        null
+    );
+}
+
+async function listWuzapiAdminUsers() {
+    const payload = await requestWuzapi<unknown>("admin", "/admin/users", { method: "GET" });
+    return normalizeObjectList<WuzapiUser>(payload);
+}
+
+async function getConfiguredWuzapiAdminUser(config: WuzapiConfig) {
+    const users = await listWuzapiAdminUsers();
+    return findConfiguredWuzapiUser(users, config);
+}
+
 function normalizeWuzapiSendResult(payload: unknown): WuzapiSendResult {
     const result = unwrapResponse<unknown>(payload);
     if (!isObjectRecord(result)) {
@@ -460,26 +525,41 @@ export async function provisionWuzapiInstance(appBaseUrl?: string) {
     const webhookUrl = buildWebhookUrl(appBaseUrl);
     const events = WUZAPI_SUBSCRIBED_EVENTS.join(",");
     const userPayload = buildWuzapiUserPayload(config, webhookUrl, events);
-    const users = await requestWuzapi<WuzapiUser[]>("admin", "/admin/users", { method: "GET" });
-    const existingUser = users.find(
-        (user) => user.token === config.userToken || user.name === config.instanceName,
-    );
+    const users = await listWuzapiAdminUsers();
+    const existingUser = findConfiguredWuzapiUser(users, config);
 
     if (!existingUser) {
         await requestWuzapi<{ id: string | number }>("admin", "/admin/users", {
             method: "POST",
             body: JSON.stringify(userPayload),
         });
-    } else if (existingUser.id) {
-        await requestWuzapi<unknown>("admin", `/admin/users/${existingUser.id}`, {
+    } else if (getWuzapiUserId(existingUser)) {
+        const existingUserId = getWuzapiUserId(existingUser);
+        let userUpdated = false;
+
+        await requestWuzapi<unknown>("admin", `/admin/users/${existingUserId}`, {
             method: "PUT",
             body: JSON.stringify(userPayload),
+        }).then(() => {
+            userUpdated = true;
         }).catch((error) => {
             if (config.proxyEnabled) {
                 throw error;
             }
             // Older WuzAPI builds do not expose update via admin; webhook will be refreshed below.
         });
+
+        const existingStatus = normalizeWuzapiUserSessionStatus(existingUser);
+        const existingToken = getWuzapiUserToken(existingUser);
+        if (!userUpdated && existingToken && existingToken !== config.userToken && (existingStatus.connected || existingStatus.loggedIn)) {
+            await syncStoredWuzapiUserToken(existingToken);
+        }
+    } else {
+        const existingStatus = normalizeWuzapiUserSessionStatus(existingUser);
+        const existingToken = getWuzapiUserToken(existingUser);
+        if (existingToken && existingToken !== config.userToken && (existingStatus.connected || existingStatus.loggedIn)) {
+            await syncStoredWuzapiUserToken(existingToken);
+        }
     }
 
     await requestWuzapi<unknown>("user", "/webhook", {
@@ -496,8 +576,48 @@ export async function provisionWuzapiInstance(appBaseUrl?: string) {
 }
 
 export async function getWuzapiSessionStatus() {
-    const payload = await requestWuzapi<unknown>("user", "/session/status", { method: "GET" });
-    return normalizeWuzapiSessionStatus(payload);
+    const config = await getWuzapiConfig();
+    let status: WuzapiSessionStatus = {
+        connected: false,
+        loggedIn: false,
+    };
+
+    try {
+        const payload = await requestWuzapi<unknown>("user", "/session/status", { method: "GET" });
+        status = normalizeWuzapiSessionStatus(payload);
+    } catch (error) {
+        console.warn("[WuzAPI] User session status failed; checking admin session snapshot", error);
+    }
+
+    if (status.connected || status.loggedIn) {
+        return status;
+    }
+
+    const adminUser = await getConfiguredWuzapiAdminUser(config).catch((error) => {
+        console.warn("[WuzAPI] Could not verify admin user session status", error);
+        return null;
+    });
+
+    if (!adminUser) {
+        return status;
+    }
+
+    const adminStatus = normalizeWuzapiUserSessionStatus(adminUser);
+    if (!adminStatus.connected && !adminStatus.loggedIn) {
+        return status;
+    }
+
+    const adminToken = getWuzapiUserToken(adminUser);
+    if (adminToken && adminToken !== config.userToken) {
+        await syncStoredWuzapiUserToken(adminToken);
+    }
+
+    return {
+        ...status,
+        ...adminStatus,
+        connected: adminStatus.connected,
+        loggedIn: adminStatus.loggedIn,
+    };
 }
 
 export async function connectWuzapiSession() {
@@ -573,17 +693,16 @@ async function recoverWuzapiSession() {
 
 export async function deleteWuzapiInstance() {
     const config = await getWuzapiConfig();
-    const users = await requestWuzapi<WuzapiUser[]>("admin", "/admin/users", { method: "GET" });
-    const existingUser = users.find(
-        (user) => user.token === config.userToken || user.name === config.instanceName,
-    );
+    const users = await listWuzapiAdminUsers();
+    const existingUser = findConfiguredWuzapiUser(users, config);
 
     await logoutWuzapiSession().catch(() => {
         // Continue even if the session is already offline.
     });
 
-    if (existingUser?.id) {
-        await requestWuzapi<unknown>("admin", `/admin/users/${existingUser.id}`, {
+    const existingUserId = existingUser ? getWuzapiUserId(existingUser) : undefined;
+    if (existingUserId) {
+        await requestWuzapi<unknown>("admin", `/admin/users/${existingUserId}`, {
             method: "DELETE",
         });
     }
