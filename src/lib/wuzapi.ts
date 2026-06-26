@@ -24,6 +24,21 @@ type WuzapiConfig = {
 
 type WuzapiRequestMode = "admin" | "user";
 
+type WuzapiSessionStatus = {
+    connected: boolean;
+    loggedIn: boolean;
+    jid?: string;
+    qrcode?: string;
+    webhook?: string;
+    events?: string;
+    name?: string;
+};
+
+type WuzapiSendResult = {
+    Id?: string;
+    Timestamp?: string | number;
+};
+
 type SendMediaParams = {
     phone: string;
     mediaCategory: "image" | "audio" | "video" | "document";
@@ -179,10 +194,110 @@ function normalizeObjectList<T extends object>(payload: unknown): T[] {
 }
 
 function unwrapResponse<T>(payload: unknown): T {
-    if (payload && typeof payload === "object" && "data" in payload) {
-        return (payload as { data: T }).data;
+    if (isObjectRecord(payload)) {
+        const record = payload as Record<string, unknown>;
+        for (const key of ["data", "Data", "result", "Result"]) {
+            if (key in record) {
+                return unwrapResponse<T>(record[key]);
+            }
+        }
     }
     return payload as T;
+}
+
+function readString(value: unknown): string | undefined {
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        return trimmed || undefined;
+    }
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+        return String(value);
+    }
+
+    return undefined;
+}
+
+function readBoolean(value: unknown): boolean | undefined {
+    if (typeof value === "boolean") return value;
+
+    if (typeof value === "number") {
+        if (value === 1) return true;
+        if (value === 0) return false;
+    }
+
+    if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase();
+        if (["true", "1", "yes", "si", "connected", "loggedin", "logged_in"].includes(normalized)) {
+            return true;
+        }
+        if (["false", "0", "no", "disconnected", "loggedout", "logged_out"].includes(normalized)) {
+            return false;
+        }
+    }
+
+    return undefined;
+}
+
+function normalizeWuzapiSessionStatus(payload: unknown): WuzapiSessionStatus {
+    const status = unwrapResponse<unknown>(payload);
+    const record = isObjectRecord(status) ? status : {};
+    const jid =
+        readString(record.jid) ||
+        readString(record.JID) ||
+        readString(record.phone) ||
+        readString(record.Phone);
+    const explicitConnected =
+        readBoolean(record.connected) ??
+        readBoolean(record.Connected) ??
+        readBoolean(record.isConnected) ??
+        readBoolean(record.IsConnected);
+    const explicitLoggedIn =
+        readBoolean(record.loggedIn) ??
+        readBoolean(record.LoggedIn) ??
+        readBoolean(record.logged_in) ??
+        readBoolean(record.isLoggedIn) ??
+        readBoolean(record.IsLoggedIn);
+    const loggedIn = explicitLoggedIn ?? Boolean(jid);
+
+    return {
+        connected: explicitConnected ?? loggedIn,
+        loggedIn,
+        jid,
+        qrcode: readString(record.qrcode) || readString(record.QRCode),
+        webhook: readString(record.webhook) || readString(record.Webhook),
+        events: readString(record.events) || readString(record.Events),
+        name: readString(record.name) || readString(record.Name),
+    };
+}
+
+function normalizeWuzapiSendResult(payload: unknown): WuzapiSendResult {
+    const result = unwrapResponse<unknown>(payload);
+    if (!isObjectRecord(result)) {
+        return { Id: readString(result) };
+    }
+
+    const nestedMessage = isObjectRecord(result.message) ? result.message : {};
+    const id =
+        readString(result.Id) ||
+        readString(result.ID) ||
+        readString(result.id) ||
+        readString(result.MessageId) ||
+        readString(result.messageId) ||
+        readString(result.messageID) ||
+        readString(nestedMessage.Id) ||
+        readString(nestedMessage.ID) ||
+        readString(nestedMessage.id);
+    const timestamp =
+        readString(result.Timestamp) ||
+        readString(result.timestamp) ||
+        readString(nestedMessage.Timestamp) ||
+        readString(nestedMessage.timestamp);
+
+    return {
+        Id: id,
+        Timestamp: timestamp,
+    };
 }
 
 function normalizeWuzapiRecipient(phone: string) {
@@ -381,15 +496,8 @@ export async function provisionWuzapiInstance(appBaseUrl?: string) {
 }
 
 export async function getWuzapiSessionStatus() {
-    return requestWuzapi<{
-        connected?: boolean;
-        loggedIn?: boolean;
-        jid?: string;
-        qrcode?: string;
-        webhook?: string;
-        events?: string;
-        name?: string;
-    }>("user", "/session/status", { method: "GET" });
+    const payload = await requestWuzapi<unknown>("user", "/session/status", { method: "GET" });
+    return normalizeWuzapiSessionStatus(payload);
 }
 
 export async function connectWuzapiSession() {
@@ -495,13 +603,13 @@ export async function deleteWuzapiInstance() {
 
 export async function sendWuzapiTextMessage(phone: string, body: string) {
     return retryWuzapiSend(() =>
-        requestWuzapi<{ Id?: string; Timestamp?: string | number }>("user", "/chat/send/text", {
+        requestWuzapi<unknown>("user", "/chat/send/text", {
             method: "POST",
             body: JSON.stringify({
                 Phone: normalizeWuzapiRecipient(phone),
                 Body: body,
             }),
-        }),
+        }).then(normalizeWuzapiSendResult),
     );
 }
 
@@ -582,7 +690,7 @@ export async function sendWuzapiMediaMessage(params: SendMediaParams) {
 
     if (params.mediaCategory === "image") {
         return retryWuzapiSend(() =>
-            requestWuzapi<{ Id?: string }>("user", "/chat/send/image", {
+            requestWuzapi<unknown>("user", "/chat/send/image", {
                 method: "POST",
                 body: JSON.stringify({
                     Phone: phone,
@@ -590,13 +698,13 @@ export async function sendWuzapiMediaMessage(params: SendMediaParams) {
                     Image: params.dataUrl,
                     MimeType: params.mimeType,
                 }),
-            }),
+            }).then(normalizeWuzapiSendResult),
         );
     }
 
     if (params.mediaCategory === "audio") {
         return retryWuzapiSend(() =>
-            requestWuzapi<{ Id?: string }>("user", "/chat/send/audio", {
+            requestWuzapi<unknown>("user", "/chat/send/audio", {
                 method: "POST",
                 body: JSON.stringify({
                     Phone: phone,
@@ -605,13 +713,13 @@ export async function sendWuzapiMediaMessage(params: SendMediaParams) {
                     MimeType: params.mimeType,
                     PTT: true,
                 }),
-            }),
+            }).then(normalizeWuzapiSendResult),
         );
     }
 
     if (params.mediaCategory === "video") {
         return retryWuzapiSend(() =>
-            requestWuzapi<{ Id?: string }>("user", "/chat/send/video", {
+            requestWuzapi<unknown>("user", "/chat/send/video", {
                 method: "POST",
                 body: JSON.stringify({
                     Phone: phone,
@@ -619,7 +727,7 @@ export async function sendWuzapiMediaMessage(params: SendMediaParams) {
                     Video: params.dataUrl,
                     MimeType: params.mimeType,
                 }),
-            }),
+            }).then(normalizeWuzapiSendResult),
         );
     }
 
@@ -627,7 +735,7 @@ export async function sendWuzapiMediaMessage(params: SendMediaParams) {
     const documentDataUrl = `data:application/octet-stream;base64,${encodedContent}`;
 
     return retryWuzapiSend(() =>
-        requestWuzapi<{ Id?: string }>("user", "/chat/send/document", {
+        requestWuzapi<unknown>("user", "/chat/send/document", {
             method: "POST",
             body: JSON.stringify({
                 Phone: phone,
@@ -636,7 +744,7 @@ export async function sendWuzapiMediaMessage(params: SendMediaParams) {
                 MimeType: params.mimeType || "application/octet-stream",
                 Document: documentDataUrl,
             }),
-        }),
+        }).then(normalizeWuzapiSendResult),
     );
 }
 
