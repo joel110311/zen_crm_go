@@ -204,10 +204,15 @@ function normalizeObjectList<T extends object>(payload: unknown): T[] {
 function unwrapResponse<T>(payload: unknown): T {
     if (isObjectRecord(payload)) {
         const record = payload as Record<string, unknown>;
-        for (const key of ["data", "Data", "result", "Result"]) {
+        for (const key of ["data", "result", "Result"]) {
             if (key in record) {
                 return unwrapResponse<T>(record[key]);
             }
+        }
+
+        const keys = Object.keys(record);
+        if (keys.length === 1 && "Data" in record && (isObjectRecord(record.Data) || Array.isArray(record.Data))) {
+            return unwrapResponse<T>(record.Data);
         }
     }
     return payload as T;
@@ -876,10 +881,23 @@ export async function downloadWuzapiMedia(kind: DownloadMediaKind, payload: Down
         sticker: "/chat/downloadsticker",
     };
 
-    return requestWuzapi<{ Data?: string; Mimetype?: string }>("user", endpointByKind[kind], {
+    const result = await requestWuzapi<unknown>("user", endpointByKind[kind], {
         method: "POST",
         body: JSON.stringify(payload),
     });
+
+    if (typeof result === "string") {
+        return { Data: result };
+    }
+
+    if (isObjectRecord(result)) {
+        return {
+            Data: readString(result.Data) || readString(result.data),
+            Mimetype: readString(result.Mimetype) || readString(result.mimetype) || readString(result.mimeType),
+        };
+    }
+
+    return {};
 }
 
 export async function getWuzapiContacts() {
