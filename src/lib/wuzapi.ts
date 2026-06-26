@@ -241,11 +241,52 @@ function readBoolean(value: unknown): boolean | undefined {
 
     if (typeof value === "string") {
         const normalized = value.trim().toLowerCase();
-        if (["true", "1", "yes", "si", "connected", "loggedin", "logged_in"].includes(normalized)) {
-            return true;
-        }
-        if (["false", "0", "no", "disconnected", "loggedout", "logged_out"].includes(normalized)) {
+        const words = normalized.replace(/[_-]+/g, " ");
+
+        if (
+            [
+                "false",
+                "0",
+                "no",
+                "disconnected",
+                "loggedout",
+                "logged out",
+                "logged_out",
+                "not connected",
+                "no conectado",
+                "sin conectar",
+                "offline",
+                "closed",
+                "inactive",
+                "desconectado",
+            ].includes(normalized) ||
+            /\b(disconnected|logged\s*out|not\s+connected|no\s+conectado|sin\s+conectar|offline|closed|inactive|desconectado)\b/.test(
+                words,
+            )
+        ) {
             return false;
+        }
+
+        if (
+            [
+                "true",
+                "1",
+                "yes",
+                "si",
+                "connected",
+                "loggedin",
+                "logged in",
+                "logged_in",
+                "active",
+                "ready",
+                "online",
+                "open",
+                "conectado",
+                "activo",
+            ].includes(normalized) ||
+            /\b(connected|logged\s*in|active|ready|online|open|conectado|activo)\b/.test(words)
+        ) {
+            return true;
         }
     }
 
@@ -254,23 +295,48 @@ function readBoolean(value: unknown): boolean | undefined {
 
 function normalizeWuzapiSessionStatus(payload: unknown): WuzapiSessionStatus {
     const status = unwrapResponse<unknown>(payload);
+    if (!isObjectRecord(status)) {
+        const statusFlag = readBoolean(status);
+
+        return {
+            connected: statusFlag ?? false,
+            loggedIn: statusFlag ?? false,
+            name: readString(status),
+        };
+    }
+
     const record = isObjectRecord(status) ? status : {};
+    const textStatus =
+        readBoolean(record.status) ??
+        readBoolean(record.Status) ??
+        readBoolean(record.details) ??
+        readBoolean(record.Details) ??
+        readBoolean(record.message) ??
+        readBoolean(record.Message) ??
+        readBoolean(record.Data) ??
+        readBoolean(record.data);
     const jid =
         readString(record.jid) ||
         readString(record.JID) ||
         readString(record.phone) ||
-        readString(record.Phone);
+        readString(record.Phone) ||
+        readString(record.number) ||
+        readString(record.Number) ||
+        readString(record.connectedPhone) ||
+        readString(record.ConnectedPhone);
     const explicitConnected =
         readBoolean(record.connected) ??
         readBoolean(record.Connected) ??
         readBoolean(record.isConnected) ??
-        readBoolean(record.IsConnected);
+        readBoolean(record.IsConnected) ??
+        textStatus;
     const explicitLoggedIn =
         readBoolean(record.loggedIn) ??
         readBoolean(record.LoggedIn) ??
         readBoolean(record.logged_in) ??
         readBoolean(record.isLoggedIn) ??
-        readBoolean(record.IsLoggedIn);
+        readBoolean(record.IsLoggedIn) ??
+        textStatus;
     const loggedIn = explicitLoggedIn ?? Boolean(jid);
 
     return {
