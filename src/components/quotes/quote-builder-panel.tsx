@@ -35,6 +35,7 @@ type QuoteItem = {
     quantity: number;
     unitPrice: number;
     kind?: "charge" | "deduction";
+    deductionType?: "advance" | "discount";
 };
 
 type OptionalFlags = {
@@ -213,6 +214,10 @@ function isDeductionItem(item: QuoteItem) {
     return item.kind === "deduction";
 }
 
+function getDeductionType(item: QuoteItem) {
+    return item.deductionType === "discount" ? "discount" : "advance";
+}
+
 function getQuoteItemAmount(item: QuoteItem) {
     return Math.max(0, safeNumber(item.quantity)) * Math.max(0, safeNumber(item.unitPrice));
 }
@@ -287,6 +292,20 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
         () => items.reduce((sum, item) => isDeductionItem(item) ? sum + getQuoteItemAmount(item) : sum, 0),
         [items],
     );
+    const deductionTotals = useMemo(
+        () => items.reduce(
+            (totals, item) => {
+                if (!isDeductionItem(item)) return totals;
+                const amount = getQuoteItemAmount(item);
+                if (getDeductionType(item) === "discount") {
+                    return { ...totals, discount: totals.discount + amount };
+                }
+                return { ...totals, advance: totals.advance + amount };
+            },
+            { advance: 0, discount: 0 },
+        ),
+        [items],
+    );
     const ivaAmount = optionalFlags.iva ? subtotal * Math.max(0, ivaPercent) / 100 : 0;
     const total = Math.max(0, subtotal + ivaAmount - deductionTotal);
 
@@ -355,6 +374,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                 quantity: 1,
                 unitPrice: 0,
                 kind: "deduction",
+                deductionType: "advance",
             },
         ]);
     };
@@ -397,7 +417,8 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
             "",
             `Subtotal: ${formatCurrency(subtotal)}`,
             optionalFlags.iva ? `IVA (${ivaPercent}%): ${formatCurrency(ivaAmount)}` : null,
-            deductionTotal > 0 ? `Anticipos y descuentos: ${formatCurrency(-deductionTotal)}` : null,
+            deductionTotals.advance > 0 ? `Anticipos: ${formatCurrency(-deductionTotals.advance)}` : null,
+            deductionTotals.discount > 0 ? `Descuentos: ${formatCurrency(-deductionTotals.discount)}` : null,
             `*Total: ${formatCurrency(total)}*`,
             `Vigencia: ${renderText(validUntil)}`,
             optionalFlags.notes && renderText(notes) ? `Notas: ${renderText(notes)}` : null,
@@ -837,7 +858,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                     </Button>
                                     <Button variant="outline" size="sm" className="rounded-xl" onClick={addDeductionItem}>
                                         <Plus className="h-4 w-4" />
-                                        Anticipo / descuento
+                                        Anticipo
                                     </Button>
                                 </div>
                             </div>
@@ -858,9 +879,18 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                     placeholder={isDeductionItem(item) ? "Anticipo, apartado, liquidacion..." : "Concepto"}
                                                 />
                                                 {isDeductionItem(item) ? (
-                                                    <Badge variant="outline" className="shrink-0 border-amber-300 bg-amber-100 text-amber-800">
-                                                        Resta
-                                                    </Badge>
+                                                    <>
+                                                        <Badge variant="outline" className="shrink-0 border-amber-300 bg-amber-100 text-amber-800">
+                                                            {getDeductionType(item) === "discount" ? "Descuento" : "Anticipo"}
+                                                        </Badge>
+                                                        <label className="flex shrink-0 cursor-pointer items-center gap-2 rounded-xl border bg-background px-3 py-2 text-xs text-muted-foreground">
+                                                            <Checkbox
+                                                                checked={getDeductionType(item) === "discount"}
+                                                                onCheckedChange={(checked) => updateItem(item.id, { deductionType: checked ? "discount" : "advance" })}
+                                                            />
+                                                            Descuento
+                                                        </label>
+                                                    </>
                                                 ) : null}
                                             </div>
                                             <Input
@@ -1087,10 +1117,16 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                     <span>{formatCurrency(ivaAmount)}</span>
                                                 </div>
                                             ) : null}
-                                            {deductionTotal > 0 ? (
+                                            {deductionTotals.advance > 0 ? (
                                                 <div className="flex justify-between text-amber-700">
-                                                    <span>Anticipos y descuentos</span>
-                                                    <span>{formatCurrency(-deductionTotal)}</span>
+                                                    <span>Anticipos</span>
+                                                    <span>{formatCurrency(-deductionTotals.advance)}</span>
+                                                </div>
+                                            ) : null}
+                                            {deductionTotals.discount > 0 ? (
+                                                <div className="flex justify-between text-amber-700">
+                                                    <span>Descuentos</span>
+                                                    <span>{formatCurrency(-deductionTotals.discount)}</span>
                                                 </div>
                                             ) : null}
                                             <div className="h-px bg-slate-900" />
@@ -1247,10 +1283,16 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                     <span>{formatCurrency(ivaAmount)}</span>
                                                 </div>
                                             ) : null}
-                                            {deductionTotal > 0 ? (
+                                            {deductionTotals.advance > 0 ? (
                                                 <div className="flex justify-between text-amber-700">
-                                                    <span>Anticipos y descuentos</span>
-                                                    <span>{formatCurrency(-deductionTotal)}</span>
+                                                    <span>Anticipos</span>
+                                                    <span>{formatCurrency(-deductionTotals.advance)}</span>
+                                                </div>
+                                            ) : null}
+                                            {deductionTotals.discount > 0 ? (
+                                                <div className="flex justify-between text-amber-700">
+                                                    <span>Descuentos</span>
+                                                    <span>{formatCurrency(-deductionTotals.discount)}</span>
                                                 </div>
                                             ) : null}
                                             <div className="mt-2 flex justify-between px-4 py-3 text-base font-black text-white" style={{ backgroundColor: template.accent }}>
