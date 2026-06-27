@@ -994,6 +994,32 @@ function shouldEscalateUnknownReply(reply: string) {
     ].some((pattern) => pattern.test(normalized));
 }
 
+function shouldEscalateHumanRequest(message: string) {
+    const normalized = normalizeCatalogComparableText(message);
+    if (!normalized) return false;
+
+    return [
+        /\b(no quiero|no deseo|no me gusta|no necesito)(?: [a-z0-9 ]{0,30})?\b(bot|robot|ia|asistente automatico)\b/,
+        /\b(quiero|quisiera|necesito|puedo|podria|me puedes|me podrias)(?: [a-z0-9 ]{0,40})?\b(hablar|platicar|chatear|conversar|contactar)(?: [a-z0-9 ]{0,30})?\b(humano|persona|asesor|asesora|ejecutivo|ejecutiva|agente)\b/,
+        /\b(pasame|pasanme|canalizame|transfiereme|comunicame|mandame)(?: [a-z0-9 ]{0,25})?\b(humano|persona|asesor|asesora|ejecutivo|ejecutiva|agente)\b/,
+        /\b(atiendame|atiendanme|que me atienda|que me contacte|que me llame)(?: [a-z0-9 ]{0,35})?\b(humano|persona|asesor|asesora|ejecutivo|ejecutiva|agente|alguien)\b/,
+        /\b(humano|persona real|asesor humano|asesora humana|ejecutivo humano|agente humano)\b/,
+    ].some((pattern) => pattern.test(normalized));
+}
+
+function shouldEscalateHandoffReply(reply: string) {
+    const normalized = normalizeCatalogComparableText(reply);
+    if (!normalized) return false;
+
+    return [
+        /\ben breve(?: [a-z0-9 ]{0,40})?\b(contacto|contactaran|contactaremos|atenderan|atenderemos)\b/,
+        /\bse pondran en contacto\b/,
+        /\bun asesor(?: [a-z0-9 ]{0,30})?\b(contactara|atendera|apoyara)\b/,
+        /\bte atendera(?: [a-z0-9 ]{0,20})?\b(una persona|un asesor|una asesora|un ejecutivo|una ejecutiva|alguien)\b/,
+        /\bte contactara(?: [a-z0-9 ]{0,20})?\b(una persona|un asesor|una asesora|un ejecutivo|una ejecutiva|alguien)\b/,
+    ].some((pattern) => pattern.test(normalized));
+}
+
 function buildEscalationCustomerReply() {
     return "Para darte una respuesta precisa, te voy a canalizar con un asesor humano y en un momento te atenderemos por aqui.";
 }
@@ -2061,11 +2087,16 @@ async function maybeSendAutomatedReply(
 
         if (!reply) return;
 
-        const shouldEscalate =
-            replyFromModel &&
+        const escalationConfigured =
             settings.escalationEnabled &&
-            Boolean(settings.escalationPhone?.trim()) &&
-            shouldEscalateUnknownReply(reply);
+            Boolean(settings.escalationPhone?.trim());
+        const shouldEscalate =
+            escalationConfigured &&
+            (
+                shouldEscalateHumanRequest(modelUserMessage) ||
+                shouldEscalateHandoffReply(reply) ||
+                (replyFromModel && shouldEscalateUnknownReply(reply))
+            );
 
         if (shouldEscalate) {
             reply = buildEscalationCustomerReply();
