@@ -76,6 +76,24 @@ function getConversationContactName(contact: {
     return formatPhone(contact?.phone) || "Contacto sin nombre";
 }
 
+function getConversationLastMessageTime(conversation: {
+    updatedAt: Date;
+    messages?: Array<{ createdAt: Date | null }>;
+}) {
+    return conversation.messages?.[0]?.createdAt?.getTime() || conversation.updatedAt.getTime();
+}
+
+function sortConversationsByLastMessage<T extends {
+    updatedAt: Date;
+    messages?: Array<{ createdAt: Date | null }>;
+}>(conversations: T[]) {
+    return [...conversations].sort((left, right) => {
+        const diff = getConversationLastMessageTime(right) - getConversationLastMessageTime(left);
+        if (diff !== 0) return diff;
+        return right.updatedAt.getTime() - left.updatedAt.getTime();
+    });
+}
+
 // GET /api/chat - Get all conversations or messages for a specific conversation
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
@@ -179,7 +197,7 @@ export async function GET(request: NextRequest) {
                     },
                 });
 
-                return NextResponse.json(conversations.map((conversation) => ({
+                return NextResponse.json(sortConversationsByLastMessage(conversations).map((conversation) => ({
                     id: conversation.id,
                     updatedAt: conversation.updatedAt,
                     lastMessageTime: conversation.messages[0]?.createdAt || conversation.updatedAt,
@@ -221,12 +239,12 @@ export async function GET(request: NextRequest) {
             } satisfies Prisma.ConversationInclude;
 
             // Get all conversations with last message
-            let conversations = await prisma.conversation.findMany({
+            let conversations = sortConversationsByLastMessage(await prisma.conversation.findMany({
                 where: conversationWhere,
                 include: conversationInclude,
                 orderBy: { updatedAt: "desc" },
                 take: conversationLimit,
-            });
+            }));
             const regularConversationIds = new Set(conversations.map((conversation) => conversation.id));
 
             if (!updatedSince && !beforeUpdatedAt && (targetConversationId || targetContactId)) {
@@ -246,7 +264,7 @@ export async function GET(request: NextRequest) {
                     for (const conversation of targetConversations) {
                         byId.set(conversation.id, conversation);
                     }
-                    conversations = Array.from(byId.values()).sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime());
+                    conversations = sortConversationsByLastMessage(Array.from(byId.values()));
                 }
             }
 

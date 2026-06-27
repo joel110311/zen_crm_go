@@ -400,7 +400,11 @@ function transformConversation(conv: ConversationRecord): Conversation {
 }
 
 function getConversationSortTime(conversation: Conversation) {
-    return (conversation.serverUpdatedAt || conversation.updatedAt).getTime();
+    return (conversation.updatedAt || conversation.serverUpdatedAt).getTime();
+}
+
+function sortConversationSnapshots(items: Conversation[]) {
+    return [...items].sort((left, right) => getConversationSortTime(right) - getConversationSortTime(left));
 }
 
 function mergeConversationSnapshots(
@@ -412,14 +416,17 @@ function mergeConversationSnapshots(
         mergedById.set(conversation.id, conversation);
     }
 
-    return Array.from(mergedById.values())
-        .sort((left, right) => getConversationSortTime(right) - getConversationSortTime(left))
+    return sortConversationSnapshots(Array.from(mergedById.values()))
         .slice(0, INBOX_MAX_LOADED_CONVERSATIONS);
 }
 
 function getOldestConversationCursor(items: Conversation[]) {
-    const oldest = items[items.length - 1];
-    return oldest ? toIsoTimestamp(oldest.serverUpdatedAt || oldest.updatedAt) : null;
+    const timestamps = items
+        .map((conversation) => toIsoTimestamp(conversation.serverUpdatedAt || conversation.updatedAt))
+        .filter((timestamp): timestamp is string => Boolean(timestamp));
+
+    if (timestamps.length === 0) return null;
+    return timestamps.sort()[0];
 }
 
 // ──────────── WhatsApp Text Formatter ────────────
@@ -1230,7 +1237,7 @@ export default function InboxPage() {
         const data = await response.json();
         if (!Array.isArray(data)) return null;
 
-        const transformed = data.map(transformConversation);
+        const transformed = sortConversationSnapshots(data.map(transformConversation));
         setConversations((prev) => mergeConversationSnapshots(prev, transformed));
 
         const target = transformed.find((conversation) => conversation.id === conversationId) || null;
@@ -1544,7 +1551,10 @@ export default function InboxPage() {
                 });
                 const data = await response.json();
                 if (!controller.signal.aborted) {
-                    setSearchResults(Array.isArray(data) ? data.map(transformConversation) : []);
+                    const transformed = Array.isArray(data)
+                        ? sortConversationSnapshots(data.map(transformConversation))
+                        : [];
+                    setSearchResults(transformed);
                 }
             } catch (error) {
                 if (!controller.signal.aborted) {
@@ -1602,7 +1612,7 @@ export default function InboxPage() {
                 const data = await response.json();
                 if (!Array.isArray(data) || disposed) return;
 
-                const transformed: Conversation[] = data.map(transformConversation);
+                const transformed: Conversation[] = sortConversationSnapshots(data.map(transformConversation));
                 const paginationConversations = transformed.filter((conversation) => !conversation.isDeepLinkedTarget);
                 updateConversationCursor(transformed);
                 if (mode === "full" && !oldestConversationCursorRef.current) {
@@ -1759,7 +1769,7 @@ export default function InboxPage() {
             const response = await fetch(url.toString(), { cache: "no-store" });
             const data = await response.json();
             const transformed: Conversation[] = Array.isArray(data)
-                ? data.map(transformConversation)
+                ? sortConversationSnapshots(data.map(transformConversation))
                 : [];
 
             if (transformed.length === 0) {
@@ -2081,7 +2091,7 @@ export default function InboxPage() {
             const convRes = await fetch(`/api/chat?limit=${INBOX_CONVERSATION_LIMIT}`, { cache: "no-store" });
             const convData = await convRes.json();
             if (Array.isArray(convData)) {
-                const transformed: Conversation[] = convData.map(transformConversation);
+                const transformed: Conversation[] = sortConversationSnapshots(convData.map(transformConversation));
                 setConversations((prev) => mergeConversationSnapshots(prev, transformed));
                 if (selectedChat && action !== "delete") {
                     const updated = transformed.find(c => c.id === selectedChat.id);
@@ -2150,16 +2160,18 @@ export default function InboxPage() {
     // ──── Filter conversations by search ────
     const normalizedSearchQuery = searchQuery.trim();
     const conversationSearchSource = normalizedSearchQuery.length >= 2 ? searchResults : conversations;
-    const filteredConversations = conversationSearchSource.filter(conv => {
-        if (viewFilter === "mine" && conv.assignedUserId !== currentUserId) return false;
-        if (viewFilter === "unassigned" && conv.assignedUserId) return false;
-        if (!normalizedSearchQuery || normalizedSearchQuery.length >= 2) return true;
-        const q = normalizedSearchQuery.toLowerCase();
-        const name = (conv.contact?.name || "").toLowerCase();
-        const phone = (conv.contact?.phone || "").toLowerCase();
-        const lastMsg = (conv.messages[0]?.content || "").toLowerCase();
-        return name.includes(q) || phone.includes(q) || lastMsg.includes(q);
-    });
+    const filteredConversations = conversationSearchSource
+        .filter(conv => {
+            if (viewFilter === "mine" && conv.assignedUserId !== currentUserId) return false;
+            if (viewFilter === "unassigned" && conv.assignedUserId) return false;
+            if (!normalizedSearchQuery || normalizedSearchQuery.length >= 2) return true;
+            const q = normalizedSearchQuery.toLowerCase();
+            const name = (conv.contact?.name || "").toLowerCase();
+            const phone = (conv.contact?.phone || "").toLowerCase();
+            const lastMsg = (conv.messages[0]?.content || "").toLowerCase();
+            return name.includes(q) || phone.includes(q) || lastMsg.includes(q);
+        })
+        .sort((left, right) => getConversationSortTime(right) - getConversationSortTime(left));
 
     // ──── Voice Recording ────
     const assignableUsers = currentUserRole === "SUPERADMIN"
