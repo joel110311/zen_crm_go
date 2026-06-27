@@ -132,6 +132,9 @@ const WUZAPI_RETRYABLE_SEND_ERRORS = [
     "session not connected",
 ];
 const WUZAPI_SUBSCRIBED_EVENTS = ["Message", "HistorySync"];
+const WUZAPI_DEFAULT_TIMEOUT_MS = 20000;
+const WUZAPI_STATUS_TIMEOUT_MS = 6500;
+const WUZAPI_SEND_TIMEOUT_MS = 60000;
 
 let wuzapiRecoveryPromise: Promise<void> | null = null;
 
@@ -526,11 +529,35 @@ async function requestWuzapi<T>(
         headers.set("Content-Type", "application/json");
     }
 
-    const response = await fetch(url, {
-        ...init,
-        headers,
-        cache: "no-store",
-    });
+    const method = (init?.method || "GET").toUpperCase();
+    const timeoutMs = path.includes("/session/status") || path.includes("/session/qr")
+        ? WUZAPI_STATUS_TIMEOUT_MS
+        : path.includes("/chat/send/")
+            ? WUZAPI_SEND_TIMEOUT_MS
+            : path.includes("/session/history") || path.includes("/chat/history")
+                ? WUZAPI_SEND_TIMEOUT_MS
+                : method === "GET"
+                    ? WUZAPI_DEFAULT_TIMEOUT_MS
+                : WUZAPI_DEFAULT_TIMEOUT_MS;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    let response: Response;
+    try {
+        response = await fetch(url, {
+            ...init,
+            headers,
+            cache: "no-store",
+            signal: controller.signal,
+        });
+    } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+            throw new Error(`El servicio de WhatsApp no respondio a tiempo (${Math.round(timeoutMs / 1000)}s).`);
+        }
+        throw error;
+    } finally {
+        clearTimeout(timeout);
+    }
 
     const rawBody = await response.text();
     let parsed: unknown = {};

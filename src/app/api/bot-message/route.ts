@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { normalizeMessageSourceType, resolveMessageSourceId } from "@/lib/message-source";
+import { sendOutboundConversationMessage, type OutboundMessageType } from "@/lib/outbound-messages";
 import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 
 /**
  * POST /api/bot-message
- * 
- * Called by any external assistant that wants to persist a bot message in the CRM.
- * Stores the bot's response in the CRM so it appears in the chat.
- * 
+ *
+ * Called by any external assistant that wants to send a bot message through the CRM.
+ * Sends through the configured WhatsApp source and persists the resulting message.
+ *
  * Body:
  *   - to: string (phone number of the recipient, e.g. "524772683928")
  *   - text: string (message content)
@@ -23,21 +24,24 @@ export async function POST(request: NextRequest) {
         const body = await request.json();
         const { to, text, type = "text", mediaUrl, mediaType, mediaFileName, sourceType } = body;
         const textContent = typeof text === "string" ? text.trim() : "";
+        const requestedType = typeof type === "string" ? type : "text";
+        const outboundType: OutboundMessageType = ["text", "image", "audio", "video", "document"].includes(requestedType)
+            ? requestedType as OutboundMessageType
+            : "text";
 
         if (!to || (!textContent && !mediaUrl)) {
             return NextResponse.json(
                 { error: "Missing required fields: 'to' and ('text' or 'mediaUrl')" },
-                { status: 400 }
+                { status: 400 },
             );
         }
 
-        // Normalize phone (remove +, spaces, dashes)
-        const phone = to.replace(/\D/g, "");
+        // Normalize phone (remove +, spaces, dashes).
+        const phone = String(to).replace(/\D/g, "");
         const suffix10 = phone.slice(-10);
 
-        console.log(`[Bot Message] Storing bot response to ${phone}: ${(textContent || type).substring(0, 50)}...`);
+        console.log(`[Bot Message] Sending bot response to ${phone}: ${(textContent || outboundType).substring(0, 50)}...`);
 
-        // Find contact by phone number
         let contact = await prisma.contact.findFirst({
             where: {
                 OR: [
@@ -65,60 +69,52 @@ export async function POST(request: NextRequest) {
             sourceType: normalizedSourceType,
             sourceId,
         });
+        const content = textContent || `[${outboundType}]`;
 
-        // Check for recent duplicate (avoid double-storing)
         const recentDuplicate = await prisma.message.findFirst({
             where: {
                 conversationId: conversation.id,
-                content: textContent || `[${type}]`,
+                content,
                 direction: "outbound",
                 sourceType: normalizedSourceType,
-                createdAt: { gte: new Date(Date.now() - 15000) }, // Within last 15 seconds
+                status: { not: "failed" },
+                createdAt: { gte: new Date(Date.now() - 15000) },
             },
         });
 
         if (recentDuplicate) {
-            console.log(`[Bot Message] Duplicate detected, skipping`);
+            console.log("[Bot Message] Duplicate detected, skipping");
             return NextResponse.json({ success: true, duplicate: true, messageId: recentDuplicate.id });
         }
 
-        // Store the bot message
-        const message = await prisma.message.create({
-            data: {
-                conversationId: conversation.id,
-                content: textContent || `[${type}]`,
-                direction: "outbound",
-                status: "sent",
-                type,
-                sourceType: normalizedSourceType,
-                sourceId,
-                mediaUrl: mediaUrl || null,
-                mediaType: mediaType || null,
-                mediaFileName: mediaFileName || null,
-                senderType: "bot",
-            },
+        const { message } = await sendOutboundConversationMessage({
+            conversationId: conversation.id,
+            content,
+            type: outboundType,
+            sourceType: normalizedSourceType,
+            sourceId,
+            mediaUrl: mediaUrl || null,
+            mediaType: mediaType || null,
+            mediaFileName: mediaFileName || null,
+            senderType: "bot",
+            preserveBotActive: true,
         });
 
-        // Update conversation timestamp
-        await prisma.conversation.update({
-            where: { id: conversation.id },
-            data: { updatedAt: new Date() },
-        });
-
-        console.log(`[Bot Message] ✓ Stored message ${message.id} for ${contact.name}`);
+        console.log(`[Bot Message] Sent and stored message ${message.id} for ${contact.name || contact.phone}`);
 
         return NextResponse.json({
             success: true,
             messageId: message.id,
             contactName: contact.name,
+            providerMessageId: message.providerMessageId,
+            status: message.status,
         });
-
     } catch (error: unknown) {
         const details = error instanceof Error ? error.message : "Unknown error";
         console.error("[Bot Message] Error:", error);
         return NextResponse.json(
-            { error: "Failed to store bot message", details },
-            { status: 500 }
+            { error: "Failed to send bot message", details },
+            { status: 500 },
         );
     }
 }
