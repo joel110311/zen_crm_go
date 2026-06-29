@@ -747,7 +747,7 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
                 className={cn(
                     "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full transition-colors",
                     isOutbound
-                        ? "bg-primary/20 text-primary hover:bg-primary/30 dark:bg-primary/30 dark:text-primary-foreground dark:hover:bg-primary/40"
+                        ? "bg-current/10 text-[color:var(--chat-outbound-foreground)] hover:bg-current/20"
                         : "bg-primary/10 hover:bg-primary/20 text-primary"
                 )}
             >
@@ -793,7 +793,7 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
                         )}
                     </div>
                 </div>
-                <span className={cn("text-[10px] tabular-nums", isOutbound ? "text-primary/70 dark:text-primary-foreground/75" : "text-muted-foreground")}>
+                <span className={cn("text-[10px] tabular-nums", isOutbound ? "text-[color:var(--chat-outbound-foreground)] opacity-70" : "text-muted-foreground")}>
                     {timeLabel}
                 </span>
             </div>
@@ -853,7 +853,7 @@ function MediaContent({ msg, onImageClick }: { msg: Message, onImageClick?: (msg
                 <FileText className="h-8 w-8 shrink-0 opacity-70" />
                 <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{msg.mediaFileName || "Documento"}</p>
-                    <p className={cn("text-xs", isOutbound ? "text-primary-foreground/60" : "text-muted-foreground")}>
+                    <p className={cn("text-xs", isOutbound ? "text-[color:var(--chat-outbound-foreground)] opacity-60" : "text-muted-foreground")}>
                         {msg.mediaType || "Descargar"}
                     </p>
                 </div>
@@ -3179,7 +3179,7 @@ export default function InboxPage() {
                                                                 className={cn(
                                                                     "relative overflow-visible rounded-[1.45rem] border px-4 py-3 text-sm break-words [overflow-wrap:anywhere] shadow-[0_18px_40px_-30px_rgba(15,23,42,0.28)] backdrop-blur-sm",
                                                                     msg.direction === "outbound"
-                                                                        ? "text-foreground"
+                                                                        ? "text-[color:var(--chat-outbound-foreground)]"
                                                                         : "border-border/50 bg-card/90 text-foreground dark:bg-card/80",
                                                                         (idx === 0 || messages[idx - 1].direction !== msg.direction)
                                                                             ? msg.direction === "outbound"
@@ -3192,6 +3192,7 @@ export default function InboxPage() {
                                                                         ? {
                                                                             borderColor: "var(--chat-outbound-border)",
                                                                             background: "var(--chat-outbound-bg)",
+                                                                            color: "var(--chat-outbound-foreground)",
                                                                         }
                                                                         : undefined
                                                                 }
@@ -3215,7 +3216,7 @@ export default function InboxPage() {
                                                                 msg.direction === "outbound"
                                                                     ? msg.status === "failed"
                                                                         ? "text-destructive"
-                                                                        : "text-foreground/50"
+                                                                        : "text-[color:var(--chat-outbound-foreground)] opacity-60"
                                                                     : "text-muted-foreground"
                                                             )}>
                                                                 {msg.direction === "outbound" && msg.status === "failed" && (

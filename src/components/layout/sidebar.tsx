@@ -107,7 +107,7 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                         {sessionLoading ? <div className="h-3 w-20 animate-pulse rounded bg-sidebar-foreground/10" /> : userName}
                     </div>
                     <div className="truncate text-xs text-sidebar-foreground/55">
-                        {sessionLoading ? "Cargando..." : userEmail || "Workspace Zen"}
+                        {sessionLoading ? "Cargando..." : userEmail || "Sin correo"}
                     </div>
                 </div>
             </div>
@@ -140,10 +140,6 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                         <X className="h-4 w-4" />
                     </button>
                 ) : null}
-            </div>
-
-            <div className="mt-5 rounded-xl border border-sidebar-border bg-sidebar-accent px-3 py-2 text-sm font-semibold text-sidebar-foreground shadow-soft">
-                Workspace Zen
             </div>
 
             <ScrollArea className="mt-5 flex-1">

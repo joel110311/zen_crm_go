@@ -102,6 +102,7 @@
   --audio-dot: #111111;
   --chat-outbound-border: rgba(20, 20, 20, 0.16);
   --chat-outbound-bg: linear-gradient(180deg, rgba(20, 20, 20, 0.96) 0%, rgba(8, 8, 8, 0.98) 100%);
+  --chat-outbound-foreground: hsl(0 0% 98%);
 
   --scrollbar-track: hsl(0 0% 94%);
   --scrollbar-thumb: hsl(0 0% 74%);
@@ -155,6 +156,7 @@
   --audio-dot: #ffffff;
   --chat-outbound-border: rgba(255, 255, 255, 0.2);
   --chat-outbound-bg: linear-gradient(180deg, rgba(245, 245, 245, 0.96) 0%, rgba(232, 232, 232, 0.98) 100%);
+  --chat-outbound-foreground: hsl(0 0% 5%);
 
   --scrollbar-track: hsl(0 0% 9%);
   --scrollbar-thumb: hsl(0 0% 28%);

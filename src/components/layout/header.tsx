@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Check, DownloadCloud, Share2 } from "lucide-react";
+import { Bell, DownloadCloud, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SearchCommand } from "@/components/header/search-command";
 
@@ -35,11 +35,6 @@ export function Header() {
             <div className="flex min-h-[72px] items-center gap-4 px-5 lg:px-6 xl:px-7">
                 <div className="min-w-0 flex-1">
                     <h1 className="truncate text-xl font-semibold leading-7 text-foreground">{title}</h1>
-                </div>
-
-                <div className="hidden items-center gap-2 text-sm font-semibold text-muted-foreground xl:flex">
-                    <Check className="h-4 w-4 text-foreground" />
-                    Actualizado ahora
                 </div>
 
                 <div className="w-full max-w-[300px]">
