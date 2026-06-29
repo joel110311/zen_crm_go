@@ -8,7 +8,6 @@ import {
     DownloadCloud,
     MessageSquare,
     Plus,
-    Sparkles,
     TrendingDown,
     TrendingUp,
     Users,
@@ -269,12 +268,6 @@ export default async function DashboardPage() {
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" asChild>
-                        <Link href="/dashboard/brain">
-                            <Sparkles className="h-4 w-4" />
-                            Ask AI
-                        </Link>
-                    </Button>
                     <Button variant="outline" asChild>
                         <Link href="/dashboard/contacts">
                             <Plus className="h-4 w-4" />

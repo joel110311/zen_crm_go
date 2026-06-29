@@ -58,7 +58,7 @@ function renderPlainTextWithLinks(text: string, keyPrefix: string): React.ReactN
                 href={normalizeHref(cleanUrl)}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="cursor-pointer break-all text-foreground underline underline-offset-2 transition-colors hover:text-muted-foreground"
+                className="cursor-pointer break-all text-current underline decoration-current underline-offset-2 transition-opacity hover:opacity-75"
             >
                 {cleanUrl}
             </a>,

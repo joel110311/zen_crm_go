@@ -1,9 +1,6 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, DownloadCloud, Share2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { SearchCommand } from "@/components/header/search-command";
 
 const PAGE_TITLES: Record<string, string> = {
@@ -40,22 +37,6 @@ export function Header() {
                 <div className="w-full max-w-[300px]">
                     <SearchCommand />
                 </div>
-
-                <Button variant="outline" size="icon" title="Notificaciones">
-                    <Bell className="h-4 w-4" />
-                </Button>
-                <Button variant="outline" className="hidden gap-2 lg:inline-flex" asChild>
-                    <Link href="/dashboard/templates">
-                        <Share2 className="h-4 w-4" />
-                        Compartir
-                    </Link>
-                </Button>
-                <Button className="hidden gap-2 lg:inline-flex" asChild>
-                    <Link href="/dashboard/contacts">
-                        <DownloadCloud className="h-4 w-4" />
-                        Exportar
-                    </Link>
-                </Button>
             </div>
         </header>
     );
