@@ -108,14 +108,14 @@ function getHostMeta(contact: ContactTableItem) {
         return {
             label: "IA",
             detail: conversation.assignedUser?.name || "Atencion automatica",
-            classes: "bg-emerald-100 text-emerald-700",
+            classes: "bg-secondary text-foreground",
         };
     }
 
     return {
         label: "Humano",
         detail: conversation.assignedUser?.name || "Sin asignar",
-        classes: "bg-amber-50 text-amber-700",
+        classes: "bg-secondary text-muted-foreground",
     };
 }
 
@@ -123,8 +123,8 @@ function getStatusMeta(contact: ContactTableItem) {
     const stage = contact.deals[0]?.stage;
     const fallbackMap: Record<string, { label: string; color: string }> = {
         lead: { label: "Nuevo lead", color: "#94A3B8" },
-        qualified: { label: "Calificado", color: "#10B981" },
-        customer: { label: "Cliente", color: "#2563EB" },
+        qualified: { label: "Calificado", color: "#111111" },
+        customer: { label: "Cliente", color: "#444444" },
     };
     const fallback = fallbackMap[contact.status] || fallbackMap.lead;
 
@@ -137,7 +137,7 @@ function getStatusMeta(contact: ContactTableItem) {
 function getScoreMeta(contact: ContactTableItem) {
     const score = contact.deals[0]?.intelligence?.score ?? 0;
     const tone =
-        score >= 70 ? "text-emerald-600" : score >= 40 ? "text-amber-500" : "text-slate-400";
+        score >= 70 ? "text-foreground" : score >= 40 ? "text-muted-foreground" : "text-slate-400";
     return { score, tone };
 }
 

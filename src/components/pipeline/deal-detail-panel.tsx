@@ -142,7 +142,7 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
 
     const handleCreateTag = () => {
         if (!newTagName.trim()) return;
-        const colors = ["#3B82F6", "#F59E0B", "#0EA5E9", "#EC4899", "#6366F1", "#0891B2", "#F97316"];
+        const colors = ["#111111", "#3f3f46", "#52525b", "#71717a", "#a1a1aa", "#27272a", "#18181b"];
         const color = colors[Math.floor(Math.random() * colors.length)];
         startTransition(async () => {
             const result = await createTag(newTagName.trim(), color);
@@ -272,7 +272,7 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                                 </div>
                                 <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-muted">
                                     <div
-                                        className="h-full rounded-full bg-emerald-500 transition-all"
+                                        className="h-full rounded-full bg-secondary transition-all"
                                         style={{ width: `${Math.min(Math.max(intelligence.score, 0), 100)}%` }}
                                     />
                                 </div>

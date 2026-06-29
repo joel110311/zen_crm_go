@@ -38,7 +38,7 @@ type CalendarFilterOption = {
     caption: string;
 };
 
-const DEFAULT_FILTER_COLOR = "#2563EB";
+const DEFAULT_FILTER_COLOR = "#111111";
 const INTERNAL_FILTER_COLOR = "#64748B";
 const ALL_FILTER_COLOR = "#0F172A";
 

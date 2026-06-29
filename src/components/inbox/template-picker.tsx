@@ -105,7 +105,7 @@ export function TemplatePicker({ templates, onApply, disabled = false }: Templat
                                                         <div className="flex items-center gap-2">
                                                             <p className="truncate font-medium">{template.name}</p>
                                                             {template.isFavorite ? (
-                                                                <Star className="h-3.5 w-3.5 fill-current text-amber-500" />
+                                                                <Star className="h-3.5 w-3.5 fill-current text-muted-foreground" />
                                                             ) : null}
                                                         </div>
                                                         <p className="text-xs text-muted-foreground">
@@ -136,7 +136,7 @@ export function TemplatePicker({ templates, onApply, disabled = false }: Templat
                                         </p>
                                     </div>
 
-                                    <div className="flex min-h-0 flex-1 items-start justify-center rounded-[1.6rem] border border-sky-100/80 bg-gradient-to-br from-sky-50 via-background to-emerald-50/70 p-5">
+                                    <div className="flex min-h-0 flex-1 items-start justify-center rounded-[1.6rem] border border-border bg-gradient-to-br from-secondary via-background to-card p-5">
                                         <WhatsAppTemplatePreview
                                             className="max-w-[390px]"
                                             title={previewTemplate.name}

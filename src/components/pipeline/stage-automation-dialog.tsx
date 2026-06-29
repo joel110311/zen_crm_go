@@ -139,7 +139,7 @@ export function StageAutomationDialog({ open, onOpenChange, stages }: StageAutom
                                                     className="flex items-center justify-between px-3 py-2 rounded-lg text-sm bg-secondary border border-border"
                                                 >
                                                     <div className="flex items-center gap-2">
-                                                        <Zap className="h-3.5 w-3.5 text-amber-500" />
+                                                        <Zap className="h-3.5 w-3.5 text-muted-foreground" />
                                                         <span className="text-muted-foreground">
                                                             Cuando es movido →
                                                         </span>

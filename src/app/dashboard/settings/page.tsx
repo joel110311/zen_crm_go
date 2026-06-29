@@ -25,7 +25,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { ThemeCustomizer } from "@/components/theme-customizer";
 import { useToast } from "@/components/ui/use-toast";
 import {
     getNotificationPrefs,
@@ -347,13 +346,6 @@ export default function SettingsPage() {
                                 <h2 className="font-semibold">Modo de visualizacion</h2>
                             </div>
                             <ThemeToggle />
-                        </div>
-                        <div className="space-y-3">
-                            <div className="flex items-center gap-2">
-                                <Palette className="h-4 w-4 text-primary" />
-                                <h2 className="font-semibold">Tema de colores</h2>
-                            </div>
-                            <ThemeCustomizer />
                         </div>
                     </div>
                 )}

@@ -59,10 +59,10 @@ const SOURCE_OPTIONS = [
 
 function statusBadge(status: string) {
     if (status === "ready") {
-        return <Badge className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">Listo</Badge>;
+        return <Badge className="bg-secondary text-foreground border border-border">Listo</Badge>;
     }
     if (status === "processing") {
-        return <Badge className="bg-sky-500/10 text-sky-600 border border-sky-500/20">Procesando</Badge>;
+        return <Badge className="bg-secondary text-foreground border border-border">Procesando</Badge>;
     }
     if (status === "failed") {
         return <Badge className="bg-destructive/10 text-destructive border border-destructive/20">Error</Badge>;

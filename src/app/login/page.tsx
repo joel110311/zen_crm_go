@@ -1,11 +1,11 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ZenLogo } from "@/components/icons/zen-logo";
-import { Loader2, Eye, EyeOff } from "lucide-react";
 import { loginAction } from "./actions";
 
 export default function LoginPage() {
@@ -13,41 +13,34 @@ export default function LoginPage() {
     const [showPassword, setShowPassword] = useState(false);
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-background relative overflow-hidden px-4">
-            {/* Subtle background accent */}
-            <div className="absolute inset-0 pointer-events-none">
-                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4" />
-                <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-primary/3 rounded-full blur-3xl translate-y-1/3 -translate-x-1/4" />
-            </div>
-
-            <div className="relative z-10 w-full max-w-md">
-                {/* Logo and branding */}
-                <div className="text-center mb-8 sm:mb-10">
-                    <div className="flex justify-center mb-5">
-                        <ZenLogo className="h-20 w-20 sm:h-28 sm:w-28 text-foreground" />
+        <div className="flex min-h-screen items-center justify-center bg-background px-4">
+            <div className="w-full max-w-md">
+                <div className="mb-8 text-center sm:mb-10">
+                    <div className="mb-5 flex justify-center">
+                        <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-border bg-card shadow-soft sm:h-24 sm:w-24">
+                            <ZenLogo className="h-16 w-16 text-foreground sm:h-20 sm:w-20" />
+                        </div>
                     </div>
-                    <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
+                    <h1 className="text-2xl font-semibold tracking-normal text-foreground sm:text-3xl">
                         Zen CRM
                     </h1>
-                    <p className="text-sm sm:text-base text-muted-foreground mt-1">
-                        Gestión inteligente de clientes con IA
+                    <p className="mt-1 text-sm text-muted-foreground sm:text-base">
+                        Gestion inteligente de clientes con IA
                     </p>
                 </div>
 
-                {/* Login card */}
-                <div className="bg-card border border-border rounded-2xl p-6 sm:p-8 shadow-premium">
+                <div className="rounded-xl border border-border bg-card p-6 shadow-soft sm:p-8">
                     <div className="mb-5 sm:mb-6">
-                        <h2 className="text-lg sm:text-xl font-semibold text-foreground">Iniciar Sesión</h2>
-                        <p className="text-sm text-muted-foreground mt-0.5">Ingresa tus credenciales para continuar</p>
+                        <h2 className="text-lg font-semibold text-foreground sm:text-xl">Iniciar sesion</h2>
+                        <p className="mt-0.5 text-sm text-muted-foreground">Ingresa tus credenciales para continuar</p>
                     </div>
 
                     <form action={formAction} className="space-y-4 sm:space-y-5">
-                        {/* Hidden redirectTo field for Auth.js */}
                         <input type="hidden" name="redirectTo" value="/dashboard" />
 
                         <div className="space-y-1.5">
-                            <Label htmlFor="email" className="text-foreground text-sm font-medium">
-                                Correo Electrónico
+                            <Label htmlFor="email" className="text-sm font-medium text-foreground">
+                                Correo electronico
                             </Label>
                             <Input
                                 id="email"
@@ -55,59 +48,55 @@ export default function LoginPage() {
                                 type="email"
                                 placeholder="tu@email.com"
                                 required
-                                className="bg-secondary border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20 h-12 text-base"
+                                className="h-12 border-border bg-background text-base text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20"
                             />
                         </div>
 
                         <div className="space-y-1.5">
-                            <Label htmlFor="password" className="text-foreground text-sm font-medium">
-                                Contraseña
+                            <Label htmlFor="password" className="text-sm font-medium text-foreground">
+                                Contrasena
                             </Label>
                             <div className="relative">
                                 <Input
                                     id="password"
                                     name="password"
                                     type={showPassword ? "text" : "password"}
-                                    placeholder="••••••••"
+                                    placeholder="********"
                                     required
-                                    className="bg-secondary border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20 h-12 text-base pr-11"
+                                    className="h-12 border-border bg-background pr-11 text-base text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20"
                                 />
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition"
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition hover:text-foreground"
+                                    aria-label={showPassword ? "Ocultar contrasena" : "Mostrar contrasena"}
                                 >
                                     {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                                 </button>
                             </div>
                         </div>
 
-                        {errorMessage && (
-                            <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-3">
+                        {errorMessage ? (
+                            <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                                 {errorMessage}
                             </div>
-                        )}
+                        ) : null}
 
-                        <Button
-                            type="submit"
-                            disabled={isPending}
-                            className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg shadow-md transition-all duration-200 text-base"
-                        >
+                        <Button type="submit" disabled={isPending} className="h-12 w-full text-base">
                             {isPending ? (
                                 <>
                                     <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                                     Verificando...
                                 </>
                             ) : (
-                                "Iniciar Sesión"
+                                "Iniciar sesion"
                             )}
                         </Button>
                     </form>
                 </div>
 
-                {/* Footer */}
-                <p className="text-center text-xs text-muted-foreground mt-6 sm:mt-8">
-                    v1.0 · © 2026 Zen CRM
+                <p className="mt-6 text-center text-xs text-muted-foreground sm:mt-8">
+                    v1.0 - 2026 Zen CRM
                 </p>
             </div>
         </div>

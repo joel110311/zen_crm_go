@@ -611,7 +611,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                 "overflow-hidden rounded-2xl border bg-card shadow-[0_22px_50px_-38px_rgba(15,23,42,0.45)]",
                 isCompact && "rounded-xl shadow-none",
             )}>
-                <div className="flex flex-col gap-4 border-b border-border/60 bg-gradient-to-r from-primary/10 via-background to-card px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-col gap-4 border-b border-border/60 bg-gradient-to-r from-secondary via-background to-card px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
                     <div className="flex items-center gap-2.5">
                         <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/12 text-primary">
                             <ReceiptText className="h-5 w-5" />
@@ -645,7 +645,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                 <SelectItem value="image">Imagen</SelectItem>
                             </SelectContent>
                         </Select>
-                        <Button className="rounded-2xl shadow-[0_18px_34px_-22px_rgba(37,99,235,0.8)]" onClick={() => void generateQuote()} disabled={isGenerating}>
+                        <Button className="rounded-2xl shadow-soft" onClick={() => void generateQuote()} disabled={isGenerating}>
                             {onGenerate ? <Send className="h-4 w-4" /> : <Check className="h-4 w-4" />}
                             {isGenerating ? "Generando..." : onGenerate ? "Generar para chat" : "Generar"}
                         </Button>
@@ -868,7 +868,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                         key={item.id}
                                         className={cn(
                                             "grid gap-2 rounded-2xl border bg-card p-3 md:grid-cols-[minmax(16rem,1fr)_6rem_9rem_2.5rem]",
-                                            isDeductionItem(item) && "border-amber-300/70 bg-amber-50/40",
+                                            isDeductionItem(item) && "border-border/70 bg-secondary/40",
                                         )}
                                     >
                                         <div className="space-y-2">
@@ -880,7 +880,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                 />
                                                 {isDeductionItem(item) ? (
                                                     <>
-                                                        <Badge variant="outline" className="shrink-0 border-amber-300 bg-amber-100 text-amber-800">
+                                                        <Badge variant="outline" className="shrink-0 border-border bg-secondary text-muted-foreground">
                                                             {getDeductionType(item) === "discount" ? "Descuento" : "Anticipo"}
                                                         </Badge>
                                                         <label className="flex shrink-0 cursor-pointer items-center gap-2 rounded-xl border bg-background px-3 py-2 text-xs text-muted-foreground">
@@ -961,7 +961,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                         </section>
                     </div>
 
-                    <div className="bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.12),transparent_34%),linear-gradient(180deg,rgba(248,250,252,0.9),rgba(241,245,249,0.55))] p-5">
+                    <div className="bg-secondary/45 p-5">
                         <div className="sticky top-4 space-y-4">
                             <div className="flex items-center justify-between gap-3">
                                 <div>
@@ -1095,10 +1095,10 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                             ) : null}
                                                         </div>
                                                         <div className="text-right font-semibold">{quantity}</div>
-                                                        <div className={cn("text-right", isDeductionItem(item) && "text-amber-700")}>
+                                                        <div className={cn("text-right", isDeductionItem(item) && "text-muted-foreground")}>
                                                             {formatCurrency(isDeductionItem(item) ? -unitPrice : unitPrice)}
                                                         </div>
-                                                        <div className={cn("text-right font-black", isDeductionItem(item) && "text-amber-700")}>
+                                                        <div className={cn("text-right font-black", isDeductionItem(item) && "text-muted-foreground")}>
                                                             {formatCurrency(getSignedQuoteItemAmount(item))}
                                                         </div>
                                                     </div>
@@ -1118,13 +1118,13 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                 </div>
                                             ) : null}
                                             {deductionTotals.advance > 0 ? (
-                                                <div className="flex justify-between text-amber-700">
+                                                <div className="flex justify-between text-muted-foreground">
                                                     <span>Anticipos</span>
                                                     <span>{formatCurrency(-deductionTotals.advance)}</span>
                                                 </div>
                                             ) : null}
                                             {deductionTotals.discount > 0 ? (
-                                                <div className="flex justify-between text-amber-700">
+                                                <div className="flex justify-between text-muted-foreground">
                                                     <span>Descuentos</span>
                                                     <span>{formatCurrency(-deductionTotals.discount)}</span>
                                                 </div>
@@ -1260,11 +1260,11 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                             <p className="font-bold">{renderText(item.concept) || "Concepto"}</p>
                                                             <p className="mt-1 text-[10px] leading-4 text-slate-500">{renderText(item.description)}</p>
                                                         </div>
-                                                        <div className={cn("px-2 py-4 text-right", isDeductionItem(item) && "text-amber-700")}>
+                                                        <div className={cn("px-2 py-4 text-right", isDeductionItem(item) && "text-muted-foreground")}>
                                                             {formatCurrency(isDeductionItem(item) ? -unitPrice : unitPrice)}
                                                         </div>
                                                         <div className="px-2 py-4 text-right font-semibold">{quantity}</div>
-                                                        <div className={cn("px-2 py-4 text-right font-semibold", isDeductionItem(item) && "text-amber-700")}>
+                                                        <div className={cn("px-2 py-4 text-right font-semibold", isDeductionItem(item) && "text-muted-foreground")}>
                                                             {formatCurrency(getSignedQuoteItemAmount(item))}
                                                         </div>
                                                     </div>
@@ -1284,13 +1284,13 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                 </div>
                                             ) : null}
                                             {deductionTotals.advance > 0 ? (
-                                                <div className="flex justify-between text-amber-700">
+                                                <div className="flex justify-between text-muted-foreground">
                                                     <span>Anticipos</span>
                                                     <span>{formatCurrency(-deductionTotals.advance)}</span>
                                                 </div>
                                             ) : null}
                                             {deductionTotals.discount > 0 ? (
-                                                <div className="flex justify-between text-amber-700">
+                                                <div className="flex justify-between text-muted-foreground">
                                                     <span>Descuentos</span>
                                                     <span>{formatCurrency(-deductionTotals.discount)}</span>
                                                 </div>

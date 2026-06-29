@@ -56,8 +56,8 @@ export function StatsCard({
                             className={cn(
                                 "flex items-center gap-1 rounded-full px-2 py-0.5",
                                 trend.isPositive
-                                    ? "text-sky-400 bg-sky-500/10"
-                                    : "text-rose-400 bg-rose-500/10"
+                                    ? "text-foreground bg-secondary"
+                                    : "text-foreground bg-secondary"
                             )}
                         >
                             {trend.isPositive ? (

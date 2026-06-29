@@ -63,7 +63,7 @@ function AudienceBreakdownBars({
                             <div
                                 className={cn(
                                     "h-full rounded-full",
-                                    tone === "primary" ? "bg-primary" : "bg-emerald-500",
+                                    tone === "primary" ? "bg-primary" : "bg-secondary",
                                 )}
                                 style={{ width: `${percentage}%` }}
                             />
@@ -213,7 +213,7 @@ export function BulkCampaignAudienceTab({
                         </div>
 
                         {form.sourceType === "ycloud" ? (
-                            <div className="mt-4 rounded-xl border border-sky-200/70 bg-sky-50/70 p-4 text-sky-950 dark:border-sky-500/25 dark:bg-sky-500/10 dark:text-sky-100">
+                            <div className="mt-4 rounded-xl border border-border bg-secondary p-4 text-foreground">
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                     <div>
                                         <p className="text-sm font-semibold">Seguimiento YCloud por ventana abierta</p>
@@ -349,7 +349,7 @@ export function BulkCampaignAudienceTab({
                             Un número por línea. Puedes usar <span className="font-medium text-foreground">Nombre | teléfono</span> o solo teléfono.
                         </p>
                         {form.sourceType === "ycloud" ? (
-                            <div className="mt-3 rounded-xl border border-amber-200/70 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-900">
+                            <div className="mt-3 rounded-xl border border-border bg-secondary/80 px-3 py-2 text-xs leading-5 text-foreground">
                                 En YCloud con mensaje libre solo se consideran contactos que ya tienen conversación API con ventana abierta. Los números manuales se omiten para evitar envíos fuera de regla; para ellos usa Plantillas YCloud.
                             </div>
                         ) : null}

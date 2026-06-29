@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Manrope } from "next/font/google";
 export const metadata: Metadata = {
   title: "Zen CRM",
   description: "Advanced WhatsApp CRM with AI capabilities",
@@ -14,28 +13,7 @@ export const metadata: Metadata = {
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
 import { SessionProvider } from "@/components/providers/session-provider"
-import { ColorThemeProvider } from "@/components/color-theme-provider"
 import { auth } from "@/lib/auth"
-import { COLOR_THEME_STORAGE_KEY, DEFAULT_COLOR_THEME } from "@/lib/color-theme"
-
-const manrope = Manrope({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  variable: "--font-manrope",
-  display: "swap",
-});
-
-const colorThemeInitScript = `
-(() => {
-  try {
-    const stored = window.localStorage.getItem("${COLOR_THEME_STORAGE_KEY}");
-    const nextTheme = stored === "black" || stored === "green" ? stored : "${DEFAULT_COLOR_THEME}";
-    document.documentElement.setAttribute("data-color-theme", nextTheme);
-  } catch {
-    document.documentElement.setAttribute("data-color-theme", "${DEFAULT_COLOR_THEME}");
-  }
-})();
-`;
 
 export default async function RootLayout({
   children,
@@ -45,12 +23,11 @@ export default async function RootLayout({
   const session = await auth();
 
   return (
-    <html lang="es" suppressHydrationWarning data-color-theme={DEFAULT_COLOR_THEME}>
+    <html lang="es" suppressHydrationWarning>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <script dangerouslySetInnerHTML={{ __html: colorThemeInitScript }} />
       </head>
-      <body className={`${manrope.variable} font-sans antialiased`}>
+      <body className="font-sans antialiased">
         <SessionProvider session={session}>
           <ThemeProvider
             attribute="class"
@@ -58,10 +35,8 @@ export default async function RootLayout({
             enableSystem={false}
             disableTransitionOnChange
           >
-            <ColorThemeProvider>
-              {children}
-              <Toaster />
-            </ColorThemeProvider>
+            {children}
+            <Toaster />
           </ThemeProvider>
         </SessionProvider>
       </body>

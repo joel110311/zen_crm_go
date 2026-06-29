@@ -51,12 +51,12 @@ export default async function ContactDetailsPage(props: { params: Promise<{ id: 
                 <div className="md:col-span-4 lg:col-span-3 flex flex-col gap-6 overflow-y-auto pr-2">
                     <Card>
                         <CardContent className="pt-6 flex flex-col items-center text-center">
-                            <Avatar className="h-24 w-24 mb-4 ring-2 ring-offset-2 ring-blue-100">
+                            <Avatar className="h-24 w-24 mb-4 ring-2 ring-offset-2 ring-border">
                                 <AvatarImage
                                     src={contact.whatsappAvatarUrl || undefined}
                                     alt={fullName}
                                 />
-                                <AvatarFallback className="text-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white">
+                                <AvatarFallback className="text-2xl bg-gradient-to-br from-foreground to-muted-foreground text-white">
                                     {getContactInitial(contact)}
                                 </AvatarFallback>
                             </Avatar>
@@ -159,7 +159,7 @@ export default async function ContactDetailsPage(props: { params: Promise<{ id: 
                         {/* Example Timeline Items */}
                         <div className="flex gap-4">
                             <div className="flex flex-col items-center">
-                                <div className="h-2 w-2 bg-blue-500 rounded-full" />
+                                <div className="h-2 w-2 bg-foreground rounded-full" />
                                 <div className="w-px h-full bg-gray-200 my-1" />
                             </div>
                             <div className="pb-8">

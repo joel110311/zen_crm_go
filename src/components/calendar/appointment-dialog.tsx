@@ -499,7 +499,7 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                                     Disponible entre {formatTimeLabel(selectedDayStart)} y {formatTimeLabel(selectedDayEnd)}.
                                 </p>
                             ) : (
-                                <p className="text-xs text-amber-600">
+                                <p className="text-xs text-muted-foreground">
                                     Este dia esta cerrado en el horario comercial.
                                 </p>
                             )}
@@ -558,7 +558,7 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                     )}
                     <div className="flex gap-2">
                         <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-                        <Button onClick={handleSubmit} disabled={isPending} className="bg-blue-600 hover:bg-blue-700">
+                        <Button onClick={handleSubmit} disabled={isPending} className="bg-primary hover:bg-primary/90">
                             {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             {selectedEvent ? "Actualizar Cita" : "Agendar Cita"}
                         </Button>

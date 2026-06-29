@@ -59,7 +59,7 @@ export default function TemplatesPage() {
                 </div>
 
                 <div className="rounded-xl border bg-card p-7 text-center shadow-[0_12px_28px_-22px_rgba(15,23,42,0.22)]">
-                    <ShieldAlert className="mx-auto h-10 w-10 text-amber-500" />
+                    <ShieldAlert className="mx-auto h-10 w-10 text-muted-foreground" />
                     <h2 className="mt-4 text-lg font-semibold">Acceso restringido</h2>
                     <p className="mt-2 text-sm text-muted-foreground">
                         Solo un superadministrador puede gestionar las plantillas internas.

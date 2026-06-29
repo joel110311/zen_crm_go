@@ -39,7 +39,7 @@ export function AppointmentList({ appointments, onEdit, onDelete }: AppointmentL
                     {appointments.map((apt) => {
                         const durationMins = Math.round((new Date(apt.endTime).getTime() - new Date(apt.startTime).getTime()) / 60000);
                         const calendarLabel = apt.specialistName || apt.googleCalendarName;
-                        const calendarColor = apt.googleCalendarColor || "#2563EB";
+                        const calendarColor = apt.googleCalendarColor || "#111111";
 
                         return (
                             <TableRow key={apt.id} className="hover:bg-slate-50/50">
@@ -92,7 +92,7 @@ export function AppointmentList({ appointments, onEdit, onDelete }: AppointmentL
                                             apt.status === "scheduled"
                                                 ? "bg-yellow-100 text-yellow-700 hover:bg-yellow-200 border-none shadow-none"
                                                 : apt.status === "completed"
-                                                    ? "bg-green-100 text-green-700 hover:bg-green-200 border-none shadow-none"
+                                                    ? "bg-secondary text-foreground hover:bg-accent border-none shadow-none"
                                                     : ""
                                         }
                                     >
@@ -104,7 +104,7 @@ export function AppointmentList({ appointments, onEdit, onDelete }: AppointmentL
                                         <Button
                                             variant="ghost"
                                             size="icon"
-                                            className="h-8 w-8 text-gray-400 hover:text-blue-600"
+                                            className="h-8 w-8 text-gray-400 hover:text-foreground"
                                             onClick={() => onEdit(apt)}
                                         >
                                             <Edit2 className="h-4 w-4" />

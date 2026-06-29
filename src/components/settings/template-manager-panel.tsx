@@ -313,7 +313,7 @@ export function TemplateManagerPanel() {
                                             <div className="min-w-0 flex-1">
                                                 <div className="flex items-center gap-2">
                                                     <p className="truncate font-medium">{template.name}</p>
-                                                    {template.isFavorite ? <Star className="h-3.5 w-3.5 fill-current text-amber-500" /> : null}
+                                                    {template.isFavorite ? <Star className="h-3.5 w-3.5 fill-current text-muted-foreground" /> : null}
                                                 </div>
                                                 <p className="text-xs text-muted-foreground">
                                                     {humanizeTemplateType(template.type)}
@@ -535,8 +535,8 @@ export function TemplateManagerPanel() {
                         <p className="font-medium">Vista previa premium</p>
                         <p className="text-sm text-muted-foreground">Asi se vera la plantilla antes de insertarla en el chat.</p>
 
-                        <div className="mt-4 rounded-xl border border-sky-100/70 bg-gradient-to-br from-sky-50 via-background to-emerald-50/70 p-4">
-                            <div className="mb-4 flex flex-col gap-3 rounded-xl border border-sky-100/80 bg-white/85 px-4 py-3 shadow-[0_16px_34px_-30px_rgba(14,116,144,0.38)] sm:flex-row sm:items-start sm:justify-between">
+                        <div className="mt-4 rounded-xl border border-border bg-gradient-to-br from-secondary via-background to-card p-4">
+                            <div className="mb-4 flex flex-col gap-3 rounded-xl border border-border bg-white/85 px-4 py-3 shadow-soft sm:flex-row sm:items-start sm:justify-between">
                                 <div className="min-w-0">
                                     <p className="truncate text-sm font-semibold text-slate-900">{form.name || "Sin nombre"}</p>
                                     <p className="mt-1 text-xs text-slate-500">
@@ -545,7 +545,7 @@ export function TemplateManagerPanel() {
                                         {form.shortcut ? ` - /${form.shortcut}` : ""}
                                     </p>
                                 </div>
-                                <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700">
+                                <div className="rounded-full border border-border bg-secondary px-3 py-1 text-[11px] font-medium text-foreground">
                                     Vista previa
                                 </div>
                             </div>
@@ -561,7 +561,7 @@ export function TemplateManagerPanel() {
                             />
 
                             {form.mediaFileName ? (
-                                <div className="mt-4 rounded-xl border border-sky-100/80 bg-white/85 p-3 shadow-[0_16px_36px_-32px_rgba(14,116,144,0.4)]">
+                                <div className="mt-4 rounded-xl border border-border bg-white/85 p-3 shadow-soft">
                                     <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-400">Archivo vinculado</p>
                                     <div className="mt-3 rounded-xl border border-border/60 bg-background/90 p-3">
                                         {form.type === "image" ? (

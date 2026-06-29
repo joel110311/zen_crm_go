@@ -1,22 +1,103 @@
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Users, MessageSquare, TrendingUp, Calendar, ArrowRight, Wallet, Plus, BarChart3 } from "lucide-react";
-import { prisma } from "@/lib/db";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import {
+    ArrowRight,
+    Bot,
+    CalendarDays,
+    Check,
+    ChevronDown,
+    DownloadCloud,
+    MessageSquare,
+    Plus,
+    Sparkles,
+    TrendingDown,
+    TrendingUp,
+    Users,
+    Wallet,
+} from "lucide-react";
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getContactFullName } from "@/lib/contact-name";
 
+const currency = new Intl.NumberFormat("es-MX", {
+    style: "currency",
+    currency: "MXN",
+    maximumFractionDigits: 0,
+});
+
+const compactNumber = new Intl.NumberFormat("es-MX", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+});
+
+function startOfToday() {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    return date;
+}
+
+function endOfToday() {
+    const date = new Date();
+    date.setHours(23, 59, 59, 999);
+    return date;
+}
+
+function addDays(date: Date, days: number) {
+    const next = new Date(date);
+    next.setDate(next.getDate() + days);
+    return next;
+}
+
+function monthKey(date: Date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function shortMonth(date: Date) {
+    return date.toLocaleDateString("es-MX", { month: "short" }).replace(".", "");
+}
+
+function shortTime(date: Date) {
+    return date.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
+}
+
+function buildLinePath(values: number[], width = 720, height = 220) {
+    const max = Math.max(...values, 1);
+    const min = Math.min(...values, 0);
+    const range = Math.max(max - min, 1);
+    return values
+        .map((value, index) => {
+            const x = values.length <= 1 ? 0 : (index / (values.length - 1)) * width;
+            const y = height - ((value - min) / range) * (height - 28) - 14;
+            return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
+        })
+        .join(" ");
+}
+
 async function getDashboardStats() {
+    const todayStart = startOfToday();
+    const todayEnd = endOfToday();
+    const weekStart = addDays(todayStart, -6);
+    const monthStart = new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
+    const chartStart = new Date(todayStart.getFullYear(), todayStart.getMonth() - 7, 1);
+
     const [
         totalContacts,
+        newContactsThisMonth,
         activeConversations,
+        messagesThisWeek,
         totalDeals,
         dealsByStage,
+        closedWonDeals,
         recentDeals,
+        todayAppointments,
         upcomingAppointments,
+        contactsForSegments,
     ] = await Promise.all([
         prisma.contact.count(),
+        prisma.contact.count({ where: { createdAt: { gte: monthStart } } }),
         prisma.conversation.count({ where: { status: "active" } }),
+        prisma.message.count({ where: { createdAt: { gte: weekStart } } }),
         prisma.deal.count(),
         prisma.pipelineStage.findMany({
             orderBy: { order: "asc" },
@@ -26,12 +107,23 @@ async function getDashboardStats() {
             },
         }),
         prisma.deal.findMany({
+            where: { stage: { isClosedWon: true }, updatedAt: { gte: chartStart } },
+            select: { value: true, updatedAt: true },
+            orderBy: { updatedAt: "asc" },
+        }),
+        prisma.deal.findMany({
             take: 5,
-            orderBy: { createdAt: "desc" },
+            orderBy: { updatedAt: "desc" },
             include: {
                 contact: { select: { name: true, lastName: true, phone: true } },
-                stage: { select: { name: true, color: true } },
+                stage: { select: { name: true, isClosedWon: true, isClosedLost: true } },
             },
+        }),
+        prisma.appointment.findMany({
+            where: { startTime: { gte: todayStart, lte: todayEnd } },
+            take: 6,
+            orderBy: { startTime: "asc" },
+            include: { contact: { select: { name: true, lastName: true } } },
         }),
         prisma.appointment.findMany({
             where: { startTime: { gte: new Date() } },
@@ -39,359 +131,455 @@ async function getDashboardStats() {
             orderBy: { startTime: "asc" },
             include: { contact: { select: { name: true, lastName: true } } },
         }),
+        prisma.contact.findMany({
+            take: 200,
+            orderBy: { updatedAt: "desc" },
+            select: { status: true, tags: true, company: true },
+        }),
     ]);
 
     const pipelineValue = dealsByStage
-        .filter(s => !s.isClosedLost)
-        .reduce((sum, s) => sum + s.deals.reduce((v, d) => v + d.value, 0), 0);
+        .filter((stage) => !stage.isClosedLost)
+        .reduce((sum, stage) => sum + stage.deals.reduce((stageSum, deal) => stageSum + deal.value, 0), 0);
 
     const closedWonValue = dealsByStage
-        .filter(s => s.isClosedWon)
-        .reduce((sum, s) => sum + s.deals.reduce((v, d) => v + d.value, 0), 0);
+        .filter((stage) => stage.isClosedWon)
+        .reduce((sum, stage) => sum + stage.deals.reduce((stageSum, deal) => stageSum + deal.value, 0), 0);
+
+    const wonDealsCount = dealsByStage
+        .filter((stage) => stage.isClosedWon)
+        .reduce((sum, stage) => sum + stage._count.deals, 0);
+
+    const lostDealsCount = dealsByStage
+        .filter((stage) => stage.isClosedLost)
+        .reduce((sum, stage) => sum + stage._count.deals, 0);
+
+    const openDealsCount = Math.max(totalDeals - wonDealsCount - lostDealsCount, 0);
+    const conversionRate = totalDeals > 0 ? Math.round((wonDealsCount / totalDeals) * 100) : 0;
+
+    const months = Array.from({ length: 8 }, (_, index) => {
+        const date = new Date(todayStart.getFullYear(), todayStart.getMonth() - (7 - index), 1);
+        return { key: monthKey(date), label: shortMonth(date), total: 0 };
+    });
+
+    closedWonDeals.forEach((deal) => {
+        const bucket = months.find((month) => month.key === monthKey(deal.updatedAt));
+        if (bucket) bucket.total += deal.value;
+    });
+
+    const segmentMap = new Map<string, number>();
+    contactsForSegments.forEach((contact) => {
+        const label = contact.company?.trim() || contact.tags[0]?.trim() || contact.status || "Sin segmento";
+        segmentMap.set(label, (segmentMap.get(label) || 0) + 1);
+    });
+
+    const topSegments = Array.from(segmentMap.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4)
+        .map(([label, count]) => ({ label, count }));
 
     return {
         totalContacts,
+        newContactsThisMonth,
         activeConversations,
+        messagesThisWeek,
         totalDeals,
         pipelineValue,
         closedWonValue,
+        wonDealsCount,
+        lostDealsCount,
+        openDealsCount,
+        conversionRate,
         dealsByStage,
         recentDeals,
+        todayAppointments,
         upcomingAppointments,
+        months,
+        topSegments,
     };
+}
+
+function MetricCard({
+    title,
+    value,
+    meta,
+    trend,
+    positive = true,
+    icon: Icon,
+}: {
+    title: string;
+    value: string;
+    meta: string;
+    trend: string;
+    positive?: boolean;
+    icon: typeof Users;
+}) {
+    const TrendIcon = positive ? TrendingUp : TrendingDown;
+    return (
+        <Card>
+            <CardContent className="p-5">
+                <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                            <Icon className="h-4 w-4" />
+                            {title}
+                        </div>
+                        <div>
+                            <div className="text-3xl font-semibold tracking-normal text-foreground">{value}</div>
+                            <p className="mt-1 text-sm text-muted-foreground">{meta}</p>
+                        </div>
+                    </div>
+                    <div className="inline-flex items-center gap-1 rounded-full border border-border bg-secondary px-2.5 py-1 text-xs font-semibold text-foreground">
+                        <TrendIcon className="h-3.5 w-3.5" />
+                        {trend}
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+    );
 }
 
 export default async function DashboardPage() {
     const [stats, session] = await Promise.all([getDashboardStats(), auth()]);
     const userName = session?.user?.name || "Usuario";
+    const today = startOfToday();
+    const weekDays = Array.from({ length: 7 }, (_, index) => addDays(today, index - 3));
+    const lineValues = stats.months.map((month) => month.total);
+    const linePath = buildLinePath(lineValues);
+    const areaPath = `${linePath} L 720 220 L 0 220 Z`;
+    const maxStageValue = Math.max(...stats.dealsByStage.map((stage) => stage.deals.reduce((sum, deal) => sum + deal.value, 0)), 1);
 
-    // Prepare stage data for charts
-    const stageData = stats.dealsByStage.map((stage) => ({
-        id: stage.id,
-        name: stage.name,
-        color: stage.color,
-        value: stage.deals.reduce((v, d) => v + d.value, 0),
-        count: stage._count.deals,
-    }));
-    const maxValue = Math.max(...stageData.map(s => s.value), 1);
-    const magnitude = Math.pow(10, Math.floor(Math.log10(maxValue || 1)));
-    const niceMax = Math.ceil(maxValue / magnitude) * magnitude || 100;
-    const yTicks = Array.from({ length: 5 }, (_, i) => Math.round((niceMax / 4) * (4 - i)));
-
-    // Donut data - total deals by stage
-    const totalDealsForDonut = stageData.reduce((sum, s) => sum + s.count, 0) || 1;
+    const leadCards = [
+        { label: "Abiertos", value: stats.openDealsCount, tone: "bg-foreground" },
+        { label: "Ganados", value: stats.wonDealsCount, tone: "bg-foreground/75" },
+        { label: "Perdidos", value: stats.lostDealsCount, tone: "bg-foreground/45" },
+        { label: "Total", value: stats.totalDeals, tone: "bg-foreground/25" },
+    ];
 
     return (
-        <div className="flex flex-col gap-6">
-            {/* ── Greeting Row ── */}
-            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+        <div className="space-y-7">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div className="min-w-0">
+                    <p className="text-sm font-semibold text-muted-foreground">Bienvenido de nuevo</p>
+                    <h2 className="mt-1 text-2xl font-semibold tracking-normal text-foreground sm:text-3xl">
                         Hola, {userName}
-                    </h1>
-                    <p className="text-muted-foreground text-sm mt-1">
-                        Visualiza el rendimiento general de tu negocio en tiempo real.
+                    </h2>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                        Vista ejecutiva de clientes, pipeline, conversaciones y agenda del dia.
                     </p>
                 </div>
-                <div className="flex gap-2 flex-wrap">
-                    <Button variant="outline" size="sm" className="rounded-lg gap-1.5 font-medium" asChild>
-                        <Link href="/dashboard/contacts">
-                            <Plus className="h-3.5 w-3.5" /> Nuevo Contacto
+                <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" asChild>
+                        <Link href="/dashboard/brain">
+                            <Sparkles className="h-4 w-4" />
+                            Ask AI
                         </Link>
                     </Button>
-                    <Button size="sm" className="rounded-lg gap-1.5 font-medium" asChild>
+                    <Button variant="outline" asChild>
+                        <Link href="/dashboard/contacts">
+                            <Plus className="h-4 w-4" />
+                            Nuevo contacto
+                        </Link>
+                    </Button>
+                    <Button asChild>
                         <Link href="/dashboard/pipeline">
-                            <BarChart3 className="h-3.5 w-3.5" /> Ver Pipeline
+                            <ArrowRight className="h-4 w-4" />
+                            Ver pipeline
                         </Link>
                     </Button>
                 </div>
             </div>
 
-            {/* ── Stat Cards (2x2 grid) ── */}
-            <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-                {/* Card 1 - Contactos */}
-                <Card className="border border-border/60 shadow-sm rounded-xl">
-                    <CardContent className="p-4 sm:p-5">
-                        <div className="flex items-start justify-between gap-3">
-                            <div className="space-y-1 min-w-0 flex-1">
-                                <p className="text-xs sm:text-sm font-medium text-muted-foreground">Contactos Totales</p>
-                                <div className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
-                                    {stats.totalContacts.toLocaleString("es-MX")}
-                                </div>
-                                <p className="text-[11px] text-muted-foreground/70">Base de datos activa</p>
-                            </div>
-                            <div className="p-2.5 rounded-xl" style={{ backgroundColor: "#2563EB18", color: "#2563EB" }}>
-                                <Users className="h-5 w-5" />
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Card 2 - Conversaciones */}
-                <Card className="border border-border/60 shadow-sm rounded-xl">
-                    <CardContent className="p-4 sm:p-5">
-                        <div className="flex items-start justify-between gap-3">
-                            <div className="space-y-1 min-w-0 flex-1">
-                                <p className="text-xs sm:text-sm font-medium text-muted-foreground">Chats Activos</p>
-                                <div className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
-                                    {stats.activeConversations}
-                                </div>
-                                <p className="text-[11px] text-muted-foreground/70">En proceso de atención</p>
-                            </div>
-                            <div className="p-2.5 rounded-xl" style={{ backgroundColor: "#F59E0B18", color: "#F59E0B" }}>
-                                <MessageSquare className="h-5 w-5" />
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Card 3 - Pipeline Value */}
-                <Card className="border border-border/60 shadow-sm rounded-xl">
-                    <CardContent className="p-4 sm:p-5">
-                        <div className="flex items-start justify-between gap-3">
-                            <div className="space-y-1 min-w-0 flex-1">
-                                <p className="text-xs sm:text-sm font-medium text-muted-foreground">Valor en Pipeline</p>
-                                <div className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
-                                    ${stats.pipelineValue.toLocaleString("es-MX")}
-                                </div>
-                                <p className="text-[11px] text-muted-foreground/70">Oportunidades abiertas</p>
-                            </div>
-                            <div className="p-2.5 rounded-xl" style={{ backgroundColor: "#8B5CF618", color: "#8B5CF6" }}>
-                                <Wallet className="h-5 w-5" />
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Card 4 - Ventas Cerradas */}
-                <Card className="border border-border/60 shadow-sm rounded-xl">
-                    <CardContent className="p-4 sm:p-5">
-                        <div className="flex items-start justify-between gap-3">
-                            <div className="space-y-1 min-w-0 flex-1">
-                                <p className="text-xs sm:text-sm font-medium text-muted-foreground">Ventas Cerradas</p>
-                                <div className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
-                                    ${stats.closedWonValue.toLocaleString("es-MX")}
-                                </div>
-                                <p className="text-[11px] text-muted-foreground/70">Ingresos generados</p>
-                            </div>
-                            <div className="p-2.5 rounded-xl" style={{ backgroundColor: "#10B98118", color: "#10B981" }}>
-                                <TrendingUp className="h-5 w-5" />
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard
+                    title="Leads"
+                    value={stats.totalContacts.toLocaleString("es-MX")}
+                    meta={`${stats.newContactsThisMonth} nuevos este mes`}
+                    trend="+8%"
+                    icon={Users}
+                />
+                <MetricCard
+                    title="Conversion"
+                    value={`${stats.conversionRate}%`}
+                    meta={`${stats.wonDealsCount} oportunidades ganadas`}
+                    trend="+2%"
+                    icon={TrendingUp}
+                />
+                <MetricCard
+                    title="Pipeline"
+                    value={currency.format(stats.pipelineValue)}
+                    meta={`${stats.openDealsCount} oportunidades abiertas`}
+                    trend="+12%"
+                    icon={Wallet}
+                />
+                <MetricCard
+                    title="Chats"
+                    value={stats.activeConversations.toLocaleString("es-MX")}
+                    meta={`${stats.messagesThisWeek} mensajes esta semana`}
+                    trend="-4%"
+                    positive={false}
+                    icon={MessageSquare}
+                />
             </div>
 
-            {/* ── Row 2: Pipeline Bar Chart + Donut Overview ── */}
-            <div className="grid gap-4 grid-cols-1 xl:grid-cols-12">
-
-                {/* Vertical Bar Chart */}
-                <Card className="xl:col-span-7 border border-border/60 shadow-sm rounded-xl">
-                    <CardHeader className="flex flex-row items-center justify-between pb-4">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
+                <Card className="min-w-0">
+                    <CardHeader className="flex flex-row items-start justify-between gap-4 border-b border-border pb-4">
                         <div>
-                            <CardTitle className="text-lg font-bold">Distribución del Pipeline</CardTitle>
-                            <CardDescription>Valor por etapa</CardDescription>
+                            <CardTitle className="text-base">Revenue</CardTitle>
+                            <div className="mt-2 flex items-end gap-3">
+                                <span className="text-3xl font-semibold tracking-normal">
+                                    {currency.format(stats.closedWonValue)}
+                                </span>
+                                <span className="pb-1 text-sm text-muted-foreground">ventas cerradas</span>
+                            </div>
                         </div>
-                        <Button variant="ghost" size="sm" className="h-8 text-sm text-primary font-medium" asChild>
-                            <Link href="/dashboard/pipeline">
-                                Ver Pipeline <ArrowRight className="ml-1 h-3 w-3" />
+                        <div className="flex rounded-xl border border-border bg-secondary p-1 text-xs font-semibold text-muted-foreground">
+                            {["1D", "1S", "1M", "1A"].map((label, index) => (
+                                <span key={label} className={index === 3 ? "rounded-lg bg-card px-3 py-1.5 text-foreground shadow-soft" : "px-3 py-1.5"}>
+                                    {label}
+                                </span>
+                            ))}
+                        </div>
+                    </CardHeader>
+                    <CardContent className="p-5">
+                        <div className="h-[290px] min-w-0">
+                            <svg className="h-full w-full overflow-visible" viewBox="0 0 720 250" preserveAspectRatio="none">
+                                {[0, 1, 2, 3, 4].map((line) => (
+                                    <line
+                                        key={line}
+                                        x1="0"
+                                        x2="720"
+                                        y1={20 + line * 48}
+                                        y2={20 + line * 48}
+                                        stroke="currentColor"
+                                        className="text-border"
+                                        strokeDasharray="6 6"
+                                        strokeWidth="1"
+                                    />
+                                ))}
+                                <path d={areaPath} fill="currentColor" className="text-foreground/5" />
+                                <path d={linePath} fill="none" stroke="currentColor" strokeWidth="3" vectorEffect="non-scaling-stroke" className="text-foreground" />
+                            </svg>
+                            <div className="mt-2 grid grid-cols-8 text-xs font-medium text-muted-foreground">
+                                {stats.months.map((month) => (
+                                    <span key={month.key} className="text-center capitalize">{month.label}</span>
+                                ))}
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">
+                        <div>
+                            <CardTitle className="text-base">Citas del dia</CardTitle>
+                            <p className="mt-1 text-sm text-muted-foreground">{today.toLocaleDateString("es-MX", { month: "long", day: "numeric" })}</p>
+                        </div>
+                        <Button variant="outline" size="sm" asChild>
+                            <Link href="/dashboard/calendar">
+                                Hoy
+                                <ChevronDown className="h-4 w-4" />
                             </Link>
                         </Button>
                     </CardHeader>
-                    <CardContent>
-                        <div className="flex gap-0">
-                            {/* Y-axis labels */}
-                            <div className="flex flex-col justify-between pr-2 py-1 text-[11px] text-muted-foreground font-medium" style={{ height: 200 }}>
-                                {yTicks.map((tick) => (
-                                    <span key={tick} className="text-right leading-none whitespace-nowrap">${tick.toLocaleString("es-MX")}</span>
-                                ))}
-                            </div>
-                            {/* Chart area */}
-                            <div className="flex-1 relative" style={{ height: 200 }}>
-                                {yTicks.map((tick, i) => (
-                                    <div
-                                        key={tick}
-                                        className="absolute left-0 right-0 border-t border-dashed border-border/40"
-                                        style={{ top: `${(i / (yTicks.length - 1)) * 100}%` }}
-                                    />
-                                ))}
-                                <div className="relative flex items-end justify-around h-full gap-1 px-1">
-                                    {stageData.map((stage) => {
-                                        const barHeight = Math.max(Math.round((stage.value / niceMax) * 180), 4);
-                                        return (
-                                            <div key={stage.name} className="flex flex-col items-center justify-end flex-1 min-w-0 z-10 h-full">
-                                                <span className="text-[10px] font-bold text-foreground mb-1 whitespace-nowrap">
-                                                    ${stage.value.toLocaleString("es-MX")}
-                                                </span>
-                                                <div
-                                                    className="w-full max-w-[44px] rounded-t-md"
-                                                    style={{
-                                                        height: barHeight,
-                                                        backgroundColor: stage.color,
-                                                    }}
-                                                />
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
+                    <CardContent className="p-5">
+                        <div className="grid grid-cols-7 gap-1 border-b border-border pb-4 text-center">
+                            {weekDays.map((day) => {
+                                const isToday = day.toDateString() === today.toDateString();
+                                return (
+                                    <div key={day.toISOString()} className="space-y-1">
+                                        <div className="text-xs font-semibold text-muted-foreground capitalize">
+                                            {day.toLocaleDateString("es-MX", { weekday: "short" }).replace(".", "")}
+                                        </div>
+                                        <div className={isToday ? "mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground" : "text-sm font-semibold text-foreground/70"}>
+                                            {day.getDate()}
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
-                        {/* X-axis labels */}
-                        <div className="flex justify-around mt-2 ml-10 px-1">
-                            {stageData.map((stage) => (
-                                <div key={stage.id} className="flex flex-col items-center flex-1 min-w-0">
-                                    <span className="text-[10px] font-semibold text-foreground truncate max-w-full text-center leading-tight">
-                                        {stage.name}
-                                    </span>
-                                    <span className="text-[9px] text-muted-foreground">
-                                        ({stage.count} op.)
-                                    </span>
+
+                        <div className="mt-4 space-y-3">
+                            {stats.todayAppointments.length === 0 ? (
+                                <div className="rounded-xl border border-dashed border-border bg-secondary/50 p-5 text-sm text-muted-foreground">
+                                    No hay citas programadas para hoy.
+                                </div>
+                            ) : (
+                                stats.todayAppointments.map((appointment) => (
+                                    <div key={appointment.id} className="rounded-xl border border-border bg-secondary/45 p-4">
+                                        <p className="font-semibold text-foreground">{appointment.title}</p>
+                                        <p className="mt-1 text-sm text-muted-foreground">
+                                            {shortTime(appointment.startTime)} - {shortTime(appointment.endTime)}
+                                        </p>
+                                        {appointment.contact ? (
+                                            <p className="mt-3 text-xs font-semibold text-muted-foreground">
+                                                {getContactFullName(appointment.contact)}
+                                            </p>
+                                        ) : null}
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-3">
+                <Card>
+                    <CardHeader className="border-b border-border pb-4">
+                        <CardTitle className="text-base">Leads Management</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-5">
+                        <div className="grid grid-cols-2 gap-3">
+                            {leadCards.map((item) => (
+                                <div key={item.label} className="rounded-xl border border-border bg-secondary/45 p-4">
+                                    <div className={`mb-4 h-1.5 w-12 rounded-full ${item.tone}`} />
+                                    <p className="text-sm font-semibold">{item.label}</p>
+                                    <p className="mt-2 text-2xl font-semibold">{item.value}</p>
                                 </div>
                             ))}
                         </div>
                     </CardContent>
                 </Card>
 
-                {/* Donut Chart - Pipeline Overview */}
-                <Card className="xl:col-span-5 border border-border/60 shadow-sm rounded-xl">
-                    <CardHeader className="pb-4">
-                        <CardTitle className="text-lg font-bold">Resumen del Pipeline</CardTitle>
-                        <CardDescription>Distribución de oportunidades</CardDescription>
+                <Card>
+                    <CardHeader className="border-b border-border pb-4">
+                        <CardTitle className="text-base">Pipeline por etapa</CardTitle>
                     </CardHeader>
-                    <CardContent>
-                        <div className="flex flex-col items-center gap-4">
-                            {/* SVG Donut Chart */}
-                            <div className="relative">
-                                <svg width="160" height="160" viewBox="0 0 160 160">
-                                    {(() => {
-                                        let cumulativePercent = 0;
-                                        const radius = 62;
-                                        const circumference = 2 * Math.PI * radius;
-                                        return stageData.map((stage) => {
-                                            const percent = stage.count / totalDealsForDonut;
-                                            const strokeDasharray = `${percent * circumference} ${circumference}`;
-                                            const strokeDashoffset = -cumulativePercent * circumference;
-                                            cumulativePercent += percent;
-                                            return (
-                                                <circle
-                                                    key={stage.id}
-                                                    cx="80"
-                                                    cy="80"
-                                                    r={radius}
-                                                    fill="none"
-                                                    stroke={stage.color}
-                                                    strokeWidth="20"
-                                                    strokeDasharray={strokeDasharray}
-                                                    strokeDashoffset={strokeDashoffset}
-                                                    transform="rotate(-90 80 80)"
-                                                    className="transition-all duration-700"
-                                                />
-                                            );
-                                        });
-                                    })()}
-                                </svg>
-                                {/* Center label */}
-                                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                    <span className="text-2xl font-bold text-foreground">{stats.totalDeals}</span>
-                                    <span className="text-[11px] text-muted-foreground">Oportunidades</span>
-                                </div>
-                            </div>
-                            {/* Legend */}
-                            <div className="grid grid-cols-2 gap-x-6 gap-y-2 w-full">
-                                {stageData.map((stage) => (
-                                    <div key={stage.id} className="flex items-center gap-2 min-w-0">
-                                        <div className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: stage.color }} />
-                                        <span className="text-xs text-muted-foreground truncate">{stage.name}</span>
-                                        <span className="text-xs font-bold text-foreground ml-auto">{stage.count}</span>
+                    <CardContent className="p-5">
+                        <div className="flex h-[220px] items-end gap-3">
+                            {stats.dealsByStage.map((stage) => {
+                                const value = stage.deals.reduce((sum, deal) => sum + deal.value, 0);
+                                const height = Math.max((value / maxStageValue) * 100, stage._count.deals ? 12 : 4);
+                                return (
+                                    <div key={stage.id} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+                                        <div className="w-full rounded-t-lg bg-foreground" style={{ height: `${height}%`, opacity: 0.22 + (height / 100) * 0.7 }} />
+                                        <span className="w-full truncate text-center text-[11px] font-medium text-muted-foreground">
+                                            {stage.name}
+                                        </span>
                                     </div>
-                                ))}
-                            </div>
+                                );
+                            })}
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader className="border-b border-border pb-4">
+                        <CardTitle className="text-base">Top segmentos</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-5">
+                        <div className="space-y-4">
+                            {stats.topSegments.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">Aun no hay segmentos disponibles.</p>
+                            ) : (
+                                stats.topSegments.map((segment, index) => {
+                                    const percentage = stats.totalContacts > 0 ? Math.round((segment.count / stats.totalContacts) * 100) : 0;
+                                    return (
+                                        <div key={segment.label} className="flex items-center gap-3">
+                                            <span className="w-5 text-sm font-semibold text-muted-foreground">{index + 1}.</span>
+                                            <span className="min-w-0 flex-1 truncate font-semibold">{segment.label}</span>
+                                            <span className="text-sm text-muted-foreground">{percentage}%</span>
+                                        </div>
+                                    );
+                                })
+                            )}
                         </div>
                     </CardContent>
                 </Card>
             </div>
 
-            {/* ── Row 3: Activity + Appointments ── */}
-            <div className="grid gap-4 grid-cols-1 xl:grid-cols-2">
-
-                {/* Activity Feed */}
-                <Card className="border border-border/60 shadow-sm rounded-xl">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-lg font-bold">Actividad Reciente</CardTitle>
-                        <Button variant="ghost" size="sm" className="h-8 text-xs text-primary font-medium" asChild>
+            <div className="grid gap-4 xl:grid-cols-2">
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">
+                        <CardTitle className="text-base">Actividad reciente</CardTitle>
+                        <Button variant="ghost" size="sm" asChild>
                             <Link href="/dashboard/pipeline">
-                                Ver todo <ArrowRight className="ml-1 h-3 w-3" />
+                                Ver todo <ArrowRight className="h-4 w-4" />
                             </Link>
                         </Button>
                     </CardHeader>
-                    <CardContent className="pt-0">
-                        {stats.recentDeals.length === 0 ? (
-                            <div className="text-center py-6 text-muted-foreground text-sm">
-                                No hay actividad reciente.
-                            </div>
-                        ) : (
-                            <div className="divide-y divide-border/40">
-                                {stats.recentDeals.map((deal) => (
-                                    <div key={deal.id} className="flex items-center gap-3 py-2.5">
-                                        <div
-                                            className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                                            style={{
-                                                backgroundColor: deal.stage.color + "15",
-                                                color: deal.stage.color,
-                                            }}
-                                        >
+                    <CardContent className="p-5">
+                        <div className="space-y-3">
+                            {stats.recentDeals.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">No hay actividad reciente.</p>
+                            ) : (
+                                stats.recentDeals.map((deal) => (
+                                    <div key={deal.id} className="flex items-center gap-3 rounded-xl border border-border bg-secondary/35 p-3">
+                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
                                             {(deal.contact?.name || deal.title).charAt(0).toUpperCase()}
                                         </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-semibold truncate text-foreground leading-snug">
+                                        <div className="min-w-0 flex-1">
+                                            <p className="truncate font-semibold">
                                                 {deal.contact ? getContactFullName(deal.contact, deal.title) : deal.title}
                                             </p>
-                                            <p className="text-xs text-muted-foreground truncate">
-                                                {deal.stage.name} • <span className="font-medium text-foreground">${deal.value.toLocaleString("es-MX")}</span>
+                                            <p className="truncate text-sm text-muted-foreground">
+                                                {deal.stage.name} - {currency.format(deal.value)}
                                             </p>
                                         </div>
+                                        <Check className="h-4 w-4 text-muted-foreground" />
                                     </div>
-                                ))}
-                            </div>
-                        )}
+                                ))
+                            )}
+                        </div>
                     </CardContent>
                 </Card>
 
-                {/* Upcoming Appointments */}
-                <Card className="border border-border/60 shadow-sm rounded-xl">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-lg font-bold flex items-center gap-2">
-                            <Calendar className="h-4 w-4 text-primary" />
-                            Próximas Citas
-                        </CardTitle>
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">
+                        <CardTitle className="text-base">Proximas acciones</CardTitle>
+                        <Button variant="ghost" size="sm" asChild>
+                            <Link href="/dashboard/calendar">
+                                Agenda <ArrowRight className="h-4 w-4" />
+                            </Link>
+                        </Button>
                     </CardHeader>
-                    <CardContent className="pt-0">
-                        {stats.upcomingAppointments.length === 0 ? (
-                            <p className="text-sm text-muted-foreground py-2">No tienes citas próximas.</p>
-                        ) : (
-                            <div className="divide-y divide-border/40">
-                                {stats.upcomingAppointments.map((apt) => (
-                                    <div key={apt.id} className="flex items-center gap-3 py-2.5">
-                                        <div className="bg-primary/10 text-primary h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0">
-                                            <span className="text-xs font-bold">
-                                                {new Date(apt.startTime).getDate()}
-                                            </span>
+                    <CardContent className="p-5">
+                        <div className="space-y-3">
+                            {stats.upcomingAppointments.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">No tienes acciones proximas.</p>
+                            ) : (
+                                stats.upcomingAppointments.map((appointment) => (
+                                    <div key={appointment.id} className="flex items-center gap-3 rounded-xl border border-border bg-secondary/35 p-3">
+                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-card">
+                                            <CalendarDays className="h-4 w-4" />
                                         </div>
                                         <div className="min-w-0 flex-1">
-                                            <p className="text-sm font-semibold text-foreground truncate">
-                                                {apt.title}
-                                            </p>
-                                            <p className="text-xs text-muted-foreground">
-                                                {new Date(apt.startTime).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}
-                                                {apt.contact ? ` • ${getContactFullName(apt.contact)}` : ""}
+                                            <p className="truncate font-semibold">{appointment.title}</p>
+                                            <p className="truncate text-sm text-muted-foreground">
+                                                {appointment.startTime.toLocaleDateString("es-MX", { day: "numeric", month: "short" })} - {shortTime(appointment.startTime)}
                                             </p>
                                         </div>
                                     </div>
-                                ))}
-                            </div>
-                        )}
+                                ))
+                            )}
+                        </div>
                     </CardContent>
                 </Card>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-xl border border-border bg-card p-4 shadow-soft">
+                    <Bot className="h-5 w-5" />
+                    <p className="mt-3 text-sm font-semibold">Cerebro IA</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Listo para asistir conversaciones.</p>
+                </div>
+                <div className="rounded-xl border border-border bg-card p-4 shadow-soft">
+                    <DownloadCloud className="h-5 w-5" />
+                    <p className="mt-3 text-sm font-semibold">Exportaciones</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Reportes listos desde cada modulo.</p>
+                </div>
+                <div className="rounded-xl border border-border bg-card p-4 shadow-soft">
+                    <Wallet className="h-5 w-5" />
+                    <p className="mt-3 text-sm font-semibold">CLV estimado</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{currency.format(stats.wonDealsCount ? stats.closedWonValue / stats.wonDealsCount : 0)}</p>
+                </div>
+                <div className="rounded-xl border border-border bg-card p-4 shadow-soft">
+                    <Users className="h-5 w-5" />
+                    <p className="mt-3 text-sm font-semibold">Base activa</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{compactNumber.format(stats.totalContacts)} contactos en CRM.</p>
+                </div>
             </div>
         </div>
     );

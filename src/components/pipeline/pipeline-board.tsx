@@ -475,7 +475,7 @@ export function PipelineBoard({
                                 onClick={() => setShowAutomationDialog(true)}
                                 className="cursor-pointer"
                             >
-                                <Zap className="h-4 w-4 mr-2 text-amber-500" />
+                                <Zap className="h-4 w-4 mr-2 text-muted-foreground" />
                                 Automatización
                             </DropdownMenuItem>
                             <DropdownMenuItem

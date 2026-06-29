@@ -381,7 +381,7 @@ export function FunnelEditorDialog({
                                             llegan al CRM.
                                         </p>
                                     </div>
-                                    <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                                    <div className="inline-flex items-center gap-2 rounded-full border border-border bg-secondary px-3 py-1 text-xs font-medium text-foreground">
                                         <Lock className="h-3.5 w-3.5" />
                                         Fija
                                     </div>
@@ -480,7 +480,7 @@ export function FunnelEditorDialog({
                                 {draft.includeClosingStages ? (
                                     <div className="space-y-2">
                                         <ClosingStageCard
-                                            icon={<CheckCircle2 className="h-4 w-4 text-emerald-700" />}
+                                            icon={<CheckCircle2 className="h-4 w-4 text-foreground" />}
                                             label="Cierre ganado"
                                             value={draft.closedWonName}
                                             color={DEFAULT_CLOSED_WON_COLOR}
@@ -519,7 +519,7 @@ export function FunnelEditorDialog({
                                 </div>
                             ) : null}
 
-                            <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                            <div className="flex items-center gap-2 rounded-xl border border-border bg-secondary px-4 py-3 text-sm text-muted-foreground">
                                 <AlertTriangle className="h-4 w-4 flex-shrink-0" />
                                 Si eliminas o reemplazas una etapa, los leads que estaban ahi se
                                 moveran automaticamente a {DEFAULT_INCOMING_STAGE_NAME}.

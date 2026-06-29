@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -361,7 +361,7 @@ export function YCloudTemplateSendModal({
                                     <div className="rounded-xl border bg-muted/20 p-4">
                                         <div className="mb-3 flex items-center justify-between gap-2">
                                             <p className="truncate text-sm font-semibold">{selectedTemplate.name}</p>
-                                            <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                                            <span className="rounded-full border border-border bg-secondary px-2 py-0.5 text-[11px] font-medium text-foreground">
                                                 Aprobada
                                             </span>
                                         </div>

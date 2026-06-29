@@ -68,12 +68,12 @@ export function SearchCommand() {
             <Button
                 variant="outline"
                 className={cn(
-                    "relative h-10 w-full justify-start rounded-xl border-border/70 bg-background px-3.5 text-sm text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] sm:pr-14 md:w-56 lg:w-72",
+                    "relative h-10 w-full justify-start rounded-xl border-border bg-card px-3.5 text-sm text-muted-foreground shadow-[var(--shadow-inset)] sm:pr-14",
                 )}
                 onClick={() => setOpen(true)}
             >
                 <Search className="mr-2 h-4 w-4" />
-                <span>Search...</span>
+                <span>Buscar...</span>
                 <kbd className="pointer-events-none absolute right-1.5 top-1.5 hidden h-5 select-none items-center rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
                     Ctrl K
                 </kbd>
@@ -81,24 +81,24 @@ export function SearchCommand() {
 
             <CommandDialog open={open} onOpenChange={setOpen}>
                 <CommandInput
-                    placeholder="Type to search contacts or deals..."
+                    placeholder="Buscar contactos u oportunidades..."
                     value={query}
                     onValueChange={setQuery}
                 />
                 <CommandList>
-                    <CommandEmpty>No results found.</CommandEmpty>
+                    <CommandEmpty>No se encontraron resultados.</CommandEmpty>
 
                     {loading ? (
                         <div className="flex items-center justify-center p-4 text-sm text-muted-foreground">
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Searching...
+                            Buscando...
                         </div>
                     ) : null}
 
                     {!loading && data ? (
                         <>
                             {data.contacts.length > 0 ? (
-                                <CommandGroup heading="Contacts">
+                                <CommandGroup heading="Contactos">
                                     {data.contacts.map((contact) => (
                                         <CommandItem
                                             key={contact.id}
@@ -118,7 +118,7 @@ export function SearchCommand() {
                             {data.contacts.length > 0 && data.deals.length > 0 ? <CommandSeparator /> : null}
 
                             {data.deals.length > 0 ? (
-                                <CommandGroup heading="Deals">
+                                <CommandGroup heading="Oportunidades">
                                     {data.deals.map((deal) => (
                                         <CommandItem
                                             key={deal.id}

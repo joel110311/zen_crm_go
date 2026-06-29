@@ -58,7 +58,7 @@ function renderPlainTextWithLinks(text: string, keyPrefix: string): React.ReactN
                 href={normalizeHref(cleanUrl)}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="cursor-pointer break-all text-sky-700 underline underline-offset-2 transition-colors hover:text-sky-900 dark:text-sky-300 dark:hover:text-sky-200"
+                className="cursor-pointer break-all text-foreground underline underline-offset-2 transition-colors hover:text-muted-foreground"
             >
                 {cleanUrl}
             </a>,
@@ -155,7 +155,7 @@ function renderInlineSegments(
 export function WhatsAppFormattedText({
     text,
     className,
-    variableClassName = "rounded-md bg-amber-100 px-1.5 py-0.5 text-amber-700",
+    variableClassName = "rounded-md bg-secondary px-1.5 py-0.5 text-muted-foreground",
 }: WhatsAppFormattedTextProps) {
     const lines = text.split("\n");
 

@@ -127,18 +127,18 @@ const STATUS_LABELS: Record<string, string> = {
 
 const STATUS_STYLES: Record<string, string> = {
     quoted: "border-slate-200 bg-slate-50 text-slate-700",
-    reserved: "border-sky-200 bg-sky-50 text-sky-700",
-    in_production: "border-indigo-200 bg-indigo-50 text-indigo-700",
-    pending_balance: "border-amber-200 bg-amber-50 text-amber-700",
-    paid: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    delivered: "border-teal-200 bg-teal-50 text-teal-700",
-    cancelled: "border-rose-200 bg-rose-50 text-rose-700",
+    reserved: "border-border bg-secondary text-foreground",
+    in_production: "border-border bg-secondary text-foreground",
+    pending_balance: "border-border bg-secondary text-muted-foreground",
+    paid: "border-border bg-secondary text-foreground",
+    delivered: "border-border bg-secondary text-foreground",
+    cancelled: "border-destructive/30 bg-destructive/10 text-destructive",
 };
 
 const PAYMENT_STYLES: Record<string, string> = {
-    pending: "border-amber-200 bg-amber-50 text-amber-700",
-    paid: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    overdue: "border-rose-200 bg-rose-50 text-rose-700",
+    pending: "border-border bg-secondary text-muted-foreground",
+    paid: "border-border bg-secondary text-foreground",
+    overdue: "border-destructive/30 bg-destructive/10 text-destructive",
     cancelled: "border-slate-200 bg-slate-50 text-slate-600",
 };
 
@@ -617,7 +617,7 @@ export function OrderManagerPanel({
                                         </TableCell>
                                         <TableCell><StatusBadge status={order.status} /></TableCell>
                                         <TableCell className="font-semibold">{currency(order.totalAmount, order.currency)}</TableCell>
-                                        <TableCell className={cn("font-semibold", order.balanceAmount > 0 ? "text-amber-700" : "text-emerald-700")}>
+                                        <TableCell className={cn("font-semibold", order.balanceAmount > 0 ? "text-muted-foreground" : "text-foreground")}>
                                             {currency(order.balanceAmount, order.currency)}
                                         </TableCell>
                                         <TableCell>{shortDate(order.nextPaymentDueDate)}</TableCell>
@@ -826,7 +826,7 @@ export function OrderManagerPanel({
                         </FormSection>
 
                         {isEditingOrder ? (
-                            <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50/60 p-4 text-sm text-amber-900">
+                            <div className="mt-5 rounded-2xl border border-border bg-secondary/60 p-4 text-sm text-foreground">
                                 Los pagos y abonos no se reemplazan desde edicion para conservar el historial contable. Puedes registrar abonos, reabrir pagos o marcarlos como pagados desde el detalle del pedido.
                             </div>
                         ) : (
@@ -931,7 +931,7 @@ export function OrderManagerPanel({
                             </SelectContent>
                         </Select>
                         {selectedStatusOrder?.balanceAmount ? (
-                            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                            <p className="rounded-xl border border-border bg-secondary px-3 py-2 text-sm text-foreground">
                                 Para elegir Pagado primero se registrara el saldo pendiente de {currency(selectedStatusOrder.balanceAmount, selectedStatusOrder.currency)}.
                             </p>
                         ) : null}
@@ -983,9 +983,9 @@ export function OrderManagerPanel({
 function StatCard({ icon: Icon, label, value, tone }: { icon: React.ElementType; label: string; value: string; tone: "slate" | "amber" | "rose" | "emerald" }) {
     const tones = {
         slate: "border-slate-200 bg-slate-50 text-slate-700",
-        amber: "border-amber-200 bg-amber-50 text-amber-700",
-        rose: "border-rose-200 bg-rose-50 text-rose-700",
-        emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
+        amber: "border-border bg-secondary text-muted-foreground",
+        rose: "border-destructive/30 bg-destructive/10 text-destructive",
+        emerald: "border-border bg-secondary text-foreground",
     };
     return (
         <div className="flex min-h-[3.75rem] min-w-0 items-center gap-2 rounded-xl border bg-card px-2 py-2 shadow-sm sm:gap-2.5 sm:px-2.5">
@@ -1006,8 +1006,8 @@ function MobileOrderMetric({ label, value, tone }: { label: string; value: strin
             <div className="truncate text-[10px] text-muted-foreground">{label}</div>
             <div className={cn(
                 "break-words text-[11px] font-semibold leading-tight tabular-nums sm:text-xs",
-                tone === "amber" && "text-amber-700",
-                tone === "emerald" && "text-emerald-700",
+                tone === "amber" && "text-muted-foreground",
+                tone === "emerald" && "text-foreground",
             )}>
                 {value}
             </div>
@@ -1217,7 +1217,7 @@ function OrderDetail({
 }
 
 function MiniMoney({ label, value, tone = "slate" }: { label: string; value: string; tone?: "slate" | "emerald" | "amber" }) {
-    const tones = { slate: "text-foreground", emerald: "text-emerald-700", amber: "text-amber-700" };
+    const tones = { slate: "text-foreground", emerald: "text-foreground", amber: "text-muted-foreground" };
     return (
         <div className="min-w-0 overflow-hidden rounded-xl border bg-background/80 p-2 sm:p-2.5">
             <div className="truncate text-[11px] text-muted-foreground sm:text-xs">{label}</div>

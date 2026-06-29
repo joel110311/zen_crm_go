@@ -495,9 +495,9 @@ function formatConversationListTimestamp(value: Date | string | null | undefined
 
 // Deterministic color for avatar based on name
 const AVATAR_COLORS = [
-    "bg-blue-500", "bg-emerald-500", "bg-violet-500", "bg-amber-500",
-    "bg-rose-500", "bg-cyan-500", "bg-pink-500", "bg-teal-500",
-    "bg-indigo-500", "bg-orange-500", "bg-lime-600", "bg-fuchsia-500",
+    "bg-foreground", "bg-neutral-800", "bg-neutral-700", "bg-neutral-600",
+    "bg-neutral-500", "bg-neutral-400", "bg-neutral-300", "bg-neutral-900",
+    "bg-zinc-800", "bg-zinc-700", "bg-zinc-600", "bg-zinc-500",
 ];
 function getAvatarColor(name: string | null | undefined): string {
     if (!name) return "bg-muted-foreground";
@@ -533,8 +533,8 @@ function MessageResponderBadge({ label, compact = false }: { label: "IA" | "Huma
             className={cn(
                 "inline-flex items-center rounded-full border font-semibold leading-none shadow-sm",
                 label === "IA"
-                    ? "border-emerald-400/30 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-300"
-                    : "border-amber-400/35 bg-amber-50 text-amber-700 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-300",
+                    ? "border-border bg-secondary text-foreground dark:border-border dark:bg-secondary dark:text-foreground"
+                    : "border-border bg-secondary text-muted-foreground dark:border-border dark:bg-secondary dark:text-muted-foreground",
                 label === "Humano"
                     ? "tracking-[0.02em]"
                     : "uppercase tracking-[0.12em]",
@@ -566,8 +566,8 @@ function ConversationSourceIcon({
             className={cn(
                 "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border shadow-sm ring-2 ring-background",
                 isYCloud
-                    ? "border-emerald-500/25 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
-                    : "border-green-500/25 bg-green-50 text-green-700 dark:bg-green-500/15 dark:text-green-300",
+                    ? "border-border bg-secondary text-foreground dark:bg-secondary dark:text-foreground"
+                    : "border-border bg-secondary text-foreground",
                 className,
             )}
         >
@@ -786,7 +786,7 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
                                 className="pointer-events-none absolute bottom-0 z-10 h-2.5 w-2.5 rounded-full shadow-sm ring-2 ring-background/80"
                                 style={{
                                     left: `${dotProgress}%`,
-                                    backgroundColor: isOutbound ? "var(--audio-dot, #1F93FF)" : "#2563EB",
+                                    backgroundColor: isOutbound ? "var(--audio-dot, #111111)" : "#111111",
                                     transform: "translate(-50%, 36%)",
                                 }}
                             />
@@ -996,7 +996,7 @@ function ContactInfoPanel({ conversation, onClose }: { conversation: Conversatio
                                 </div>
                                 <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-muted">
                                     <div
-                                        className="h-full rounded-full bg-emerald-500 transition-all"
+                                        className="h-full rounded-full bg-secondary transition-all"
                                         style={{ width: `${Math.min(Math.max(intelligence.score, 0), 100)}%` }}
                                     />
                                 </div>
@@ -1123,7 +1123,7 @@ function WindowTimer({ expiresAt, onWindowChange }: { expiresAt: string | null |
     return (
         <div className={cn(
             "mx-4 mb-2 px-3 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-2 transition-colors",
-            isOpen ? "bg-sky-500/10 text-sky-400 border border-sky-500/20" : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+            isOpen ? "bg-secondary text-foreground border border-border" : "bg-destructive/10 text-destructive border border-destructive/30"
         )}>
             {isOpen ? (
                 <>
@@ -2799,7 +2799,7 @@ export default function InboxPage() {
                                         selectedChat?.id === chat.id
                                             ? "border-border/70 bg-background/90 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]"
                                             : "border-transparent bg-transparent hover:border-border/50 hover:bg-background/65 hover:shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)]",
-                                        !chatTransportReady && "border-amber-200/70 bg-amber-50/45 dark:border-amber-500/20 dark:bg-amber-500/8",
+                                        !chatTransportReady && "border-border bg-secondary/45 dark:border-border dark:bg-secondary/45",
                                     )}
                                 >
                                     <div className="relative shrink-0">
@@ -2955,9 +2955,9 @@ export default function InboxPage() {
                                     </div>
                                     <div className="flex items-center gap-2 rounded-[1.2rem] border border-border/60 bg-background/90 px-3 py-2 shadow-sm">
                                         {selectedChat.botActive ? (
-                                            <Bot className="h-3.5 w-3.5 text-emerald-600" />
+                                            <Bot className="h-3.5 w-3.5 text-foreground" />
                                         ) : (
-                                            <UserIcon className="h-3.5 w-3.5 text-amber-600" />
+                                            <UserIcon className="h-3.5 w-3.5 text-muted-foreground" />
                                         )}
                                         <div className="hidden sm:block">
                                             <p className="text-[11px] font-medium leading-none">
@@ -3148,7 +3148,7 @@ export default function InboxPage() {
                                                             </div>
                                                         ) : (
                                                             <div className="flex justify-center">
-                                                                <div className="max-w-[90%] rounded-full border border-emerald-200/70 bg-emerald-50/90 px-4 py-2 text-center text-[12px] font-medium text-emerald-700 shadow-[0_16px_34px_-28px_rgba(16,185,129,0.5)] dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                                                                <div className="max-w-[90%] rounded-full border border-border bg-secondary/90 px-4 py-2 text-center text-[12px] font-medium text-foreground shadow-soft dark:border-border dark:bg-secondary dark:text-foreground">
                                                                     {msg.content}
                                                                 </div>
                                                             </div>
@@ -3422,12 +3422,12 @@ export default function InboxPage() {
                                     style={{ paddingBottom: "max(0.25rem, env(safe-area-inset-bottom))" }}
                                 >
                                     {shouldShowWhatsAppWarning && (
-                                        <div className="mx-auto mb-3 max-w-[54rem] rounded-[1.35rem] border border-amber-200/80 bg-amber-50/95 px-4 py-3 text-amber-950 shadow-[0_18px_40px_-28px_rgba(217,119,6,0.35)]">
+                                        <div className="mx-auto mb-3 max-w-[54rem] rounded-[1.35rem] border border-border bg-secondary/95 px-4 py-3 text-foreground shadow-soft">
                                             <div className="flex items-start gap-3">
-                                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                                                 <div>
                                                     <p className="text-sm font-semibold">No puedes responder todavia desde este chat</p>
-                                                    <p className="mt-1 text-xs leading-relaxed text-amber-900/80">
+                                                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                                                         {whatsAppWarningText}
                                                     </p>
                                                 </div>
@@ -3497,7 +3497,7 @@ export default function InboxPage() {
                                                 <span className="text-sm font-medium text-destructive">Grabando audio...</span>
                                                 <span className="text-sm font-mono text-muted-foreground hidden sm:inline">{formatRecordingTime(recordingTime)}</span>
                                             </div>
-                                            <Button size="icon" className="h-12 w-12 rounded-full shrink-0 bg-green-500 hover:bg-green-600 text-white" onClick={stopRecording} title="Enviar">
+                                            <Button size="icon" className="h-12 w-12 rounded-full shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground" onClick={stopRecording} title="Enviar">
                                                 <Send className="h-5 w-5 ml-1" />
                                             </Button>
                                         </div>

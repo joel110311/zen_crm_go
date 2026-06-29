@@ -81,7 +81,7 @@ export function WhatsAppTemplatePreview({
                         </div>
                     </div>
 
-                    <div className="mt-1 flex items-center justify-between text-sky-500">
+                    <div className="mt-1 flex items-center justify-between text-foreground">
                         <ChevronLeft className="h-5 w-5" />
                         <div className="text-center">
                             <p className="text-[12px] font-semibold text-slate-700">{title}</p>
@@ -135,7 +135,7 @@ export function WhatsAppTemplatePreview({
                                 {type === "document" ? (
                                     <div className="px-3 pt-3">
                                         <div className="flex items-center gap-3 rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-3">
-                                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-50 text-sky-600">
+                                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-secondary text-foreground">
                                                 <FileText className="h-5 w-5" />
                                             </div>
                                             <div className="min-w-0 flex-1">
@@ -166,13 +166,13 @@ export function WhatsAppTemplatePreview({
                     {showComposer ? (
                         <div>
                             <div className="flex items-center gap-2 rounded-[1.7rem] bg-white px-3 py-2 shadow-[0_20px_40px_-28px_rgba(15,23,42,0.22)]">
-                                <Plus className="h-4.5 w-4.5 text-sky-500" />
+                                <Plus className="h-4.5 w-4.5 text-foreground" />
                                 <div className="flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-[12px] text-slate-400">
                                     Type a message
                                 </div>
-                                <Smile className="h-4.5 w-4.5 text-sky-500" />
-                                <Camera className="h-4.5 w-4.5 text-sky-500" />
-                                <Mic className="h-4.5 w-4.5 text-emerald-500" />
+                                <Smile className="h-4.5 w-4.5 text-foreground" />
+                                <Camera className="h-4.5 w-4.5 text-foreground" />
+                                <Mic className="h-4.5 w-4.5 text-foreground" />
                             </div>
                             <div className="mx-auto mt-4 h-1.5 w-20 rounded-full bg-slate-300/80" />
                         </div>

@@ -1,18 +1,9 @@
 "use client"
 
 import * as React from "react"
-import { Moon, Sun, Laptop } from "lucide-react"
+import { Moon, Sun } from "lucide-react"
 import { useTheme } from "next-themes"
 
-import { Button } from "@/components/ui/button"
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 
 export function ThemeToggle() {
@@ -29,58 +20,45 @@ export function ThemeToggle() {
 
     return (
         <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div
                     className={cn(
-                        "cursor-pointer rounded-lg border-2 p-1 hover:border-primary",
-                        theme === "light" ? "border-primary" : "border-muted"
+                        "cursor-pointer rounded-xl border p-1 transition hover:border-foreground/40",
+                        theme === "light" ? "border-foreground shadow-soft" : "border-border"
                     )}
                     onClick={() => setTheme("light")}
                 >
-                    <div className="space-y-2 rounded-md bg-[#ecedef] p-2">
-                        <div className="space-y-2 rounded-md bg-white p-2 shadow-sm">
-                            <div className="h-2 w-[80px] rounded-lg bg-[#ecedef]" />
-                            <div className="h-2 w-[100px] rounded-lg bg-[#ecedef]" />
+                    <div className="space-y-2 rounded-lg bg-[#f4f4f4] p-3">
+                        <div className="space-y-2 rounded-md bg-white p-3 shadow-sm">
+                            <div className="h-2 w-24 rounded-lg bg-[#d8d8d8]" />
+                            <div className="h-2 w-32 rounded-lg bg-[#ececec]" />
                         </div>
-                        <div className="flex items-center space-x-2 rounded-md bg-white p-2 shadow-sm">
-                            <div className="h-4 w-4 rounded-full bg-[#ecedef]" />
-                            <div className="h-2 w-[100px] rounded-lg bg-[#ecedef]" />
+                        <div className="flex items-center gap-2 rounded-md bg-white p-3 shadow-sm">
+                            <Sun className="h-4 w-4 text-[#111111]" />
+                            <div className="h-2 w-28 rounded-lg bg-[#e5e5e5]" />
                         </div>
                     </div>
-                    <div className="p-2 text-center text-sm font-medium">Claro</div>
+                    <div className="p-2 text-center text-sm font-semibold">Claro</div>
                 </div>
 
                 <div
                     className={cn(
-                        "cursor-pointer rounded-lg border-2 p-1 hover:border-primary",
-                        theme === "dark" ? "border-primary" : "border-muted"
+                        "cursor-pointer rounded-xl border p-1 transition hover:border-foreground/40",
+                        theme === "dark" ? "border-foreground shadow-soft" : "border-border"
                     )}
                     onClick={() => setTheme("dark")}
                 >
-                    <div className="space-y-2 rounded-md bg-slate-950 p-2">
-                        <div className="space-y-2 rounded-md bg-slate-800 p-2 shadow-sm">
-                            <div className="h-2 w-[80px] rounded-lg bg-slate-400" />
-                            <div className="h-2 w-[100px] rounded-lg bg-slate-400" />
+                    <div className="space-y-2 rounded-lg bg-[#050505] p-3">
+                        <div className="space-y-2 rounded-md bg-[#151515] p-3 shadow-sm">
+                            <div className="h-2 w-24 rounded-lg bg-[#f5f5f5]" />
+                            <div className="h-2 w-32 rounded-lg bg-[#505050]" />
                         </div>
-                        <div className="flex items-center space-x-2 rounded-md bg-slate-800 p-2 shadow-sm">
-                            <div className="h-4 w-4 rounded-full bg-slate-400" />
-                            <div className="h-2 w-[100px] rounded-lg bg-slate-400" />
+                        <div className="flex items-center gap-2 rounded-md bg-[#151515] p-3 shadow-sm">
+                            <Moon className="h-4 w-4 text-white" />
+                            <div className="h-2 w-28 rounded-lg bg-[#626262]" />
                         </div>
                     </div>
-                    <div className="p-2 text-center text-sm font-medium">Oscuro</div>
-                </div>
-
-                <div
-                    className={cn(
-                        "cursor-pointer rounded-lg border-2 p-1 hover:border-primary",
-                        theme === "system" ? "border-primary" : "border-muted"
-                    )}
-                    onClick={() => setTheme("system")}
-                >
-                    <div className="flex h-full flex-col justify-center items-center space-y-2 rounded-md bg-slate-100 p-2 dark:bg-slate-950">
-                        <Laptop className="h-10 w-10 text-muted-foreground" />
-                    </div>
-                    <div className="p-2 text-center text-sm font-medium">Sistema</div>
+                    <div className="p-2 text-center text-sm font-semibold">Oscuro</div>
                 </div>
             </div>
         </div>

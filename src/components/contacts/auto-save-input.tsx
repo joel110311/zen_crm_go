@@ -67,7 +67,7 @@ export function AutoSaveInput({
                         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                     )}
                     {status === "saved" && (
-                        <Check className="h-4 w-4 text-sky-400" />
+                        <Check className="h-4 w-4 text-foreground" />
                     )}
                     {status === "error" && (
                         <span className="text-red-500 text-xs">Error</span>

@@ -446,7 +446,7 @@ export function WhatsAppGatewayPanel(props: Props) {
                                 <p className="text-xs text-muted-foreground">{statusLabel}</p>
                             </div>
                             {session.loggedIn ? (
-                                <div className="inline-flex items-center gap-2 text-emerald-600 text-sm font-medium">
+                                <div className="inline-flex items-center gap-2 text-foreground text-sm font-medium">
                                     <CheckCircle2 className="h-4 w-4" />
                                     Activo
                                 </div>

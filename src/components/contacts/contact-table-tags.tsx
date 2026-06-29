@@ -80,7 +80,7 @@ export function ContactTableTags({ contactId, tags }: ContactTableTagsProps) {
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="h-5 w-5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-blue-600"
+                        className="h-5 w-5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-foreground"
                     >
                         <Plus className="h-3 w-3" />
                     </Button>

@@ -93,10 +93,10 @@ function statusIcon(status: string) {
 function statusStyle(status: string) {
     switch (status) {
         case "APPROVED":
-            return "bg-emerald-500/10 text-emerald-600 border-emerald-500/20";
+            return "bg-secondary text-foreground border-border";
         case "PENDING":
         case "IN_REVIEW":
-            return "bg-amber-500/10 text-amber-600 border-amber-500/20";
+            return "bg-secondary text-muted-foreground border-border";
         default:
             return "bg-red-500/10 text-red-600 border-red-500/20";
     }
@@ -291,8 +291,8 @@ export function YCloudTemplateRequestPanel() {
             {/* ═══ Stats ═══ */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <StatCard label="Total" value={templates.length} />
-                <StatCard label="Aprobadas" value={approved} color="text-emerald-600" />
-                <StatCard label="Pendientes" value={pending} color="text-amber-600" />
+                <StatCard label="Aprobadas" value={approved} color="text-foreground" />
+                <StatCard label="Pendientes" value={pending} color="text-muted-foreground" />
                 <StatCard label="Rechazadas" value={rejected} color="text-red-600" />
             </div>
 
@@ -473,7 +473,7 @@ export function YCloudTemplateRequestPanel() {
                                     <p className="text-xs text-muted-foreground mt-1">Formato internacional (uno por línea o separados por coma)</p>
                                 </div>
                                 {sendResult && (
-                                    <div className={`rounded-xl p-3 text-sm ${sendResult.failed > 0 ? "bg-amber-500/10 border border-amber-500/20" : "bg-emerald-500/10 border border-emerald-500/20"}`}>
+                                    <div className={`rounded-xl p-3 text-sm ${sendResult.failed > 0 ? "bg-secondary border border-border" : "bg-secondary border border-border"}`}>
                                         ✅ Enviados: {sendResult.sent} de {sendResult.total}{sendResult.failed > 0 && ` · ❌ Fallidos: ${sendResult.failed}`}
                                     </div>
                                 )}
@@ -877,7 +877,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                                                 {btns.length > 0 && (
                                                     <div className="border-t border-gray-200 dark:border-gray-700 pt-1 space-y-0.5">
                                                         {btns.filter(b => b.text.trim()).slice(0, 2).map((btn, bi) => (
-                                                            <p key={bi} className="text-center text-[10px] text-teal-600 dark:text-teal-400 font-medium">↩ {btn.text}</p>
+                                                            <p key={bi} className="text-center text-[10px] text-foreground dark:text-foreground font-medium">↩ {btn.text}</p>
                                                         ))}
                                                     </div>
                                                 )}
@@ -1088,7 +1088,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                                                 placeholder={`Ej: ${cleanName === "nombre" ? "Joel" : cleanName === "fecha_y_hora" ? "28/02/2026 10:00 PM" : cleanName}`}
                                                 value={variableSamples[v] || ""}
                                                 onChange={(e) => setVariableSamples(prev => ({ ...prev, [v]: e.target.value }))}
-                                                className="bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-700 text-sm h-9"
+                                                className="bg-secondary dark:bg-secondary border-border dark:border-border text-sm h-9"
                                             />
                                         </div>
                                     );
@@ -1145,7 +1145,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
 
                     {/* Error / Success */}
                     {error && <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-3 text-destructive text-sm">{error}</div>}
-                    {success && <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-emerald-600 text-sm">✅ Plantilla creada — enviada a revisión de Meta.</div>}
+                    {success && <div className="bg-secondary border border-border rounded-xl p-3 text-foreground text-sm">✅ Plantilla creada — enviada a revisión de Meta.</div>}
 
                     {/* Submit */}
                     <div className="flex gap-3 pt-2">
@@ -1198,7 +1198,7 @@ function PhonePreview({
             if (part.match(regex)) {
                 const sample = variableSamples[part];
                 return (
-                    <span key={i} className={sample ? "font-medium" : "bg-amber-200/60 dark:bg-amber-800/40 text-amber-800 dark:text-amber-300 px-1 rounded text-[11px] font-mono"}>
+                    <span key={i} className={sample ? "font-medium" : "bg-secondary dark:bg-secondary text-muted-foreground dark:text-muted-foreground px-1 rounded text-[11px] font-mono"}>
                         {sample || part}
                     </span>
                 );
@@ -1243,7 +1243,7 @@ function PhonePreview({
     return (
         <div className="rounded-[2rem] border-4 border-gray-800 dark:border-gray-600 bg-gray-800 shadow-2xl overflow-hidden relative" style={{ width: 290 }}>
             {/* Status bar */}
-            <div className="bg-teal-700 px-4 pt-2 pb-0.5 flex items-center justify-between text-white text-[10px]">
+            <div className="bg-foreground px-4 pt-2 pb-0.5 flex items-center justify-between text-white text-[10px]">
                 <span>9:41</span>
                 <div className="flex items-center gap-1">
                     <Signal className="h-3 w-3" />
@@ -1253,7 +1253,7 @@ function PhonePreview({
             </div>
 
             {/* WhatsApp header */}
-            <div className="bg-teal-700 px-3 py-2 flex items-center gap-2">
+            <div className="bg-foreground px-3 py-2 flex items-center gap-2">
                 <ArrowLeft className="h-4 w-4 text-white" />
                 <div className="flex-1" />
                 <MoreVertical className="h-4 w-4 text-white" />
@@ -1278,7 +1278,7 @@ function PhonePreview({
                         {buttons.length > 0 && (
                             <div className="border-t border-gray-200 dark:border-gray-700 pt-1.5 space-y-1">
                                 {buttons.filter(b => b.text.trim()).map((btn, i) => (
-                                    <p key={i} className="text-center text-[11px] text-teal-600 dark:text-teal-400 font-medium py-0.5">
+                                    <p key={i} className="text-center text-[11px] text-foreground dark:text-foreground font-medium py-0.5">
                                         ↩ {btn.text}
                                     </p>
                                 ))}
@@ -1292,7 +1292,7 @@ function PhonePreview({
             <div className="bg-[#F0F0F0] dark:bg-[#1F2C34] px-3 py-2 flex items-center gap-2">
                 <Smile className="h-4 w-4 text-gray-500" />
                 <div className="flex-1 bg-white dark:bg-[#2A3942] rounded-full px-3 py-1 text-[10px] text-gray-400">Type a message</div>
-                <div className="h-7 w-7 rounded-full bg-teal-600 flex items-center justify-center">
+                <div className="h-7 w-7 rounded-full bg-foreground flex items-center justify-center">
                     <Send className="h-3 w-3 text-white ml-0.5" />
                 </div>
             </div>
