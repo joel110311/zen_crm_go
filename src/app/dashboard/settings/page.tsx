@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
     CalendarDays,
     Check,
+    Bot,
     Loader2,
     MessageSquare,
     Palette,
@@ -14,7 +15,6 @@ import {
     Plus,
     Save,
     Settings,
-    Sparkles,
     Trash2,
     Users,
     Volume2,
@@ -56,7 +56,7 @@ const SECTIONS: Array<{
 }> = [
     { id: "theme", label: "Apariencia", description: "Tema y estilo general del CRM", icon: Palette },
     { id: "users", label: "Usuarios", description: "Accesos, roles y permisos", icon: Users, superadminOnly: true },
-    { id: "ai", label: "Cerebro IA", description: "Claves y servicios de inteligencia", icon: Sparkles, superadminOnly: true },
+    { id: "ai", label: "Asistente IA", description: "Claves y servicios de inteligencia", icon: Bot, superadminOnly: true },
     { id: "whatsapp", label: "Canal WhatsApp", description: "Credenciales YCloud, QR y sincronizacion del numero", icon: MessageSquare, superadminOnly: true },
     { id: "calendar", label: "Google Calendar", description: "Conexion y calendarios de agenda", icon: CalendarDays, superadminOnly: true },
     { id: "chats", label: "Notificaciones", description: "Sonidos y preferencias del inbox", icon: Volume2 },

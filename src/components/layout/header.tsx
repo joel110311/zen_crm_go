@@ -11,7 +11,7 @@ const PAGE_TITLES: Record<string, string> = {
     "/dashboard/orders": "Pedidos",
     "/dashboard/templates": "Plantillas",
     "/dashboard/calendar": "Calendario",
-    "/dashboard/brain": "Cerebro IA",
+    "/dashboard/brain": "Asistente IA",
     "/dashboard/settings": "Configuracion",
 };
 

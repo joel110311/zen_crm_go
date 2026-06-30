@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bot, BrainCircuit, Loader2, Save, SearchCheck, Sparkles } from "lucide-react";
+import { Bot, Loader2, Save, SearchCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -160,7 +160,7 @@ export default function BrainConfigPage() {
             }
 
             toast({
-                title: "Cerebro actualizado",
+                title: "Asistente actualizado",
                 description: "El agente ya usara esta configuracion en WhatsApp.",
             });
         } catch (error) {
@@ -210,10 +210,10 @@ export default function BrainConfigPage() {
             <div className="flex flex-col gap-4 rounded-xl border bg-card px-5 py-4 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)] lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex items-center gap-3">
                     <div className="h-11 w-11 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                        <BrainCircuit className="h-6 w-6" />
+                        <Bot className="h-6 w-6" />
                     </div>
                     <div>
-                        <h1 className="text-[1.85rem] font-semibold tracking-tight">Cerebro IA</h1>
+                        <h1 className="text-[1.85rem] font-semibold tracking-tight">Asistente IA</h1>
                         <p className="mt-1 text-sm leading-6 text-muted-foreground">
                             Aqui se concentra la logica del agente, sus fuentes y el contexto que usara para contestar en WhatsApp.
                         </p>

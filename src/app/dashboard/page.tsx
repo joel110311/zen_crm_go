@@ -1,11 +1,7 @@
 import Link from "next/link";
 import {
     ArrowRight,
-    Bot,
-    CalendarDays,
-    Check,
     ChevronDown,
-    DownloadCloud,
     MessageSquare,
     Plus,
     TrendingDown,
@@ -30,16 +26,25 @@ const compactNumber = new Intl.NumberFormat("es-MX", {
     maximumFractionDigits: 1,
 });
 
-function startOfToday() {
-    const date = new Date();
-    date.setHours(0, 0, 0, 0);
-    return date;
+const REVENUE_RANGES = ["1D", "1S", "1M", "1A"] as const;
+type RevenueRange = (typeof REVENUE_RANGES)[number];
+
+type DashboardSearchParams = Record<string, string | string[] | undefined>;
+
+function startOfDay(date: Date) {
+    const next = new Date(date);
+    next.setHours(0, 0, 0, 0);
+    return next;
 }
 
-function endOfToday() {
-    const date = new Date();
-    date.setHours(23, 59, 59, 999);
-    return date;
+function endOfDay(date: Date) {
+    const next = new Date(date);
+    next.setHours(23, 59, 59, 999);
+    return next;
+}
+
+function startOfToday() {
+    return startOfDay(new Date());
 }
 
 function addDays(date: Date, days: number) {
@@ -48,8 +53,52 @@ function addDays(date: Date, days: number) {
     return next;
 }
 
-function monthKey(date: Date) {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+function addHours(date: Date, hours: number) {
+    const next = new Date(date);
+    next.setHours(next.getHours() + hours);
+    return next;
+}
+
+function addMonths(date: Date, months: number) {
+    const next = new Date(date);
+    next.setMonth(next.getMonth() + months);
+    return next;
+}
+
+function sameDay(left: Date, right: Date) {
+    return left.getFullYear() === right.getFullYear()
+        && left.getMonth() === right.getMonth()
+        && left.getDate() === right.getDate();
+}
+
+function formatDateParam(date: Date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function getSingleParam(params: DashboardSearchParams | undefined, key: string) {
+    const value = params?.[key];
+    return Array.isArray(value) ? value[0] : value;
+}
+
+function parseDateParam(value?: string) {
+    if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return startOfToday();
+    const [year, month, day] = value.split("-").map(Number);
+    const parsed = new Date(year, month - 1, day);
+    if (Number.isNaN(parsed.getTime())) return startOfToday();
+    return startOfDay(parsed);
+}
+
+function normalizeRevenueRange(value?: string): RevenueRange {
+    return REVENUE_RANGES.includes(value as RevenueRange) ? value as RevenueRange : "1A";
+}
+
+function dashboardHref(range: RevenueRange, date: Date) {
+    const today = startOfToday();
+    const params = new URLSearchParams();
+    if (range !== "1A") params.set("revenueRange", range);
+    if (!sameDay(date, today)) params.set("date", formatDateParam(date));
+    const query = params.toString();
+    return query ? `/dashboard?${query}` : "/dashboard";
 }
 
 function shortMonth(date: Date) {
@@ -73,12 +122,89 @@ function buildLinePath(values: number[], width = 720, height = 220) {
         .join(" ");
 }
 
-async function getDashboardStats() {
+function buildRevenueBuckets(range: RevenueRange) {
+    const today = startOfToday();
+
+    if (range === "1D") {
+        return Array.from({ length: 24 }, (_, index) => {
+            const start = addHours(today, index);
+            return {
+                start,
+                end: addHours(start, 1),
+                label: `${String(index).padStart(2, "0")}h`,
+                showLabel: index % 4 === 0 || index === 23,
+                total: 0,
+            };
+        });
+    }
+
+    if (range === "1S") {
+        const start = addDays(today, -6);
+        return Array.from({ length: 7 }, (_, index) => {
+            const day = addDays(start, index);
+            return {
+                start: day,
+                end: addDays(day, 1),
+                label: day.toLocaleDateString("es-MX", { weekday: "short" }).replace(".", ""),
+                showLabel: true,
+                total: 0,
+            };
+        });
+    }
+
+    if (range === "1M") {
+        const start = addDays(today, -29);
+        return Array.from({ length: 30 }, (_, index) => {
+            const day = addDays(start, index);
+            return {
+                start: day,
+                end: addDays(day, 1),
+                label: String(day.getDate()),
+                showLabel: index % 5 === 0 || index === 29,
+                total: 0,
+            };
+        });
+    }
+
+    const start = new Date(today.getFullYear(), today.getMonth() - 11, 1);
+    return Array.from({ length: 12 }, (_, index) => {
+        const month = addMonths(start, index);
+        return {
+            start: month,
+            end: addMonths(month, 1),
+            label: shortMonth(month),
+            showLabel: true,
+            total: 0,
+        };
+    });
+}
+
+function messagePreview(message: { content: string; type: string; mediaFileName?: string | null }) {
+    const content = message.content?.trim();
+    if (content && !content.startsWith("[")) return content;
+    if (message.type === "image") return "Imagen";
+    if (message.type === "audio") return "Audio";
+    if (message.type === "video") return "Video";
+    if (message.type === "document") return message.mediaFileName || "Documento";
+    return content || "Mensaje";
+}
+
+function chatTime(date: Date) {
+    const today = startOfToday();
+    if (sameDay(date, today)) return shortTime(date);
+    if (sameDay(date, addDays(today, -1))) return "Ayer";
+    return date.toLocaleDateString("es-MX", { day: "numeric", month: "short" }).replace(".", "");
+}
+
+async function getDashboardStats({ revenueRange, selectedDate }: { revenueRange: RevenueRange; selectedDate: Date }) {
     const todayStart = startOfToday();
-    const todayEnd = endOfToday();
     const weekStart = addDays(todayStart, -6);
     const monthStart = new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
-    const chartStart = new Date(todayStart.getFullYear(), todayStart.getMonth() - 7, 1);
+    const selectedStart = startOfDay(selectedDate);
+    const selectedEnd = endOfDay(selectedDate);
+    const revenueBuckets = buildRevenueBuckets(revenueRange);
+    const revenueStart = revenueBuckets[0]?.start || todayStart;
+    const revenueEnd = revenueBuckets[revenueBuckets.length - 1]?.end || endOfDay(todayStart);
 
     const [
         totalContacts,
@@ -88,10 +214,8 @@ async function getDashboardStats() {
         totalDeals,
         dealsByStage,
         closedWonDeals,
-        recentDeals,
-        todayAppointments,
-        upcomingAppointments,
-        contactsForSegments,
+        selectedAppointments,
+        recentMessages,
     ] = await Promise.all([
         prisma.contact.count(),
         prisma.contact.count({ where: { createdAt: { gte: monthStart } } }),
@@ -106,43 +230,55 @@ async function getDashboardStats() {
             },
         }),
         prisma.deal.findMany({
-            where: { stage: { isClosedWon: true }, updatedAt: { gte: chartStart } },
+            where: { stage: { isClosedWon: true }, updatedAt: { gte: revenueStart, lt: revenueEnd } },
             select: { value: true, updatedAt: true },
             orderBy: { updatedAt: "asc" },
         }),
-        prisma.deal.findMany({
-            take: 5,
-            orderBy: { updatedAt: "desc" },
-            include: {
-                contact: { select: { name: true, lastName: true, phone: true } },
-                stage: { select: { name: true, isClosedWon: true, isClosedLost: true } },
+        prisma.appointment.findMany({
+            where: { startTime: { gte: selectedStart, lte: selectedEnd } },
+            take: 8,
+            orderBy: { startTime: "asc" },
+            include: { contact: { select: { name: true, lastName: true, phone: true } } },
+        }),
+        prisma.message.findMany({
+            take: 100,
+            orderBy: { createdAt: "desc" },
+            select: {
+                id: true,
+                conversationId: true,
+                content: true,
+                type: true,
+                mediaFileName: true,
+                createdAt: true,
+                conversation: {
+                    select: {
+                        id: true,
+                        sourceType: true,
+                        contact: {
+                            select: {
+                                id: true,
+                                name: true,
+                                lastName: true,
+                                phone: true,
+                                whatsappAvatarUrl: true,
+                            },
+                        },
+                    },
+                },
             },
-        }),
-        prisma.appointment.findMany({
-            where: { startTime: { gte: todayStart, lte: todayEnd } },
-            take: 6,
-            orderBy: { startTime: "asc" },
-            include: { contact: { select: { name: true, lastName: true } } },
-        }),
-        prisma.appointment.findMany({
-            where: { startTime: { gte: new Date() } },
-            take: 5,
-            orderBy: { startTime: "asc" },
-            include: { contact: { select: { name: true, lastName: true } } },
-        }),
-        prisma.contact.findMany({
-            take: 200,
-            orderBy: { updatedAt: "desc" },
-            select: { status: true, tags: true, company: true },
         }),
     ]);
 
+    closedWonDeals.forEach((deal) => {
+        const bucket = revenueBuckets.find((item, index) => {
+            const isLast = index === revenueBuckets.length - 1;
+            return deal.updatedAt >= item.start && (isLast ? deal.updatedAt <= item.end : deal.updatedAt < item.end);
+        });
+        if (bucket) bucket.total += deal.value;
+    });
+
     const pipelineValue = dealsByStage
         .filter((stage) => !stage.isClosedLost)
-        .reduce((sum, stage) => sum + stage.deals.reduce((stageSum, deal) => stageSum + deal.value, 0), 0);
-
-    const closedWonValue = dealsByStage
-        .filter((stage) => stage.isClosedWon)
         .reduce((sum, stage) => sum + stage.deals.reduce((stageSum, deal) => stageSum + deal.value, 0), 0);
 
     const wonDealsCount = dealsByStage
@@ -155,27 +291,23 @@ async function getDashboardStats() {
 
     const openDealsCount = Math.max(totalDeals - wonDealsCount - lostDealsCount, 0);
     const conversionRate = totalDeals > 0 ? Math.round((wonDealsCount / totalDeals) * 100) : 0;
+    const closedWonValue = revenueBuckets.reduce((sum, bucket) => sum + bucket.total, 0);
 
-    const months = Array.from({ length: 8 }, (_, index) => {
-        const date = new Date(todayStart.getFullYear(), todayStart.getMonth() - (7 - index), 1);
-        return { key: monthKey(date), label: shortMonth(date), total: 0 };
-    });
-
-    closedWonDeals.forEach((deal) => {
-        const bucket = months.find((month) => month.key === monthKey(deal.updatedAt));
-        if (bucket) bucket.total += deal.value;
-    });
-
-    const segmentMap = new Map<string, number>();
-    contactsForSegments.forEach((contact) => {
-        const label = contact.company?.trim() || contact.tags[0]?.trim() || contact.status || "Sin segmento";
-        segmentMap.set(label, (segmentMap.get(label) || 0) + 1);
-    });
-
-    const topSegments = Array.from(segmentMap.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 4)
-        .map(([label, count]) => ({ label, count }));
+    const seenConversations = new Set<string>();
+    const recentChats = recentMessages
+        .filter((message) => {
+            if (seenConversations.has(message.conversationId)) return false;
+            seenConversations.add(message.conversationId);
+            return true;
+        })
+        .slice(0, 10)
+        .map((message) => ({
+            id: message.conversation.id,
+            sourceType: message.conversation.sourceType,
+            contact: message.conversation.contact,
+            preview: messagePreview(message),
+            createdAt: message.createdAt,
+        }));
 
     return {
         totalContacts,
@@ -190,11 +322,9 @@ async function getDashboardStats() {
         openDealsCount,
         conversionRate,
         dealsByStage,
-        recentDeals,
-        todayAppointments,
-        upcomingAppointments,
-        months,
-        topSegments,
+        selectedAppointments,
+        revenueBuckets,
+        recentChats,
     };
 }
 
@@ -209,7 +339,7 @@ function MetricCard({
     title: string;
     value: string;
     meta: string;
-    trend: string;
+    trend?: string;
     positive?: boolean;
     icon: typeof Users;
 }) {
@@ -218,32 +348,41 @@ function MetricCard({
         <Card>
             <CardContent className="p-5">
                 <div className="flex items-start justify-between gap-4">
-                    <div className="space-y-4">
+                    <div className="min-w-0 space-y-4">
                         <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
                             <Icon className="h-4 w-4" />
                             {title}
                         </div>
                         <div>
-                            <div className="text-3xl font-semibold tracking-normal text-foreground">{value}</div>
-                            <p className="mt-1 text-sm text-muted-foreground">{meta}</p>
+                            <div className="truncate text-3xl font-semibold tracking-normal text-foreground">{value}</div>
+                            <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{meta}</p>
                         </div>
                     </div>
-                    <div className="inline-flex items-center gap-1 rounded-full border border-border bg-secondary px-2.5 py-1 text-xs font-semibold text-foreground">
-                        <TrendIcon className="h-3.5 w-3.5" />
-                        {trend}
-                    </div>
+                    {trend ? (
+                        <div className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-secondary px-2.5 py-1 text-xs font-semibold text-foreground">
+                            <TrendIcon className="h-3.5 w-3.5" />
+                            {trend}
+                        </div>
+                    ) : null}
                 </div>
             </CardContent>
         </Card>
     );
 }
 
-export default async function DashboardPage() {
-    const [stats, session] = await Promise.all([getDashboardStats(), auth()]);
+export default async function DashboardPage({
+    searchParams,
+}: {
+    searchParams?: Promise<DashboardSearchParams>;
+}) {
+    const params = await searchParams;
+    const revenueRange = normalizeRevenueRange(getSingleParam(params, "revenueRange"));
+    const selectedDate = parseDateParam(getSingleParam(params, "date"));
+    const [stats, session] = await Promise.all([getDashboardStats({ revenueRange, selectedDate }), auth()]);
     const userName = session?.user?.name || "Usuario";
     const today = startOfToday();
-    const weekDays = Array.from({ length: 7 }, (_, index) => addDays(today, index - 3));
-    const lineValues = stats.months.map((month) => month.total);
+    const weekDays = Array.from({ length: 7 }, (_, index) => addDays(selectedDate, index - 3));
+    const lineValues = stats.revenueBuckets.map((bucket) => bucket.total);
     const linePath = buildLinePath(lineValues);
     const areaPath = `${linePath} L 720 220 L 0 220 Z`;
     const maxStageValue = Math.max(...stats.dealsByStage.map((stage) => stage.deals.reduce((sum, deal) => sum + deal.value, 0)), 1);
@@ -256,16 +395,12 @@ export default async function DashboardPage() {
     ];
 
     return (
-        <div className="space-y-7">
+        <div className="space-y-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div className="min-w-0">
-                    <p className="text-sm font-semibold text-muted-foreground">Bienvenido de nuevo</p>
-                    <h2 className="mt-1 text-2xl font-semibold tracking-normal text-foreground sm:text-3xl">
+                    <h2 className="text-2xl font-semibold tracking-normal text-foreground sm:text-3xl">
                         Hola, {userName}
                     </h2>
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                        Vista ejecutiva de clientes, pipeline, conversaciones y agenda del dia.
-                    </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                     <Button variant="outline" asChild>
@@ -283,7 +418,7 @@ export default async function DashboardPage() {
                 </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
                 <MetricCard
                     title="Leads"
                     value={stats.totalContacts.toLocaleString("es-MX")}
@@ -313,6 +448,12 @@ export default async function DashboardPage() {
                     positive={false}
                     icon={MessageSquare}
                 />
+                <MetricCard
+                    title="Base activa"
+                    value={compactNumber.format(stats.totalContacts)}
+                    meta="contactos en CRM"
+                    icon={Users}
+                />
             </div>
 
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
@@ -328,11 +469,20 @@ export default async function DashboardPage() {
                             </div>
                         </div>
                         <div className="flex rounded-xl border border-border bg-secondary p-1 text-xs font-semibold text-muted-foreground">
-                            {["1D", "1S", "1M", "1A"].map((label, index) => (
-                                <span key={label} className={index === 3 ? "rounded-lg bg-card px-3 py-1.5 text-foreground shadow-soft" : "px-3 py-1.5"}>
-                                    {label}
-                                </span>
-                            ))}
+                            {REVENUE_RANGES.map((label) => {
+                                const isActive = label === revenueRange;
+                                return (
+                                    <Link
+                                        key={label}
+                                        href={dashboardHref(label, selectedDate)}
+                                        className={isActive
+                                            ? "rounded-lg bg-card px-3 py-1.5 text-foreground shadow-soft"
+                                            : "px-3 py-1.5 transition-colors hover:text-foreground"}
+                                    >
+                                        {label}
+                                    </Link>
+                                );
+                            })}
                         </div>
                     </CardHeader>
                     <CardContent className="p-5">
@@ -354,9 +504,11 @@ export default async function DashboardPage() {
                                 <path d={areaPath} fill="currentColor" className="text-foreground/5" />
                                 <path d={linePath} fill="none" stroke="currentColor" strokeWidth="3" vectorEffect="non-scaling-stroke" className="text-foreground" />
                             </svg>
-                            <div className="mt-2 grid grid-cols-8 text-xs font-medium text-muted-foreground">
-                                {stats.months.map((month) => (
-                                    <span key={month.key} className="text-center capitalize">{month.label}</span>
+                            <div className="mt-2 grid text-xs font-medium text-muted-foreground" style={{ gridTemplateColumns: `repeat(${stats.revenueBuckets.length}, minmax(0, 1fr))` }}>
+                                {stats.revenueBuckets.map((bucket, index) => (
+                                    <span key={`${bucket.label}-${index}`} className="text-center capitalize">
+                                        {bucket.showLabel ? bucket.label : ""}
+                                    </span>
                                 ))}
                             </div>
                         </div>
@@ -367,10 +519,12 @@ export default async function DashboardPage() {
                     <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">
                         <div>
                             <CardTitle className="text-base">Citas del dia</CardTitle>
-                            <p className="mt-1 text-sm text-muted-foreground">{today.toLocaleDateString("es-MX", { month: "long", day: "numeric" })}</p>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                                {selectedDate.toLocaleDateString("es-MX", { day: "numeric", month: "long" })}
+                            </p>
                         </div>
                         <Button variant="outline" size="sm" asChild>
-                            <Link href="/dashboard/calendar">
+                            <Link href={dashboardHref(revenueRange, today)}>
                                 Hoy
                                 <ChevronDown className="h-4 w-4" />
                             </Link>
@@ -379,28 +533,28 @@ export default async function DashboardPage() {
                     <CardContent className="p-5">
                         <div className="grid grid-cols-7 gap-1 border-b border-border pb-4 text-center">
                             {weekDays.map((day) => {
-                                const isToday = day.toDateString() === today.toDateString();
+                                const isSelected = sameDay(day, selectedDate);
                                 return (
-                                    <div key={day.toISOString()} className="space-y-1">
+                                    <Link key={day.toISOString()} href={dashboardHref(revenueRange, day)} className="space-y-1 rounded-lg py-1 transition-colors hover:bg-secondary">
                                         <div className="text-xs font-semibold text-muted-foreground capitalize">
                                             {day.toLocaleDateString("es-MX", { weekday: "short" }).replace(".", "")}
                                         </div>
-                                        <div className={isToday ? "mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground" : "text-sm font-semibold text-foreground/70"}>
+                                        <div className={isSelected ? "mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground" : "mx-auto flex h-8 w-8 items-center justify-center text-sm font-semibold text-foreground/70"}>
                                             {day.getDate()}
                                         </div>
-                                    </div>
+                                    </Link>
                                 );
                             })}
                         </div>
 
                         <div className="mt-4 space-y-3">
-                            {stats.todayAppointments.length === 0 ? (
+                            {stats.selectedAppointments.length === 0 ? (
                                 <div className="rounded-xl border border-dashed border-border bg-secondary/50 p-5 text-sm text-muted-foreground">
-                                    No hay citas programadas para hoy.
+                                    No hay citas programadas para este dia.
                                 </div>
                             ) : (
-                                stats.todayAppointments.map((appointment) => (
-                                    <div key={appointment.id} className="rounded-xl border border-border bg-secondary/45 p-4">
+                                stats.selectedAppointments.map((appointment) => (
+                                    <Link key={appointment.id} href="/dashboard/calendar" className="block rounded-xl border border-border bg-secondary/45 p-4 transition-colors hover:bg-secondary">
                                         <p className="font-semibold text-foreground">{appointment.title}</p>
                                         <p className="mt-1 text-sm text-muted-foreground">
                                             {shortTime(appointment.startTime)} - {shortTime(appointment.endTime)}
@@ -410,7 +564,7 @@ export default async function DashboardPage() {
                                                 {getContactFullName(appointment.contact)}
                                             </p>
                                         ) : null}
-                                    </div>
+                                    </Link>
                                 ))
                             )}
                         </div>
@@ -418,7 +572,7 @@ export default async function DashboardPage() {
                 </Card>
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-3">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_390px]">
                 <Card>
                     <CardHeader className="border-b border-border pb-4">
                         <CardTitle className="text-base">Leads Management</CardTitle>
@@ -459,120 +613,54 @@ export default async function DashboardPage() {
                 </Card>
 
                 <Card>
-                    <CardHeader className="border-b border-border pb-4">
-                        <CardTitle className="text-base">Top segmentos</CardTitle>
+                    <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">
+                        <CardTitle className="text-base">Chats recientes</CardTitle>
+                        <Button variant="ghost" size="sm" asChild>
+                            <Link href="/dashboard/inbox">
+                                Ver inbox <ArrowRight className="h-4 w-4" />
+                            </Link>
+                        </Button>
                     </CardHeader>
-                    <CardContent className="p-5">
-                        <div className="space-y-4">
-                            {stats.topSegments.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">Aun no hay segmentos disponibles.</p>
+                    <CardContent className="p-4">
+                        <div className="space-y-2">
+                            {stats.recentChats.length === 0 ? (
+                                <p className="rounded-xl border border-dashed border-border bg-secondary/50 p-4 text-sm text-muted-foreground">
+                                    Aun no hay chats recientes.
+                                </p>
                             ) : (
-                                stats.topSegments.map((segment, index) => {
-                                    const percentage = stats.totalContacts > 0 ? Math.round((segment.count / stats.totalContacts) * 100) : 0;
+                                stats.recentChats.map((chat) => {
+                                    const name = getContactFullName(chat.contact);
+                                    const initial = name.charAt(0).toUpperCase();
                                     return (
-                                        <div key={segment.label} className="flex items-center gap-3">
-                                            <span className="w-5 text-sm font-semibold text-muted-foreground">{index + 1}.</span>
-                                            <span className="min-w-0 flex-1 truncate font-semibold">{segment.label}</span>
-                                            <span className="text-sm text-muted-foreground">{percentage}%</span>
-                                        </div>
+                                        <Link
+                                            key={chat.id}
+                                            href={`/dashboard/inbox?conversationId=${encodeURIComponent(chat.id)}`}
+                                            className="flex min-w-0 items-center gap-3 rounded-xl border border-border bg-secondary/45 p-3 transition-colors hover:bg-secondary"
+                                        >
+                                            <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full border border-border bg-card">
+                                                {chat.contact.whatsappAvatarUrl ? (
+                                                    // eslint-disable-next-line @next/next/no-img-element
+                                                    <img src={chat.contact.whatsappAvatarUrl} alt={name} className="h-full w-full object-cover" />
+                                                ) : (
+                                                    <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-foreground">
+                                                        {initial}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex min-w-0 items-center gap-2">
+                                                    <p className="truncate text-sm font-semibold text-foreground">{name}</p>
+                                                    <span className="ml-auto shrink-0 text-xs font-medium text-muted-foreground">{chatTime(chat.createdAt)}</span>
+                                                </div>
+                                                <p className="mt-0.5 truncate text-xs text-muted-foreground">{chat.preview}</p>
+                                            </div>
+                                        </Link>
                                     );
                                 })
                             )}
                         </div>
                     </CardContent>
                 </Card>
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-2">
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">
-                        <CardTitle className="text-base">Actividad reciente</CardTitle>
-                        <Button variant="ghost" size="sm" asChild>
-                            <Link href="/dashboard/pipeline">
-                                Ver todo <ArrowRight className="h-4 w-4" />
-                            </Link>
-                        </Button>
-                    </CardHeader>
-                    <CardContent className="p-5">
-                        <div className="space-y-3">
-                            {stats.recentDeals.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">No hay actividad reciente.</p>
-                            ) : (
-                                stats.recentDeals.map((deal) => (
-                                    <div key={deal.id} className="flex items-center gap-3 rounded-xl border border-border bg-secondary/35 p-3">
-                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-                                            {(deal.contact?.name || deal.title).charAt(0).toUpperCase()}
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                            <p className="truncate font-semibold">
-                                                {deal.contact ? getContactFullName(deal.contact, deal.title) : deal.title}
-                                            </p>
-                                            <p className="truncate text-sm text-muted-foreground">
-                                                {deal.stage.name} - {currency.format(deal.value)}
-                                            </p>
-                                        </div>
-                                        <Check className="h-4 w-4 text-muted-foreground" />
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">
-                        <CardTitle className="text-base">Proximas acciones</CardTitle>
-                        <Button variant="ghost" size="sm" asChild>
-                            <Link href="/dashboard/calendar">
-                                Agenda <ArrowRight className="h-4 w-4" />
-                            </Link>
-                        </Button>
-                    </CardHeader>
-                    <CardContent className="p-5">
-                        <div className="space-y-3">
-                            {stats.upcomingAppointments.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">No tienes acciones proximas.</p>
-                            ) : (
-                                stats.upcomingAppointments.map((appointment) => (
-                                    <div key={appointment.id} className="flex items-center gap-3 rounded-xl border border-border bg-secondary/35 p-3">
-                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-card">
-                                            <CalendarDays className="h-4 w-4" />
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                            <p className="truncate font-semibold">{appointment.title}</p>
-                                            <p className="truncate text-sm text-muted-foreground">
-                                                {appointment.startTime.toLocaleDateString("es-MX", { day: "numeric", month: "short" })} - {shortTime(appointment.startTime)}
-                                            </p>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-xl border border-border bg-card p-4 shadow-soft">
-                    <Bot className="h-5 w-5" />
-                    <p className="mt-3 text-sm font-semibold">Cerebro IA</p>
-                    <p className="mt-1 text-sm text-muted-foreground">Listo para asistir conversaciones.</p>
-                </div>
-                <div className="rounded-xl border border-border bg-card p-4 shadow-soft">
-                    <DownloadCloud className="h-5 w-5" />
-                    <p className="mt-3 text-sm font-semibold">Exportaciones</p>
-                    <p className="mt-1 text-sm text-muted-foreground">Reportes listos desde cada modulo.</p>
-                </div>
-                <div className="rounded-xl border border-border bg-card p-4 shadow-soft">
-                    <Wallet className="h-5 w-5" />
-                    <p className="mt-3 text-sm font-semibold">CLV estimado</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{currency.format(stats.wonDealsCount ? stats.closedWonValue / stats.wonDealsCount : 0)}</p>
-                </div>
-                <div className="rounded-xl border border-border bg-card p-4 shadow-soft">
-                    <Users className="h-5 w-5" />
-                    <p className="mt-3 text-sm font-semibold">Base activa</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{compactNumber.format(stats.totalContacts)} contactos en CRM.</p>
-                </div>
             </div>
         </div>
     );

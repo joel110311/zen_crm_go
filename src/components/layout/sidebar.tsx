@@ -5,8 +5,10 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { signOut, useSession } from "next-auth/react";
 import {
-    BrainCircuit,
+    Bot,
     Calendar,
+    ChevronLeft,
+    ChevronRight,
     KanbanSquare,
     LayoutDashboard,
     LayoutTemplate,
@@ -33,13 +35,20 @@ const sidebarNavItems = [
     { title: "Pedidos", href: "/dashboard/orders", icon: ReceiptText },
     { title: "Plantillas", href: "/dashboard/templates", icon: LayoutTemplate, superadminOnly: true },
     { title: "Calendario", href: "/dashboard/calendar", icon: Calendar },
-    { title: "Cerebro IA", href: "/dashboard/brain", icon: BrainCircuit, superadminOnly: true },
+    { title: "Asistente IA", href: "/dashboard/brain", icon: Bot, superadminOnly: true },
     { title: "Configuracion", href: "/dashboard/settings", icon: Settings },
 ];
 
 function BrandMark({ compact = false }: { compact?: boolean }) {
     return (
-        <Link href="/dashboard" className="flex min-w-0 items-center gap-3 text-sidebar-foreground">
+        <Link
+            href="/dashboard"
+            className={cn(
+                "flex min-w-0 items-center gap-3 text-sidebar-foreground",
+                compact && "justify-center",
+            )}
+            title={compact ? "Zen CRM" : undefined}
+        >
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-sidebar-border bg-sidebar-accent text-sidebar-foreground shadow-soft">
                 <ZenLogo className="h-7 w-7" />
             </span>
@@ -56,6 +65,7 @@ function BrandMark({ compact = false }: { compact?: boolean }) {
 export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
     const pathname = usePathname();
     const [open, setOpen] = useState(false);
+    const [collapsed, setCollapsed] = useState(true);
     const { data: session, status } = useSession();
     const sessionLoading = status === "loading";
     const userRole = (session?.user as { role?: string } | undefined)?.role;
@@ -69,68 +79,90 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
         };
     }, [open]);
 
+    const toggleCollapsed = () => setCollapsed((current) => !current);
+
     const filteredNavItems = sidebarNavItems.filter((item) => {
         if (sessionLoading) return !item.superadminOnly;
         if (item.superadminOnly && userRole !== "SUPERADMIN") return false;
         return true;
     });
 
-    const renderNavItem = (item: typeof sidebarNavItems[number], key: string, onClickExtra?: () => void) => {
+    const renderNavItem = (
+        item: typeof sidebarNavItems[number],
+        key: string,
+        onClickExtra?: () => void,
+        isCompact = false,
+    ) => {
         const Icon = item.icon;
         const isActive = pathname === item.href;
 
         return (
-            <Link key={key} href={item.href} onClick={onClickExtra}>
+            <Link key={key} href={item.href} onClick={onClickExtra} title={isCompact ? item.title : undefined}>
                 <span
                     className={cn(
-                        "group flex h-11 items-center gap-3 rounded-xl border px-3 text-sm font-semibold transition",
+                        "group flex h-11 items-center rounded-xl border text-sm font-semibold transition",
+                        isCompact ? "justify-center px-0" : "gap-3 px-3",
                         isActive
                             ? "border-primary bg-primary text-primary-foreground shadow-soft"
                             : "border-transparent text-sidebar-foreground/70 hover:border-sidebar-border hover:bg-sidebar-accent hover:text-sidebar-foreground",
                     )}
                 >
                     <Icon className="h-[18px] w-[18px] shrink-0" />
-                    <span className="truncate">{item.title}</span>
+                    {!isCompact ? <span className="truncate">{item.title}</span> : null}
                 </span>
             </Link>
         );
     };
 
-    const renderUserInfo = () => (
-        <div className="rounded-xl border border-sidebar-border bg-sidebar-accent p-3">
+    const renderUserInfo = (isCompact = false) => (
+        <div
+            className={cn(
+                "rounded-xl border border-sidebar-border bg-sidebar-accent",
+                isCompact ? "flex justify-center p-2" : "p-3",
+            )}
+            title={isCompact ? `${userName}${userEmail ? ` - ${userEmail}` : ""}` : undefined}
+        >
             <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
                     {!sessionLoading && userName.charAt(0).toUpperCase()}
                 </div>
-                <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold text-sidebar-foreground">
-                        {sessionLoading ? <div className="h-3 w-20 animate-pulse rounded bg-sidebar-foreground/10" /> : userName}
+                {!isCompact ? (
+                    <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-semibold text-sidebar-foreground">
+                            {sessionLoading ? <div className="h-3 w-20 animate-pulse rounded bg-sidebar-foreground/10" /> : userName}
+                        </div>
+                        <div className="truncate text-xs text-sidebar-foreground/55">
+                            {sessionLoading ? "Cargando..." : userEmail || "Sin correo"}
+                        </div>
                     </div>
-                    <div className="truncate text-xs text-sidebar-foreground/55">
-                        {sessionLoading ? "Cargando..." : userEmail || "Sin correo"}
-                    </div>
-                </div>
+                ) : null}
             </div>
-            <Badge variant="outline" className="mt-3 border-sidebar-border bg-sidebar px-2 py-0 text-[10px] text-sidebar-foreground/70">
-                {sessionLoading ? (
-                    <div className="my-1 h-2 w-12 animate-pulse rounded bg-sidebar-foreground/10" />
-                ) : userRole === "SUPERADMIN" ? (
-                    <>
-                        <ShieldCheck className="mr-1 h-3 w-3" /> Super Admin
-                    </>
-                ) : (
-                    <>
-                        <Shield className="mr-1 h-3 w-3" /> Admin
-                    </>
-                )}
-            </Badge>
+            {!isCompact ? (
+                <Badge variant="outline" className="mt-3 border-sidebar-border bg-sidebar px-2 py-0 text-[10px] text-sidebar-foreground/70">
+                    {sessionLoading ? (
+                        <div className="my-1 h-2 w-12 animate-pulse rounded bg-sidebar-foreground/10" />
+                    ) : userRole === "SUPERADMIN" ? (
+                        <>
+                            <ShieldCheck className="mr-1 h-3 w-3" /> Super Admin
+                        </>
+                    ) : (
+                        <>
+                            <Shield className="mr-1 h-3 w-3" /> Admin
+                        </>
+                    )}
+                </Badge>
+            ) : null}
         </div>
     );
 
-    const sidebarContent = (mobile = false) => (
+    const sidebarContent = (mobile = false) => {
+        const isCompact = !mobile && collapsed;
+        const ToggleIcon = collapsed ? ChevronRight : ChevronLeft;
+
+        return (
         <div className="flex h-full flex-col">
-            <div className="flex items-center justify-between">
-                <BrandMark />
+            <div className={cn("flex items-center", isCompact ? "justify-center" : "justify-between")}>
+                <BrandMark compact={isCompact} />
                 {mobile ? (
                     <button
                         onClick={() => setOpen(false)}
@@ -139,34 +171,60 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                     >
                         <X className="h-4 w-4" />
                     </button>
-                ) : null}
+                ) : (
+                    <button
+                        onClick={toggleCollapsed}
+                        className={cn(
+                            "rounded-xl border border-sidebar-border bg-sidebar-accent p-2 text-sidebar-foreground transition hover:bg-sidebar",
+                            isCompact && "absolute left-[68px] z-10 rounded-full bg-sidebar shadow-soft",
+                        )}
+                        aria-label={collapsed ? "Desplegar menu" : "Plegar menu"}
+                        title={collapsed ? "Desplegar menu" : "Plegar menu"}
+                    >
+                        <ToggleIcon className="h-4 w-4" />
+                    </button>
+                )}
             </div>
 
-            <ScrollArea className="mt-5 flex-1">
+            <ScrollArea className={cn("flex-1", isCompact ? "mt-6" : "mt-5")}>
                 <div className="space-y-5 pr-1">
                     <div>
-                        <p className="px-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/42">
-                            Operacion
-                        </p>
-                        <nav className="mt-3 grid gap-1.5">
-                            {filteredNavItems.map((item, index) => renderNavItem(item, `${mobile ? "mobile" : "desktop"}-${index}`, mobile ? () => setOpen(false) : undefined))}
+                        {!isCompact ? (
+                            <p className="px-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/42">
+                                Operacion
+                            </p>
+                        ) : null}
+                        <nav className={cn("grid gap-1.5", isCompact ? "mt-0" : "mt-3")}>
+                            {filteredNavItems.map((item, index) =>
+                                renderNavItem(
+                                    item,
+                                    `${mobile ? "mobile" : "desktop"}-${index}`,
+                                    mobile ? () => setOpen(false) : undefined,
+                                    isCompact,
+                                ),
+                            )}
                         </nav>
                     </div>
                 </div>
             </ScrollArea>
 
             <div className="space-y-3 border-t border-sidebar-border pt-4">
-                {renderUserInfo()}
+                {renderUserInfo(isCompact)}
                 <button
                     onClick={() => signOut({ callbackUrl: "/login" })}
-                    className="flex h-10 w-full items-center gap-3 rounded-xl border border-transparent px-3 text-sm font-semibold text-sidebar-foreground/62 transition hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                    className={cn(
+                        "flex h-10 w-full items-center rounded-xl border border-transparent text-sm font-semibold text-sidebar-foreground/62 transition hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive",
+                        isCompact ? "justify-center px-0" : "gap-3 px-3",
+                    )}
+                    title={isCompact ? "Cerrar sesion" : undefined}
                 >
                     <LogOut className="h-[18px] w-[18px]" />
-                    Cerrar sesion
+                    {!isCompact ? "Cerrar sesion" : null}
                 </button>
             </div>
         </div>
-    );
+        );
+    };
 
     return (
         <>
@@ -200,7 +258,13 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                 {sidebarContent(true)}
             </aside>
 
-            <aside className={cn("hidden w-[260px] shrink-0 border-r border-sidebar-border bg-sidebar p-4 md:flex md:flex-col", className)}>
+            <aside
+                className={cn(
+                    "relative hidden shrink-0 border-r border-sidebar-border bg-sidebar p-4 transition-[width] duration-300 ease-out md:flex md:flex-col",
+                    className,
+                    collapsed ? "w-[88px]" : "w-[260px]",
+                )}
+            >
                 {sidebarContent(false)}
             </aside>
         </>
