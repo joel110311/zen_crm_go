@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { sendWuzapiReaction } from "@/lib/wuzapi";
-import { sendYCloudReaction } from "@/lib/ycloud";
+import { sendMetaReactionMessage } from "@/lib/meta-whatsapp";
+import { normalizeMessageSourceType } from "@/lib/message-source";
 
 export async function POST(request: NextRequest) {
     try {
@@ -47,8 +48,9 @@ export async function POST(request: NextRequest) {
 
         if ((nextReaction || shouldSyncClear) && existing.providerMessageId && existing.conversation.contact?.phone) {
             try {
-                if (existing.sourceType === "ycloud") {
-                    await sendYCloudReaction({
+                const sourceType = normalizeMessageSourceType(existing.sourceType);
+                if (sourceType === "meta") {
+                    await sendMetaReactionMessage({
                         to: existing.conversation.contact.phone,
                         reaction: nextReaction,
                         providerMessageId: existing.providerMessageId,

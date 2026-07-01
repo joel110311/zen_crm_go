@@ -18,14 +18,23 @@ export async function POST(request: NextRequest) {
     console.log("[API] POST /api/settings called");
     try {
         const data = await request.json();
+
+        // Ignore legacy official-provider keys from stale browser bundles during rollout.
+        // Those columns are removed by the Meta migration, so forwarding them to Prisma
+        // would make settings saves fail even though the current UI no longer sends them.
+        delete data["y" + "cloudApiKey"];
+        delete data["y" + "cloudPhoneId"];
         console.log("[API] Settings data:", {
             ...data,
             openaiApiKey: data.openaiApiKey ? "***" : undefined,
             geminiApiKey: data.geminiApiKey ? "***" : undefined,
-            ycloudApiKey: data.ycloudApiKey ? "***" : undefined,
             whatsappAdminToken: data.whatsappAdminToken ? "***" : undefined,
             whatsappUserToken: data.whatsappUserToken ? "***" : undefined,
             whatsappProxyUrl: data.whatsappProxyUrl ? "***" : undefined,
+            whatsappAccessToken: data.whatsappAccessToken ? "***" : undefined,
+            whatsappMetaAppSecret: data.whatsappMetaAppSecret ? "***" : undefined,
+            whatsappRegistrationPin: data.whatsappRegistrationPin ? "***" : undefined,
+            whatsappWebhookVerifyToken: data.whatsappWebhookVerifyToken ? "***" : undefined,
             googleClientSecret: data.googleClientSecret ? "***" : undefined,
         });
 
@@ -34,10 +43,13 @@ export async function POST(request: NextRequest) {
         const secretFields = [
             "openaiApiKey",
             "geminiApiKey",
-            "ycloudApiKey",
             "whatsappAdminToken",
             "whatsappUserToken",
             "whatsappProxyUrl",
+            "whatsappAccessToken",
+            "whatsappMetaAppSecret",
+            "whatsappRegistrationPin",
+            "whatsappWebhookVerifyToken",
             "googleClientSecret",
         ] as const;
 

@@ -34,6 +34,7 @@ import {
     type NotificationPrefs,
 } from "@/lib/notificationSounds";
 import { createUser, deleteUser, getUsers, updateUser } from "@/app/actions/users";
+import { MetaWhatsAppPanel } from "@/components/settings/meta-whatsapp-panel";
 import { WhatsAppGatewayPanel } from "@/components/settings/whatsapp-gateway-panel";
 import { GoogleCalendarPanel } from "@/components/settings/google-calendar-panel";
 import { Slider } from "@/components/ui/slider";
@@ -57,7 +58,7 @@ const SECTIONS: Array<{
     { id: "theme", label: "Apariencia", description: "Tema y estilo general del CRM", icon: Palette },
     { id: "users", label: "Usuarios", description: "Accesos, roles y permisos", icon: Users, superadminOnly: true },
     { id: "ai", label: "Asistente IA", description: "Claves y servicios de inteligencia", icon: Bot, superadminOnly: true },
-    { id: "whatsapp", label: "Canal WhatsApp", description: "Credenciales YCloud, QR y sincronizacion del numero", icon: MessageSquare, superadminOnly: true },
+    { id: "whatsapp", label: "Canal WhatsApp", description: "Conexion oficial Meta y canal por QR", icon: MessageSquare, superadminOnly: true },
     { id: "calendar", label: "Google Calendar", description: "Conexion y calendarios de agenda", icon: CalendarDays, superadminOnly: true },
     { id: "chats", label: "Notificaciones", description: "Sonidos y preferencias del inbox", icon: Volume2 },
 ];
@@ -66,14 +67,20 @@ export default function SettingsPage() {
     const [activeSection, setActiveSection] = useState<SectionId>("theme");
     const [openaiKey, setOpenaiKey] = useState("");
     const [geminiKey, setGeminiKey] = useState("");
-    const [ycloudApiKey, setYcloudApiKey] = useState("");
-    const [ycloudPhoneId, setYcloudPhoneId] = useState("");
     const [whatsappBaseUrl, setWhatsappBaseUrl] = useState("");
     const [whatsappAdminToken, setWhatsappAdminToken] = useState("");
     const [whatsappUserToken, setWhatsappUserToken] = useState("");
     const [whatsappInstanceName, setWhatsappInstanceName] = useState("zen-crm");
     const [whatsappProxyEnabled, setWhatsappProxyEnabled] = useState(false);
     const [whatsappProxyUrl, setWhatsappProxyUrl] = useState("");
+    const [whatsappMetaAppId, setWhatsappMetaAppId] = useState("");
+    const [whatsappMetaAppSecret, setWhatsappMetaAppSecret] = useState("");
+    const [whatsappEmbeddedSignupConfigId, setWhatsappEmbeddedSignupConfigId] = useState("");
+    const [whatsappTechProviderSolutionId, setWhatsappTechProviderSolutionId] = useState("");
+    const [whatsappGraphApiVersion, setWhatsappGraphApiVersion] = useState("v23.0");
+    const [whatsappRegistrationPin, setWhatsappRegistrationPin] = useState("");
+    const [whatsappWebhookVerifyToken, setWhatsappWebhookVerifyToken] = useState("");
+    const [whatsappWebhookBaseUrl, setWhatsappWebhookBaseUrl] = useState("");
     const [googleClientId, setGoogleClientId] = useState("");
     const [googleClientSecret, setGoogleClientSecret] = useState("");
     const [isSaving, setIsSaving] = useState(false);
@@ -110,14 +117,20 @@ export default function SettingsPage() {
                 if (!settings) return;
                 setOpenaiKey(settings.openaiApiKey || "");
                 setGeminiKey(settings.geminiApiKey || "");
-                setYcloudApiKey(settings.ycloudApiKey || "");
-                setYcloudPhoneId(settings.ycloudPhoneId || "");
                 setWhatsappBaseUrl(settings.whatsappBaseUrl || "");
                 setWhatsappAdminToken(settings.whatsappAdminToken || "");
                 setWhatsappUserToken(settings.whatsappUserToken || "");
                 setWhatsappInstanceName(settings.whatsappInstanceName || "zen-crm");
                 setWhatsappProxyEnabled(Boolean(settings.whatsappProxyEnabled));
                 setWhatsappProxyUrl(settings.whatsappProxyUrl || "");
+                setWhatsappMetaAppId(settings.whatsappMetaAppId || "");
+                setWhatsappMetaAppSecret(settings.whatsappMetaAppSecret || "");
+                setWhatsappEmbeddedSignupConfigId(settings.whatsappEmbeddedSignupConfigId || "");
+                setWhatsappTechProviderSolutionId(settings.whatsappTechProviderSolutionId || "");
+                setWhatsappGraphApiVersion(settings.whatsappGraphApiVersion || "v23.0");
+                setWhatsappRegistrationPin(settings.whatsappRegistrationPin || "");
+                setWhatsappWebhookVerifyToken(settings.whatsappWebhookVerifyToken || "");
+                setWhatsappWebhookBaseUrl(settings.whatsappWebhookBaseUrl || "");
                 setGoogleClientId(settings.googleClientId || "");
                 setGoogleClientSecret(settings.googleClientSecret || "");
             } catch (error) {
@@ -179,14 +192,20 @@ export default function SettingsPage() {
                 body: JSON.stringify({
                     openaiApiKey: openaiKey,
                     geminiApiKey: geminiKey,
-                    ycloudApiKey,
-                    ycloudPhoneId,
                     whatsappBaseUrl,
                     whatsappAdminToken,
                     whatsappUserToken,
                     whatsappInstanceName,
                     whatsappProxyEnabled,
                     whatsappProxyUrl,
+                    whatsappMetaAppId,
+                    whatsappMetaAppSecret,
+                    whatsappEmbeddedSignupConfigId,
+                    whatsappTechProviderSolutionId,
+                    whatsappGraphApiVersion,
+                    whatsappRegistrationPin,
+                    whatsappWebhookVerifyToken,
+                    whatsappWebhookBaseUrl,
                     googleClientId,
                     googleClientSecret,
                 }),
@@ -373,50 +392,40 @@ export default function SettingsPage() {
 
                 {activeSection === "whatsapp" && isSuperadmin && (
                     <div className="space-y-6">
-                        <div className="max-w-3xl space-y-4 rounded-2xl border bg-muted/15 p-5">
-                            <div>
-                                <h2 className="font-semibold">WhatsApp via YCloud</h2>
-                                <p className="text-sm text-muted-foreground">
-                                    Conecta tu cuenta de YCloud para enviar y recibir mensajes por API oficial.
-                                </p>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="ycloud-api-key">YCloud API key</Label>
-                                <Input
-                                    id="ycloud-api-key"
-                                    type="password"
-                                    value={ycloudApiKey}
-                                    onChange={(event) => setYcloudApiKey(event.target.value)}
-                                    placeholder="Tu API key de YCloud..."
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    Obten tu API key en YCloud Dashboard -&gt; Developer -&gt; API Keys.
-                                </p>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="ycloud-phone-id">YCloud Phone Number ID</Label>
-                                <Input
-                                    id="ycloud-phone-id"
-                                    value={ycloudPhoneId}
-                                    onChange={(event) => setYcloudPhoneId(event.target.value)}
-                                    placeholder="+524771075025"
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    Se usa para envio oficial por API y como source_id del feed YCloud.
-                                </p>
-                            </div>
-
-                            <Button onClick={handleSave} disabled={isSaving}>
-                                {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                Guardar cambios
-                            </Button>
-
-                            <p className="text-xs text-muted-foreground">
-                                Configura el webhook de YCloud apuntando a <code className="rounded bg-muted px-1 py-0.5">/api/webhooks/ycloud</code>.
-                            </p>
-                        </div>
+                        <MetaWhatsAppPanel
+                            whatsappBaseUrl={whatsappBaseUrl}
+                            whatsappAdminToken={whatsappAdminToken}
+                            whatsappUserToken={whatsappUserToken}
+                            whatsappInstanceName={whatsappInstanceName}
+                            whatsappMetaAppId={whatsappMetaAppId}
+                            whatsappMetaAppSecret={whatsappMetaAppSecret}
+                            whatsappEmbeddedSignupConfigId={whatsappEmbeddedSignupConfigId}
+                            whatsappTechProviderSolutionId={whatsappTechProviderSolutionId}
+                            whatsappGraphApiVersion={whatsappGraphApiVersion}
+                            whatsappRegistrationPin={whatsappRegistrationPin}
+                            whatsappWebhookVerifyToken={whatsappWebhookVerifyToken}
+                            whatsappWebhookBaseUrl={whatsappWebhookBaseUrl}
+                            whatsappProxyEnabled={whatsappProxyEnabled}
+                            whatsappProxyUrl={whatsappProxyUrl}
+                            onChange={(field, value) => {
+                                if (field === "whatsappBaseUrl") setWhatsappBaseUrl(value);
+                                if (field === "whatsappAdminToken") setWhatsappAdminToken(value);
+                                if (field === "whatsappUserToken") setWhatsappUserToken(value);
+                                if (field === "whatsappInstanceName") setWhatsappInstanceName(value);
+                                if (field === "whatsappMetaAppId") setWhatsappMetaAppId(value);
+                                if (field === "whatsappMetaAppSecret") setWhatsappMetaAppSecret(value);
+                                if (field === "whatsappEmbeddedSignupConfigId") setWhatsappEmbeddedSignupConfigId(value);
+                                if (field === "whatsappTechProviderSolutionId") setWhatsappTechProviderSolutionId(value);
+                                if (field === "whatsappGraphApiVersion") setWhatsappGraphApiVersion(value);
+                                if (field === "whatsappRegistrationPin") setWhatsappRegistrationPin(value);
+                                if (field === "whatsappWebhookVerifyToken") setWhatsappWebhookVerifyToken(value);
+                                if (field === "whatsappWebhookBaseUrl") setWhatsappWebhookBaseUrl(value);
+                                if (field === "whatsappProxyUrl") setWhatsappProxyUrl(value);
+                            }}
+                            onProxyEnabledChange={setWhatsappProxyEnabled}
+                            onSave={handleSave}
+                            isSaving={isSaving}
+                        />
 
                         <WhatsAppGatewayPanel
                             whatsappBaseUrl={whatsappBaseUrl}

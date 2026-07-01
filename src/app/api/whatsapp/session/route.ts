@@ -12,27 +12,27 @@ import {
     provisionWuzapiInstance,
 } from "@/lib/wuzapi";
 import { clearCrmChatHistory, importWhatsAppHistory } from "@/lib/whatsapp-history-import";
-import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
+import { deleteMetaWhatsAppConnection, getMetaWhatsAppSessionSnapshot } from "@/lib/meta-whatsapp";
 
-async function getYCloudSessionSnapshot() {
-    const settings = await getSystemSettingsOrDefaults();
-    const ycloudApiKey = (settings.ycloudApiKey || process.env.YCLOUD_API_KEY || "").trim();
-    const ycloudPhoneId = (settings.ycloudPhoneId || process.env.YCLOUD_WHATSAPP_PHONE_ID || "").trim();
-
-    return {
-        ycloudConfigured: Boolean(ycloudApiKey && ycloudPhoneId),
-        ycloudPhoneId: ycloudPhoneId || null,
-    };
+async function getMetaSessionSnapshot() {
+    try {
+        return await getMetaWhatsAppSessionSnapshot();
+    } catch (error) {
+        return {
+            metaConfigured: false,
+            embeddedSignupConfigured: false,
+            phoneNumberId: null as string | null,
+            displayPhoneNumber: null as string | null,
+            wabaId: null as string | null,
+            businessId: null as string | null,
+            metaError: error instanceof Error ? error.message : "No se pudo consultar Meta WhatsApp",
+        };
+    }
 }
 
 export async function GET(request: NextRequest) {
-    let ycloud = {
-        ycloudConfigured: false,
-        ycloudPhoneId: null as string | null,
-    };
-
     try {
-        ycloud = await getYCloudSessionSnapshot();
+        const meta = await getMetaSessionSnapshot();
         const includeQr = request.nextUrl.searchParams.get("includeQr") === "1";
         const status = await getWuzapiSessionStatus();
 
@@ -48,20 +48,25 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json({
             configured: true,
-            ...ycloud,
+            ...meta,
             ...status,
             qrCode,
+            qrConfigured: true,
+            qrConnected: Boolean(status.connected),
+            qrLoggedIn: Boolean(status.loggedIn),
+            metaConfigured: Boolean(meta.metaConfigured),
         });
     } catch (error) {
+        const meta = await getMetaSessionSnapshot();
         if (error instanceof WuzapiConfigError) {
             return NextResponse.json(
-                { configured: false, ...ycloud, error: error.message },
+                { configured: false, ...meta, error: error.message },
                 { status: 200 },
             );
         }
 
         return NextResponse.json(
-            { configured: true, ...ycloud, error: error instanceof Error ? error.message : "No se pudo consultar WhatsApp" },
+            { configured: true, ...meta, error: error instanceof Error ? error.message : "No se pudo consultar WhatsApp" },
             { status: 500 },
         );
     }
@@ -129,6 +134,24 @@ export async function POST(request: NextRequest) {
                 success: true,
                 deleted: true,
                 clearedChats: Boolean(clearChats),
+            });
+        }
+
+        if (action === "deleteMeta") {
+            const result = await deleteMetaWhatsAppConnection();
+            if (clearChats) {
+                await clearCrmChatHistory();
+                revalidatePath("/dashboard/inbox");
+                revalidatePath("/dashboard/contacts");
+            }
+
+            revalidatePath("/dashboard/settings");
+            revalidatePath("/dashboard/inbox");
+            return NextResponse.json({
+                success: true,
+                ...result,
+                clearedChats: Boolean(clearChats),
+                ...(await getMetaSessionSnapshot()),
             });
         }
 

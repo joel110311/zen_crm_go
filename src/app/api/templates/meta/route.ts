@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { createYCloudTemplate, deleteYCloudTemplate, listYCloudTemplates } from "@/lib/ycloud";
+import { createMetaTemplate, deleteMetaTemplate, listMetaTemplates } from "@/lib/meta-whatsapp";
 
 function getSessionRole(session: unknown) {
     return (session as { user?: { role?: string } } | null)?.user?.role || null;
@@ -16,7 +16,7 @@ function ensureAuthenticated(session: unknown) {
 function ensureSuperadmin(session: unknown) {
     const role = getSessionRole(session);
     if (role !== "SUPERADMIN") {
-        return NextResponse.json({ error: "Solo superadmin puede solicitar plantillas en YCloud" }, { status: 403 });
+        return NextResponse.json({ error: "Solo superadmin puede solicitar plantillas oficiales" }, { status: 403 });
     }
     return null;
 }
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
         const page = Number.parseInt(searchParams.get("page") || "1", 10);
         const wabaId = searchParams.get("wabaId") || undefined;
 
-        const payload = await listYCloudTemplates({
+        const payload = await listMetaTemplates({
             limit: Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 100) : 100,
             page: Number.isFinite(page) ? Math.max(page, 1) : 1,
             wabaId,
@@ -54,8 +54,8 @@ export async function GET(request: NextRequest) {
             raw: payload,
         });
     } catch (error) {
-        console.error("[YCloud Templates] GET failed:", error);
-        const message = error instanceof Error ? error.message : "No se pudieron cargar las plantillas de YCloud.";
+        console.error("[Meta Templates] GET failed:", error);
+        const message = error instanceof Error ? error.message : "No se pudieron cargar las plantillas oficiales.";
         return NextResponse.json({ error: message }, { status: 500 });
     }
 }
@@ -74,9 +74,9 @@ export async function POST(request: NextRequest) {
         const language = typeof body.language === "string" ? body.language.trim() : "es";
         const wabaId = typeof body.wabaId === "string" ? body.wabaId.trim() : "";
 
-        if (!name || !category || !wabaId || !Array.isArray(body.components) || body.components.length === 0) {
+        if (!name || !category || !Array.isArray(body.components) || body.components.length === 0) {
             return NextResponse.json(
-                { error: "name, category, wabaId y components son obligatorios." },
+                { error: "name, category y components son obligatorios." },
                 { status: 400 },
             );
         }
@@ -90,11 +90,11 @@ export async function POST(request: NextRequest) {
             allowCategoryChange: body.allowCategoryChange === true,
         } satisfies Record<string, unknown>;
 
-        const created = await createYCloudTemplate(payload);
+        const created = await createMetaTemplate(payload as Parameters<typeof createMetaTemplate>[0]);
         return NextResponse.json({ success: true, template: created }, { status: 201 });
     } catch (error) {
-        console.error("[YCloud Templates] POST failed:", error);
-        const message = error instanceof Error ? error.message : "No se pudo solicitar la plantilla en YCloud.";
+        console.error("[Meta Templates] POST failed:", error);
+        const message = error instanceof Error ? error.message : "No se pudo solicitar la plantilla oficial.";
         return NextResponse.json({ error: message }, { status: 500 });
     }
 }
@@ -113,22 +113,16 @@ export async function DELETE(request: NextRequest) {
         const language = (searchParams.get("language") || "").trim();
 
         if (!wabaId || !name) {
-            return NextResponse.json(
-                { error: "wabaId y name son obligatorios." },
-                { status: 400 },
-            );
+            return NextResponse.json({ error: "name es obligatorio." }, { status: 400 });
         }
 
-        const result = await deleteYCloudTemplate({
-            wabaId,
-            name,
-            ...(language ? { language } : {}),
-        });
+        void language;
+        const result = await deleteMetaTemplate({ wabaId: wabaId || undefined, name });
 
         return NextResponse.json({ success: true, result });
     } catch (error) {
-        console.error("[YCloud Templates] DELETE failed:", error);
-        const message = error instanceof Error ? error.message : "No se pudo eliminar la plantilla en YCloud.";
+        console.error("[Meta Templates] DELETE failed:", error);
+        const message = error instanceof Error ? error.message : "No se pudo eliminar la plantilla oficial.";
         return NextResponse.json({ error: message }, { status: 500 });
     }
 }

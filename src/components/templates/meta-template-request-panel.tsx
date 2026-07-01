@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
@@ -59,7 +59,7 @@ import {
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 
-/* ──────────────────── Types ──────────────────── */
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 interface TemplateComponent {
     type: string;
     text?: string;
@@ -78,7 +78,7 @@ interface Template {
     updatedAt?: string;
 }
 
-/* ──────────────────── Helpers ──────────────────── */
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function statusIcon(status: string) {
     switch (status) {
         case "APPROVED":
@@ -105,7 +105,7 @@ function statusLabel(s: string) {
     switch (s) {
         case "APPROVED": return "Aprobada";
         case "PENDING": return "Pendiente";
-        case "IN_REVIEW": return "En revisión";
+        case "IN_REVIEW": return "En revisiÃ³n";
         case "REJECTED": return "Rechazada";
         default: return s;
     }
@@ -114,12 +114,12 @@ function categoryLabel(c: string) {
     switch (c) {
         case "UTILITY": return "Utilidad";
         case "MARKETING": return "Marketing";
-        case "AUTHENTICATION": return "Autenticación";
+        case "AUTHENTICATION": return "AutenticaciÃ³n";
         default: return c;
     }
 }
 function formatDate(d?: string) {
-    if (!d) return "—";
+    if (!d) return "â€”";
     return new Intl.DateTimeFormat("es-MX", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(d));
 }
 
@@ -128,8 +128,8 @@ function extractVariables(text: string): string[] {
     return matches ? [...new Set(matches)] : [];
 }
 
-/* ──────────────────── Main Page ──────────────────── */
-export function YCloudTemplateRequestPanel() {
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Main Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+export function MetaTemplateRequestPanel() {
     const [templates, setTemplates] = useState<Template[]>([]);
     const [search, setSearch] = useState("");
     const [filterCategory, setFilterCategory] = useState("all");
@@ -156,7 +156,7 @@ export function YCloudTemplateRequestPanel() {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch("/api/templates/ycloud?limit=100", { cache: "no-store" });
+            const res = await fetch("/api/templates/meta?limit=100", { cache: "no-store" });
             if (!res.ok) { const d = await res.json(); throw new Error(d.error || `Error ${res.status}`); }
             const data = await res.json();
             setTemplates(data.items || data || []);
@@ -169,7 +169,7 @@ export function YCloudTemplateRequestPanel() {
 
     useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
 
-    /* ──── Filters ──── */
+    /* â”€â”€â”€â”€ Filters â”€â”€â”€â”€ */
     const filtered = useMemo(() => templates.filter((t) => {
         const body = t.components?.find((c) => c.type === "BODY")?.text || "";
         const matchSearch = t.name.toLowerCase().includes(search.toLowerCase()) || body.toLowerCase().includes(search.toLowerCase());
@@ -181,16 +181,16 @@ export function YCloudTemplateRequestPanel() {
     const categories = useMemo(() => [...new Set(templates.map((t) => t.category))], [templates]);
     const statuses = useMemo(() => [...new Set(templates.map((t) => t.status))], [templates]);
 
-    /* ──── Pagination ──── */
+    /* â”€â”€â”€â”€ Pagination â”€â”€â”€â”€ */
     const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
     const paged = filtered.slice((page - 1) * perPage, page * perPage);
 
-    /* ──── Stats ──── */
+    /* â”€â”€â”€â”€ Stats â”€â”€â”€â”€ */
     const approved = templates.filter((t) => t.status === "APPROVED").length;
     const pending = templates.filter((t) => t.status === "PENDING" || t.status === "IN_REVIEW").length;
     const rejected = templates.filter((t) => t.status === "REJECTED").length;
 
-    /* ──── Send ──── */
+    /* â”€â”€â”€â”€ Send â”€â”€â”€â”€ */
     const sendTemplateBody = selectedTemplate?.components?.find((c) => c.type === "BODY")?.text || "";
     const sendTemplateHeader = selectedTemplate?.components?.find((c) => c.type === "HEADER")?.text || "";
     const sendTemplateFooter = selectedTemplate?.components?.find((c) => c.type === "FOOTER")?.text || "";
@@ -227,7 +227,7 @@ export function YCloudTemplateRequestPanel() {
                 });
             }
 
-            const res = await fetch("/api/templates/ycloud/send", {
+            const res = await fetch("/api/templates/meta/send", {
                 method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     templateName: selectedTemplate.name,
@@ -243,16 +243,16 @@ export function YCloudTemplateRequestPanel() {
         finally { setSending(false); }
     };
 
-    /* ──── Delete ──── */
+    /* â”€â”€â”€â”€ Delete â”€â”€â”€â”€ */
     const handleDelete = async (tpl: Template) => {
-        if (!confirm(`¿Eliminar la plantilla "${tpl.name}"? Esta acción no se puede deshacer.`)) return;
+        if (!confirm(`Â¿Eliminar la plantilla "${tpl.name}"? Esta acciÃ³n no se puede deshacer.`)) return;
         try {
-            const res = await fetch(`/api/templates/ycloud?name=${encodeURIComponent(tpl.name)}&wabaId=${encodeURIComponent(tpl.wabaId)}&language=${encodeURIComponent(tpl.language || "")}`, { method: "DELETE" });
+            const res = await fetch(`/api/templates/meta?name=${encodeURIComponent(tpl.name)}&wabaId=${encodeURIComponent(tpl.wabaId)}&language=${encodeURIComponent(tpl.language || "")}`, { method: "DELETE" });
             if (res.ok) fetchTemplates();
         } catch { /* silently fail */ }
     };
 
-    /* ──── Copy ──── */
+    /* â”€â”€â”€â”€ Copy â”€â”€â”€â”€ */
     const handleCopy = (tpl: Template) => {
         const body = tpl.components?.find((c) => c.type === "BODY")?.text || "";
         navigator.clipboard.writeText(body);
@@ -265,7 +265,7 @@ export function YCloudTemplateRequestPanel() {
 
     return (
         <div className="space-y-5">
-            {/* ═══ Header ═══ */}
+            {/* â•â•â• Header â•â•â• */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
@@ -273,7 +273,7 @@ export function YCloudTemplateRequestPanel() {
                         Plantillas de WhatsApp
                     </h1>
                     <p className="text-sm text-muted-foreground mt-1">
-                        Gestiona, crea y envía plantillas aprobadas por Meta a través de YCloud
+                        Gestiona, crea y envÃ­a plantillas aprobadas por Meta con WhatsApp Business.
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -288,7 +288,7 @@ export function YCloudTemplateRequestPanel() {
                 </div>
             </div>
 
-            {/* ═══ Stats ═══ */}
+            {/* â•â•â• Stats â•â•â• */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <StatCard label="Total" value={templates.length} />
                 <StatCard label="Aprobadas" value={approved} color="text-foreground" />
@@ -296,16 +296,16 @@ export function YCloudTemplateRequestPanel() {
                 <StatCard label="Rechazadas" value={rejected} color="text-red-600" />
             </div>
 
-            {/* ═══ Search & Filters ═══ */}
+            {/* â•â•â• Search & Filters â•â•â• */}
             <div className="flex flex-col sm:flex-row gap-3">
                 <div className="relative flex-1 max-w-sm">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input placeholder="Buscar por nombre o contenido..." className="pl-10" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
                 </div>
                 <Select value={filterCategory} onValueChange={(v) => { setFilterCategory(v); setPage(1); }}>
-                    <SelectTrigger className="w-[175px]"><Filter className="h-4 w-4 mr-1.5" /><SelectValue placeholder="Categoría" /></SelectTrigger>
+                    <SelectTrigger className="w-[175px]"><Filter className="h-4 w-4 mr-1.5" /><SelectValue placeholder="CategorÃ­a" /></SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="all">Todas las categorías</SelectItem>
+                        <SelectItem value="all">Todas las categorÃ­as</SelectItem>
                         {categories.map((c) => <SelectItem key={c} value={c}>{categoryLabel(c)}</SelectItem>)}
                     </SelectContent>
                 </Select>
@@ -318,13 +318,13 @@ export function YCloudTemplateRequestPanel() {
                 </Select>
             </div>
 
-            {/* ═══ Error ═══ */}
+            {/* â•â•â• Error â•â•â• */}
             {error && <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-4 text-destructive text-sm">{error}</div>}
 
-            {/* ═══ Loading ═══ */}
+            {/* â•â•â• Loading â•â•â• */}
             {loading && <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
 
-            {/* ═══ Table ═══ */}
+            {/* â•â•â• Table â•â•â• */}
             {!loading && !error && (
                 <div className="bg-card border rounded-xl shadow-sm overflow-hidden">
                     <div className="overflow-x-auto">
@@ -332,11 +332,11 @@ export function YCloudTemplateRequestPanel() {
                             <thead>
                                 <tr className="border-b bg-muted/30">
                                     <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Nombre de la Plantilla</th>
-                                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Categoría</th>
+                                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">CategorÃ­a</th>
                                     <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Idioma</th>
                                     <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Estado</th>
-                                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Última actualización</th>
-                                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Acción</th>
+                                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Ãšltima actualizaciÃ³n</th>
+                                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">AcciÃ³n</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -408,9 +408,9 @@ export function YCloudTemplateRequestPanel() {
                                 <Select value={String(perPage)} onValueChange={(v) => { setPerPage(Number(v)); setPage(1); }}>
                                     <SelectTrigger className="h-7 w-[90px] text-xs"><SelectValue /></SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="10">10 / pág</SelectItem>
-                                        <SelectItem value="20">20 / pág</SelectItem>
-                                        <SelectItem value="50">50 / pág</SelectItem>
+                                        <SelectItem value="10">10 / pÃ¡g</SelectItem>
+                                        <SelectItem value="20">20 / pÃ¡g</SelectItem>
+                                        <SelectItem value="50">50 / pÃ¡g</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -419,12 +419,12 @@ export function YCloudTemplateRequestPanel() {
                 </div>
             )}
 
-            {/* ═══ Send Modal — Full Variable Config ═══ */}
+            {/* â•â•â• Send Modal â€” Full Variable Config â•â•â• */}
             <Dialog open={sendOpen} onOpenChange={(v) => { setSendOpen(v); if (!v) { setVariableValues({}); setSendResult(null); setPhoneInput(""); } }}>
                 <DialogContent className="sm:max-w-3xl max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
                     <DialogHeader className="px-6 pt-5 pb-4 border-b shrink-0">
                         <DialogTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5 text-primary" /> Enviar plantilla</DialogTitle>
-                        <DialogDescription>{selectedTemplate?.name} · {selectedTemplate?.language}</DialogDescription>
+                        <DialogDescription>{selectedTemplate?.name} Â· {selectedTemplate?.language}</DialogDescription>
                     </DialogHeader>
                     <div className="flex-1 overflow-auto">
                         <div className="flex flex-col sm:flex-row h-full">
@@ -447,7 +447,7 @@ export function YCloudTemplateRequestPanel() {
                                     {sendTemplateFooter && <p className="text-xs text-muted-foreground italic pt-1">{sendTemplateFooter}</p>}
                                     {sendTemplateButtons.length > 0 && (
                                         <div className="space-y-1.5 pt-2 border-t border-border/50">
-                                            {sendTemplateButtons.map((btn, i) => <div key={i} className="text-center text-sm text-primary font-medium py-1.5">↩ {btn.text}</div>)}
+                                            {sendTemplateButtons.map((btn, i) => <div key={i} className="text-center text-sm text-primary font-medium py-1.5">â†© {btn.text}</div>)}
                                         </div>
                                     )}
                                 </div>
@@ -468,13 +468,13 @@ export function YCloudTemplateRequestPanel() {
                                     </>
                                 )}
                                 <div>
-                                    <Label>Números de destino</Label>
+                                    <Label>NÃºmeros de destino</Label>
                                     <Textarea placeholder="+524771234567\n+524779876543" value={phoneInput} onChange={(e) => setPhoneInput(e.target.value)} rows={4} className="resize-none mt-1.5" />
-                                    <p className="text-xs text-muted-foreground mt-1">Formato internacional (uno por línea o separados por coma)</p>
+                                    <p className="text-xs text-muted-foreground mt-1">Formato internacional (uno por lÃ­nea o separados por coma)</p>
                                 </div>
                                 {sendResult && (
                                     <div className={`rounded-xl p-3 text-sm ${sendResult.failed > 0 ? "bg-secondary border border-border" : "bg-secondary border border-border"}`}>
-                                        ✅ Enviados: {sendResult.sent} de {sendResult.total}{sendResult.failed > 0 && ` · ❌ Fallidos: ${sendResult.failed}`}
+                                        âœ… Enviados: {sendResult.sent} de {sendResult.total}{sendResult.failed > 0 && ` Â· âŒ Fallidos: ${sendResult.failed}`}
                                     </div>
                                 )}
                             </div>
@@ -484,7 +484,7 @@ export function YCloudTemplateRequestPanel() {
                     <div className="border-t px-6 py-4 flex justify-end gap-3 shrink-0">
                         <Button variant="outline" onClick={() => setSendOpen(false)}>Cancelar</Button>
                         <Button onClick={handleSend} disabled={sending || !phoneInput.trim() || (sendAllVars.length > 0 && sendAllVars.some((v) => !variableValues[v]?.trim()))}>
-                            {sending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Enviando...</> : <><Send className="h-4 w-4 mr-2" />Confirmar envío</>}
+                            {sending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Enviando...</> : <><Send className="h-4 w-4 mr-2" />Confirmar envÃ­o</>}
                         </Button>
                     </div>
                 </DialogContent>
@@ -493,7 +493,7 @@ export function YCloudTemplateRequestPanel() {
     );
 }
 
-/* ──────────────────── Stat Card ──────────────────── */
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Stat Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function StatCard({ label, value, color }: { label: string; value: number; color?: string }) {
     return (
         <div className="bg-card border rounded-xl p-4 shadow-sm">
@@ -503,9 +503,9 @@ function StatCard({ label, value, color }: { label: string; value: number; color
     );
 }
 
-/* ══════════════════════════════════════════════════════════════
-   CREATE TEMPLATE — Full-page multi-step flow
-   ══════════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   CREATE TEMPLATE â€” Full-page multi-step flow
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: string }) {
     // Step: "method" | "editor"
     const [step, setStep] = useState<"method" | "editor">("method");
@@ -565,7 +565,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
     // Submit
     const handleCreate = async () => {
         if (!name.trim() || !bodyText.trim() || nameError) return;
-        if (!wabaId.trim()) { setError("No se detecto el WABA ID. Actualiza la lista de plantillas primero o configura YCloud."); return; }
+        if (!wabaId.trim()) { setError("No se detecto el WABA ID. Actualiza la lista de plantillas primero o configura WhatsApp Business."); return; }
         setSaving(true); setError(null);
         try {
             const components: Array<Record<string, unknown>> = [];
@@ -591,7 +591,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                 }
             }
 
-            const res = await fetch("/api/templates/ycloud", {
+            const res = await fetch("/api/templates/meta", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ wabaId: wabaId.trim(), name: name.trim(), language, category, components }),
@@ -606,25 +606,25 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
         }
     };
 
-    /* ═══ Predefined template library ═══ */
+    /* â•â•â• Predefined template library â•â•â• */
     const PREDEFINED_TEMPLATES = [
         {
             name: "confirmacion_pedido", category: "UTILITY", industry: ["E-commerce"],
-            useCase: ["Actualización de Envío"],
+            useCase: ["ActualizaciÃ³n de EnvÃ­o"],
             components: [
-                { type: "HEADER", format: "TEXT", text: "Confirmación de pedido" },
-                { type: "BODY", text: "Hola {{1}},\n\nTu pedido #{{2}} ha sido confirmado exitosamente.\nTe notificaremos cuando esté en camino.\n\n¡Gracias por tu compra!" },
+                { type: "HEADER", format: "TEXT", text: "ConfirmaciÃ³n de pedido" },
+                { type: "BODY", text: "Hola {{1}},\n\nTu pedido #{{2}} ha sido confirmado exitosamente.\nTe notificaremos cuando estÃ© en camino.\n\nÂ¡Gracias por tu compra!" },
                 { type: "FOOTER", text: "Zen CRM" },
                 { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Ver estado" }] },
             ],
         },
         {
             name: "recordatorio_cita", category: "UTILITY", industry: ["Salud"],
-            useCase: ["Actualización de Cita"],
+            useCase: ["ActualizaciÃ³n de Cita"],
             components: [
                 { type: "HEADER", format: "TEXT", text: "Recordatorio de cita" },
-                { type: "BODY", text: "Hola {{1}},\n\nTe recordamos que tu cita está programada para el {{2}} a las {{3}}.\n\nPor favor confirma tu asistencia." },
-                { type: "FOOTER", text: "Si necesitas reagendar, contáctanos." },
+                { type: "BODY", text: "Hola {{1}},\n\nTe recordamos que tu cita estÃ¡ programada para el {{2}} a las {{3}}.\n\nPor favor confirma tu asistencia." },
+                { type: "FOOTER", text: "Si necesitas reagendar, contÃ¡ctanos." },
                 { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Confirmar" }, { type: "QUICK_REPLY", text: "Reagendar" }] },
             ],
         },
@@ -632,96 +632,96 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
             name: "bienvenida_cliente", category: "MARKETING", industry: [],
             useCase: [],
             components: [
-                { type: "HEADER", format: "TEXT", text: "¡Bienvenido/a!" },
-                { type: "BODY", text: "¡Hola {{1}}!\n\nTe damos la bienvenida. Estamos encantados de tenerte con nosotros.\n\nExplora nuestros productos y servicios." },
+                { type: "HEADER", format: "TEXT", text: "Â¡Bienvenido/a!" },
+                { type: "BODY", text: "Â¡Hola {{1}}!\n\nTe damos la bienvenida. Estamos encantados de tenerte con nosotros.\n\nExplora nuestros productos y servicios." },
                 { type: "FOOTER", text: "Zen CRM" },
-                { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Ver catálogo" }] },
+                { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Ver catÃ¡logo" }] },
             ],
         },
         {
             name: "actualizacion_envio", category: "UTILITY", industry: ["E-commerce"],
-            useCase: ["Actualización de Envío"],
+            useCase: ["ActualizaciÃ³n de EnvÃ­o"],
             components: [
-                { type: "BODY", text: "Hola {{1}},\n\nTu paquete con guía {{2}} está en camino.\nLlegará aproximadamente el {{3}}.\n\nPuedes rastrear tu envío en cualquier momento." },
-                { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Rastrear envío" }] },
+                { type: "BODY", text: "Hola {{1}},\n\nTu paquete con guÃ­a {{2}} estÃ¡ en camino.\nLlegarÃ¡ aproximadamente el {{3}}.\n\nPuedes rastrear tu envÃ­o en cualquier momento." },
+                { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Rastrear envÃ­o" }] },
             ],
         },
         {
             name: "promocion_descuento", category: "MARKETING", industry: ["E-commerce", "Restaurantes"],
             useCase: [],
             components: [
-                { type: "HEADER", format: "TEXT", text: "🎉 Oferta especial" },
-                { type: "BODY", text: "{{1}},\n\nTenemos un descuento especial de {{2}}% solo para ti.\nVálido hasta el {{3}}.\n\n¡No te lo pierdas!" },
+                { type: "HEADER", format: "TEXT", text: "ðŸŽ‰ Oferta especial" },
+                { type: "BODY", text: "{{1}},\n\nTenemos un descuento especial de {{2}}% solo para ti.\nVÃ¡lido hasta el {{3}}.\n\nÂ¡No te lo pierdas!" },
                 { type: "FOOTER", text: "Sujeto a disponibilidad." },
                 { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Ver ofertas" }] },
             ],
         },
         {
             name: "verificacion_cuenta", category: "AUTHENTICATION", industry: [],
-            useCase: ["Actualización de Cuenta"],
+            useCase: ["ActualizaciÃ³n de Cuenta"],
             components: [
-                { type: "BODY", text: "Tu código de verificación es: {{1}}\n\nNo compartas este código con nadie.\nExpira en 10 minutos." },
+                { type: "BODY", text: "Tu cÃ³digo de verificaciÃ³n es: {{1}}\n\nNo compartas este cÃ³digo con nadie.\nExpira en 10 minutos." },
             ],
         },
         {
             name: "encuesta_satisfaccion", category: "MARKETING", industry: [],
             useCase: [],
             components: [
-                { type: "HEADER", format: "TEXT", text: "Tu opinión nos importa" },
-                { type: "BODY", text: "Hola {{1}},\n\nQueremos conocer tu opinión sobre nuestro servicio.\n\n¿Podrías tomarte un momento para responder nuestra encuesta?" },
+                { type: "HEADER", format: "TEXT", text: "Tu opiniÃ³n nos importa" },
+                { type: "BODY", text: "Hola {{1}},\n\nQueremos conocer tu opiniÃ³n sobre nuestro servicio.\n\nÂ¿PodrÃ­as tomarte un momento para responder nuestra encuesta?" },
                 { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Responder encuesta" }, { type: "QUICK_REPLY", text: "Ahora no" }] },
             ],
         },
         {
             name: "confirmacion_pago", category: "UTILITY", industry: ["Servicios Financieros"],
-            useCase: ["Actualización de Pago"],
+            useCase: ["ActualizaciÃ³n de Pago"],
             components: [
                 { type: "HEADER", format: "TEXT", text: "Pago recibido" },
-                { type: "BODY", text: "Hemos recibido tu pago de ${{1}} MXN el día {{2}}.\nTu referencia es {{3}}.\n\nGracias por tu puntualidad." },
+                { type: "BODY", text: "Hemos recibido tu pago de ${{1}} MXN el dÃ­a {{2}}.\nTu referencia es {{3}}.\n\nGracias por tu puntualidad." },
                 { type: "FOOTER", text: "Zen CRM - Pagos" },
             ],
         },
         {
             name: "actualizacion_cuenta", category: "UTILITY", industry: [],
-            useCase: ["Actualización de Cuenta"],
+            useCase: ["ActualizaciÃ³n de Cuenta"],
             components: [
-                { type: "BODY", text: "Hola {{1}},\n\nTu cuenta ha sido actualizada correctamente.\nLos cambios ya están reflejados en tu perfil." },
+                { type: "BODY", text: "Hola {{1}},\n\nTu cuenta ha sido actualizada correctamente.\nLos cambios ya estÃ¡n reflejados en tu perfil." },
             ],
         },
         {
-            name: "invitacion_evento", category: "MARKETING", industry: ["Educación"],
+            name: "invitacion_evento", category: "MARKETING", industry: ["EducaciÃ³n"],
             useCase: [],
             components: [
-                { type: "HEADER", format: "TEXT", text: "📅 Invitación especial" },
-                { type: "BODY", text: "{{1}},\n\nTe invitamos a nuestro evento \"{{2}}\" el día {{3}}.\n\n¡Será una experiencia increíble!" },
-                { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Confirmar asistencia" }, { type: "QUICK_REPLY", text: "Más información" }] },
+                { type: "HEADER", format: "TEXT", text: "ðŸ“… InvitaciÃ³n especial" },
+                { type: "BODY", text: "{{1}},\n\nTe invitamos a nuestro evento \"{{2}}\" el dÃ­a {{3}}.\n\nÂ¡SerÃ¡ una experiencia increÃ­ble!" },
+                { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Confirmar asistencia" }, { type: "QUICK_REPLY", text: "MÃ¡s informaciÃ³n" }] },
             ],
         },
         {
             name: "soporte_ticket", category: "UTILITY", industry: ["Telecomunicaciones"],
-            useCase: ["Resolución de Problemas"],
+            useCase: ["ResoluciÃ³n de Problemas"],
             components: [
                 { type: "HEADER", format: "TEXT", text: "Ticket de soporte" },
-                { type: "BODY", text: "Tu ticket #{{1}} ha sido creado exitosamente.\n\nNuestro equipo lo revisará en las próximas {{2}} horas.\nTe mantendremos informado." },
-                { type: "FOOTER", text: "Soporte técnico" },
+                { type: "BODY", text: "Tu ticket #{{1}} ha sido creado exitosamente.\n\nNuestro equipo lo revisarÃ¡ en las prÃ³ximas {{2}} horas.\nTe mantendremos informado." },
+                { type: "FOOTER", text: "Soporte tÃ©cnico" },
             ],
         },
         {
             name: "cobro_recordatorio", category: "UTILITY", industry: ["Servicios Financieros"],
-            useCase: ["Actualización de Pago"],
+            useCase: ["ActualizaciÃ³n de Pago"],
             components: [
-                { type: "BODY", text: "Hola {{1}},\n\nTe recordamos que tienes un saldo pendiente de ${{2}} MXN con fecha límite {{3}}.\n\nRealiza tu pago para evitar cargos adicionales." },
-                { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Pagar ahora" }, { type: "QUICK_REPLY", text: "Ya pagué" }] },
+                { type: "BODY", text: "Hola {{1}},\n\nTe recordamos que tienes un saldo pendiente de ${{2}} MXN con fecha lÃ­mite {{3}}.\n\nRealiza tu pago para evitar cargos adicionales." },
+                { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Pagar ahora" }, { type: "QUICK_REPLY", text: "Ya paguÃ©" }] },
             ],
         },
     ];
 
-    const INDUSTRIES = ["E-commerce", "Servicios Financieros", "Telecomunicaciones", "Salud", "Educación", "Restaurantes"];
-    const USE_CASES = ["Actualización de Cuenta", "Actualización de Pago", "Actualización de Envío", "Resolución de Problemas", "Actualización de Cita", "Confirmación de Compra"];
+    const INDUSTRIES = ["E-commerce", "Servicios Financieros", "Telecomunicaciones", "Salud", "EducaciÃ³n", "Restaurantes"];
+    const USE_CASES = ["ActualizaciÃ³n de Cuenta", "ActualizaciÃ³n de Pago", "ActualizaciÃ³n de EnvÃ­o", "ResoluciÃ³n de Problemas", "ActualizaciÃ³n de Cita", "ConfirmaciÃ³n de Compra"];
     const CATEGORIES_LIST = [
         { value: "all", label: "Todas las plantillas" },
         { value: "UTILITY", label: "Utilidad" },
-        { value: "AUTHENTICATION", label: "Autenticación" },
+        { value: "AUTHENTICATION", label: "AutenticaciÃ³n" },
         { value: "MARKETING", label: "Marketing" },
     ];
 
@@ -758,7 +758,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
         setStep("editor");
     };
 
-    /* ═══ Step 1: Template Library ═══ */
+    /* â•â•â• Step 1: Template Library â•â•â• */
     if (step === "method") {
         const sel = selectedPredefined !== null ? PREDEFINED_TEMPLATES.find(t => t.name === selectedPredefined) || null : null;
         const selHeader = sel?.components.find(c => c.type === "HEADER")?.text || "";
@@ -774,7 +774,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                 <Separator />
 
                 <div className="flex gap-6 min-h-[calc(100vh-220px)]">
-                    {/* ── LEFT: Filters ── */}
+                    {/* â”€â”€ LEFT: Filters â”€â”€ */}
                     <div className="w-[260px] shrink-0 space-y-5 pr-4 border-r overflow-y-auto">
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -787,7 +787,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                         </div>
 
                         <div>
-                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Categoría</p>
+                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">CategorÃ­a</p>
                             <div className="space-y-1">
                                 {CATEGORIES_LIST.map((cat) => (
                                     <button
@@ -846,7 +846,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                         </div>
                     </div>
 
-                    {/* ── CENTER: Template Grid ── */}
+                    {/* â”€â”€ CENTER: Template Grid â”€â”€ */}
                     <div className="flex-1 min-w-0 overflow-y-auto">
                         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                             {filteredPredefined.map((tpl) => {
@@ -877,7 +877,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                                                 {btns.length > 0 && (
                                                     <div className="border-t border-gray-200 dark:border-gray-700 pt-1 space-y-0.5">
                                                         {btns.filter(b => b.text.trim()).slice(0, 2).map((btn, bi) => (
-                                                            <p key={bi} className="text-center text-[10px] text-foreground dark:text-foreground font-medium">↩ {btn.text}</p>
+                                                            <p key={bi} className="text-center text-[10px] text-foreground dark:text-foreground font-medium">â†© {btn.text}</p>
                                                         ))}
                                                     </div>
                                                 )}
@@ -899,7 +899,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                         </div>
                     </div>
 
-                    {/* ── RIGHT: WhatsApp Preview ── */}
+                    {/* â”€â”€ RIGHT: WhatsApp Preview â”€â”€ */}
                     <div className="w-[340px] shrink-0 pl-4 border-l">
                         {sel ? (
                             <div className="sticky top-0 space-y-4">
@@ -908,7 +908,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                                         <p className="text-sm font-bold text-foreground">{sel.name}</p>
                                         <Badge variant="outline" className="text-[10px] mt-1">Ejemplo</Badge>
                                     </div>
-                                    <Badge className="bg-muted text-muted-foreground text-[10px]">{sel.category === "UTILITY" ? "Utilidad" : sel.category === "MARKETING" ? "Marketing" : "Autenticación"}</Badge>
+                                    <Badge className="bg-muted text-muted-foreground text-[10px]">{sel.category === "UTILITY" ? "Utilidad" : sel.category === "MARKETING" ? "Marketing" : "AutenticaciÃ³n"}</Badge>
                                 </div>
                                 <PhonePreview
                                     header={selHeader}
@@ -937,7 +937,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
         );
     }
 
-    /* ═══ Step 2: Full Editor ═══ */
+    /* â•â•â• Step 2: Full Editor â•â•â• */
     return (
         <div className="space-y-5">
             {/* Top bar */}
@@ -948,7 +948,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
             <Separator />
 
             <div className="flex flex-col lg:flex-row gap-6">
-                {/* ──── LEFT: Form ──── */}
+                {/* â”€â”€â”€â”€ LEFT: Form â”€â”€â”€â”€ */}
                 <div className="flex-1 space-y-6 min-w-0">
                     {/* Name + Category */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -958,7 +958,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                                 <span className="relative group">
                                     <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
                                     <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 bg-popover border text-popover-foreground text-xs rounded-lg px-3 py-2 w-64 hidden group-hover:block shadow-lg z-50">
-                                        El nombre de la plantilla debe ser único, y es la clave para enviar mensajes de plantilla de WhatsApp. Una vez que se ha enviado, no se puede cambiar. El nombre solo admite minúsculas de la a-z, 0-9 y guion bajo (_).
+                                        El nombre de la plantilla debe ser Ãºnico, y es la clave para enviar mensajes de plantilla de WhatsApp. Una vez que se ha enviado, no se puede cambiar. El nombre solo admite minÃºsculas de la a-z, 0-9 y guion bajo (_).
                                     </span>
                                 </span>
                             </div>
@@ -972,11 +972,11 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                                 />
                                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{name.length}/512</span>
                             </div>
-                            {nameError && <p className="text-xs text-destructive">Solo minúsculas (a-z), números (0-9) y guion bajo (_)</p>}
+                            {nameError && <p className="text-xs text-destructive">Solo minÃºsculas (a-z), nÃºmeros (0-9) y guion bajo (_)</p>}
                         </div>
                         <div className="space-y-1.5">
                             <div className="flex items-center gap-1.5">
-                                <Label>Categoría</Label>
+                                <Label>CategorÃ­a</Label>
                                 <Info className="h-3.5 w-3.5 text-muted-foreground" />
                             </div>
                             <Select value={category} onValueChange={setCategory}>
@@ -984,7 +984,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                                 <SelectContent>
                                     <SelectItem value="UTILITY">Utilidad (Personalizado)</SelectItem>
                                     <SelectItem value="MARKETING">Marketing</SelectItem>
-                                    <SelectItem value="AUTHENTICATION">Autenticación</SelectItem>
+                                    <SelectItem value="AUTHENTICATION">AutenticaciÃ³n</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -992,7 +992,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
 
                     {/* Language */}
                     <div className="space-y-1.5">
-                        <Label>Añadir idioma</Label>
+                        <Label>AÃ±adir idioma</Label>
                         <Select value={language} onValueChange={setLanguage}>
                             <SelectTrigger className="w-[200px]">
                                 <Plus className="h-3.5 w-3.5 mr-1" />
@@ -1025,7 +1025,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                         </Select>
                         {headerType === "text" && (
                             <div className="flex items-center gap-2">
-                                <Input placeholder="Ej: Clínica ZenMedix" value={headerText} onChange={(e) => setHeaderText(e.target.value)} className="flex-1" />
+                                <Input placeholder="Ej: ClÃ­nica ZenMedix" value={headerText} onChange={(e) => setHeaderText(e.target.value)} className="flex-1" />
                                 <Button variant="outline" size="sm" onClick={() => setHeaderText(headerText + " {{nombre}}")}>
                                     <Variable className="h-3.5 w-3.5 mr-1" /> Variables
                                 </Button>
@@ -1050,7 +1050,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                             <Button variant="ghost" size="icon" className="h-7 w-7" title="Emoji">
                                 <Smile className="h-3.5 w-3.5" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Código">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" title="CÃ³digo">
                                 <Code className="h-3.5 w-3.5" />
                             </Button>
                             <Separator orientation="vertical" className="h-5 mx-1" />
@@ -1060,7 +1060,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                         </div>
                         <Textarea
                             ref={bodyRef}
-                            placeholder="¡Hola {{nombre}}! 👋&#10;&#10;Recordatorio: Tu cita es el día de hoy en el siguiente horario:&#10;&#10;📅 {{fecha_y_hora}}&#10;📍 Villa de Coss 118, Villas de Santa Julia, Leon, Guanajuato.&#10;&#10;¿Confirmas tu asistencia? ✨"
+                            placeholder="Â¡Hola {{nombre}}! ðŸ‘‹&#10;&#10;Recordatorio: Tu cita es el dÃ­a de hoy en el siguiente horario:&#10;&#10;ðŸ“… {{fecha_y_hora}}&#10;ðŸ“ Villa de Coss 118, Villas de Santa Julia, Leon, Guanajuato.&#10;&#10;Â¿Confirmas tu asistencia? âœ¨"
                             value={bodyText}
                             onChange={(e) => setBodyText(e.target.value)}
                             rows={8}
@@ -1100,7 +1100,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                     {/* Footer */}
                     <div className="space-y-2">
                         <div className="flex items-center gap-1.5">
-                            <Label>Pie de página</Label>
+                            <Label>Pie de pÃ¡gina</Label>
                             <Info className="h-3.5 w-3.5 text-muted-foreground" />
                         </div>
                         <div className="relative">
@@ -1118,7 +1118,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                         {buttons.map((btn, i) => (
                             <div key={i} className="flex items-center gap-2">
                                 <div className="bg-muted/30 border rounded-lg px-3 py-2 text-sm flex-1">
-                                    <span className="text-muted-foreground text-xs block mb-1">Respuesta rápida</span>
+                                    <span className="text-muted-foreground text-xs block mb-1">Respuesta rÃ¡pida</span>
                                     <Input
                                         value={btn.text}
                                         onChange={(e) => {
@@ -1126,7 +1126,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                                             newBtns[i] = { ...btn, text: e.target.value };
                                             setButtons(newBtns);
                                         }}
-                                        placeholder="Texto del botón"
+                                        placeholder="Texto del botÃ³n"
                                         className="h-8 text-sm"
                                     />
                                 </div>
@@ -1138,25 +1138,25 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                         {buttons.length < 10 && (
                             <Button variant="outline" size="sm" onClick={() => setButtons([...buttons, { type: "QUICK_REPLY", text: "" }])}>
                                 <Plus className="h-3.5 w-3.5 mr-1" />
-                                Añadir Botón ({buttons.length}/10)
+                                AÃ±adir BotÃ³n ({buttons.length}/10)
                             </Button>
                         )}
                     </div>
 
                     {/* Error / Success */}
                     {error && <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-3 text-destructive text-sm">{error}</div>}
-                    {success && <div className="bg-secondary border border-border rounded-xl p-3 text-foreground text-sm">✅ Plantilla creada — enviada a revisión de Meta.</div>}
+                    {success && <div className="bg-secondary border border-border rounded-xl p-3 text-foreground text-sm">âœ… Plantilla creada â€” enviada a revisiÃ³n de Meta.</div>}
 
                     {/* Submit */}
                     <div className="flex gap-3 pt-2">
                         <Button variant="outline" onClick={() => setStep("method")}>Cancelar</Button>
                         <Button onClick={handleCreate} disabled={saving || !name.trim() || !bodyText.trim() || !!nameError}>
-                            {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Enviando...</> : "Enviar a revisión de Meta"}
+                            {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Enviando...</> : "Enviar a revisiÃ³n de Meta"}
                         </Button>
                     </div>
                 </div>
 
-                {/* ──── RIGHT: Phone Preview ──── */}
+                {/* â”€â”€â”€â”€ RIGHT: Phone Preview â”€â”€â”€â”€ */}
                 <div className="lg:w-[320px] shrink-0 hidden lg:block">
                     <div className="sticky top-4">
                         <PhonePreview
@@ -1173,9 +1173,9 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
     );
 }
 
-/* ══════════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    WhatsApp Phone Preview
-   ══════════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 function PhonePreview({
     header,
     body,
@@ -1279,7 +1279,7 @@ function PhonePreview({
                             <div className="border-t border-gray-200 dark:border-gray-700 pt-1.5 space-y-1">
                                 {buttons.filter(b => b.text.trim()).map((btn, i) => (
                                     <p key={i} className="text-center text-[11px] text-foreground dark:text-foreground font-medium py-0.5">
-                                        ↩ {btn.text}
+                                        â†© {btn.text}
                                     </p>
                                 ))}
                             </div>
@@ -1299,3 +1299,4 @@ function PhonePreview({
         </div>
     );
 }
+

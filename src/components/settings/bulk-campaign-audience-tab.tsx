@@ -212,28 +212,28 @@ export function BulkCampaignAudienceTab({
                             </div>
                         </div>
 
-                        {form.sourceType === "ycloud" ? (
+                        {form.sourceType === "meta" ? (
                             <div className="mt-4 rounded-xl border border-border bg-secondary p-4 text-foreground">
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                     <div>
-                                        <p className="text-sm font-semibold">Seguimiento YCloud por ventana abierta</p>
+                                        <p className="text-sm font-semibold">Seguimiento Meta por ventana abierta</p>
                                         <p className="mt-1 text-xs leading-5 opacity-80">
                                             Filtra contactos que escribieron al número API en un rango específico y que todavía tienen ventana de 24h abierta.
                                         </p>
                                     </div>
                                     <Badge variant="outline" className="w-fit bg-background/70">
-                                        {audiencePreview?.ycloudWindow?.eligibleContacts ?? 0} elegibles
+                                        {audiencePreview?.metaWindow?.eligibleContacts ?? 0} elegibles
                                     </Badge>
                                 </div>
 
                                 <div className="mt-4 grid gap-3 md:grid-cols-3">
                                     <label className="flex items-center gap-3 rounded-xl border bg-background/75 px-3 py-2 text-sm">
                                         <Checkbox
-                                            checked={form.audienceOnlyOpenYCloudWindow}
+                                            checked={form.audienceOnlyOpenMetaWindow}
                                             onCheckedChange={(checked) =>
                                                 onFormChange((current) => ({
                                                     ...current,
-                                                    audienceOnlyOpenYCloudWindow: checked === true,
+                                                    audienceOnlyOpenMetaWindow: checked === true,
                                                 }))
                                             }
                                         />
@@ -348,9 +348,9 @@ export function BulkCampaignAudienceTab({
                         <p className="mt-1 text-sm text-muted-foreground">
                             Un número por línea. Puedes usar <span className="font-medium text-foreground">Nombre | teléfono</span> o solo teléfono.
                         </p>
-                        {form.sourceType === "ycloud" ? (
+                        {form.sourceType === "meta" ? (
                             <div className="mt-3 rounded-xl border border-border bg-secondary/80 px-3 py-2 text-xs leading-5 text-foreground">
-                                En YCloud con mensaje libre solo se consideran contactos que ya tienen conversación API con ventana abierta. Los números manuales se omiten para evitar envíos fuera de regla; para ellos usa Plantillas YCloud.
+                                En Meta con mensaje libre solo se consideran contactos que ya tienen conversación API con ventana abierta. Los números manuales se omiten para evitar envíos fuera de regla; para ellos usa Plantillas Meta.
                             </div>
                         ) : null}
                         <Textarea

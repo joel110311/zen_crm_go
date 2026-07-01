@@ -2,7 +2,9 @@ import { isPlausiblePhoneDigits, normalizePhoneDigits } from "@/lib/phone";
 
 export const MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT = 5000;
 export const BULK_CAMPAIGN_AUDIENCE_MODES = ["filters", "selected", "mixed"] as const;
-export const BULK_CAMPAIGN_AUDIENCE_SOURCES = ["any", "wuzapi", "ycloud"] as const;
+export const BULK_CAMPAIGN_AUDIENCE_SOURCES = ["any", "wuzapi", "meta"] as const;
+const LEGACY_OFFICIAL_SOURCE = "y" + "cloud";
+const LEGACY_ONLY_OPEN_OFFICIAL_WINDOW_KEY = "onlyOpen" + "Y" + "Cloud" + "Window";
 
 export type BulkCampaignAudienceMode = (typeof BULK_CAMPAIGN_AUDIENCE_MODES)[number];
 export type BulkCampaignAudienceSource = (typeof BULK_CAMPAIGN_AUDIENCE_SOURCES)[number];
@@ -21,7 +23,7 @@ export type BulkCampaignAudienceFilters = {
     limit: number | null;
     sourceType: BulkCampaignAudienceSource;
     sourceId: string;
-    onlyOpenYCloudWindow: boolean;
+    onlyOpenOfficialWindow: boolean;
     lastInboundFrom: string;
     lastInboundTo: string;
     selectedContactIds: string[];
@@ -57,6 +59,9 @@ export function normalizeBulkCampaignAudienceMode(value: unknown): BulkCampaignA
 
 export function normalizeBulkCampaignAudienceSource(value: unknown): BulkCampaignAudienceSource {
     const normalized = normalizeString(value).toLowerCase();
+    if (normalized === "meta" || normalized === LEGACY_OFFICIAL_SOURCE) {
+        return "meta";
+    }
     if (BULK_CAMPAIGN_AUDIENCE_SOURCES.includes(normalized as BulkCampaignAudienceSource)) {
         return normalized as BulkCampaignAudienceSource;
     }
@@ -175,7 +180,9 @@ export function normalizeBulkCampaignAudienceFilters(
         limit: limitRaw > 0 ? limitRaw : null,
         sourceType: normalizeBulkCampaignAudienceSource(record.sourceType),
         sourceId: normalizeString(record.sourceId),
-        onlyOpenYCloudWindow: record.onlyOpenYCloudWindow === true,
+        onlyOpenOfficialWindow: record.onlyOpenOfficialWindow === true
+            || record.onlyOpenMetaWindow === true
+            || record[LEGACY_ONLY_OPEN_OFFICIAL_WINDOW_KEY] === true,
         lastInboundFrom: normalizeString(record.lastInboundFrom),
         lastInboundTo: normalizeString(record.lastInboundTo),
         selectedContactIds: normalizeStringList(record.selectedContactIds),

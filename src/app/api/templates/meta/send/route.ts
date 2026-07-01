@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { MESSAGE_SOURCE_YCLOUD, resolveMessageSourceId } from "@/lib/message-source";
+import { MESSAGE_SOURCE_META, resolveMessageSourceId } from "@/lib/message-source";
 import { buildPhoneMatchClauses, normalizePhoneDigits } from "@/lib/phone";
 import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
-import { sendYCloudTemplateMessage } from "@/lib/ycloud";
+import { sendMetaTemplateMessage } from "@/lib/meta-whatsapp";
 
 function ensureAuthenticated(session: unknown) {
     if (!(session as { user?: { id?: string } } | null)?.user?.id) {
@@ -77,10 +77,10 @@ export async function POST(request: NextRequest) {
             }
 
             const settings = await getSystemSettingsOrDefaults();
-            const sourceId = resolveMessageSourceId(MESSAGE_SOURCE_YCLOUD, settings);
-            const ycloudConversation = await findOrCreateActiveConversationForContactSource({
+            const sourceId = resolveMessageSourceId(MESSAGE_SOURCE_META, settings);
+            const metaConversation = await findOrCreateActiveConversationForContactSource({
                 contactId: conversation.contactId,
-                sourceType: MESSAGE_SOURCE_YCLOUD,
+                sourceType: MESSAGE_SOURCE_META,
                 sourceId,
                 defaults: {
                     assignedUserId: currentUser?.id || conversation.assignedUserId,
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
                 },
             });
 
-            const ycloudResult = await sendYCloudTemplateMessage({
+            const metaResult = await sendMetaTemplateMessage({
                 to,
                 templateName,
                 languageCode,
@@ -100,25 +100,25 @@ export async function POST(request: NextRequest) {
 
             const message = await prisma.message.create({
                 data: {
-                    conversationId: ycloudConversation.id,
+                    conversationId: metaConversation.id,
                     content,
                     direction: "outbound",
                     status: "sent",
                     type: "template",
                     senderType: "human",
-                    sourceType: MESSAGE_SOURCE_YCLOUD,
+                    sourceType: MESSAGE_SOURCE_META,
                     sourceId,
-                    providerMessageId: ycloudResult.Id || null,
+                    providerMessageId: metaResult.Id || null,
                 },
             });
 
             await prisma.conversation.update({
-                where: { id: ycloudConversation.id },
+                where: { id: metaConversation.id },
                 data: {
                     updatedAt: new Date(),
                     sessionExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
                     botActive: false,
-                    assignedUserId: currentUser?.id || ycloudConversation.assignedUserId,
+                    assignedUserId: currentUser?.id || metaConversation.assignedUserId,
                 },
             });
 
@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({
                 success: true,
                 message,
-                conversationId: ycloudConversation.id,
+                conversationId: metaConversation.id,
                 sent: 1,
                 failed: 0,
                 total: 1,
@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
         }
 
         const settings = await getSystemSettingsOrDefaults();
-        const sourceId = resolveMessageSourceId(MESSAGE_SOURCE_YCLOUD, settings);
+        const sourceId = resolveMessageSourceId(MESSAGE_SOURCE_META, settings);
         const content = resolvedContent || `[Plantilla: ${templateName}]`;
         const sentRecipients: string[] = [];
         const failedRecipients: Array<{ to: string; error: string }> = [];
@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
             try {
                 const conversation = await resolveConversationForRecipient(recipient, currentUser?.id || null);
 
-                const ycloudResult = await sendYCloudTemplateMessage({
+                const metaResult = await sendMetaTemplateMessage({
                     to: conversation.contact.phone,
                     templateName,
                     languageCode,
@@ -159,9 +159,9 @@ export async function POST(request: NextRequest) {
                         status: "sent",
                         type: "template",
                         senderType: "human",
-                        sourceType: MESSAGE_SOURCE_YCLOUD,
+                        sourceType: MESSAGE_SOURCE_META,
                         sourceId,
-                        providerMessageId: ycloudResult.Id || null,
+                        providerMessageId: metaResult.Id || null,
                     },
                 });
 
@@ -194,8 +194,8 @@ export async function POST(request: NextRequest) {
             errors: failedRecipients,
         });
     } catch (error) {
-        console.error("[YCloud Template Send] POST failed:", error);
-        const message = error instanceof Error ? error.message : "No se pudo enviar la plantilla por YCloud.";
+        console.error("[Meta Template Send] POST failed:", error);
+        const message = error instanceof Error ? error.message : "No se pudo enviar la plantilla oficial.";
         return NextResponse.json({ error: message }, { status: 500 });
     }
 }
@@ -226,8 +226,8 @@ async function resolveConversationForRecipient(phone: string, assignedUserId: st
     const settings = await getSystemSettingsOrDefaults();
     const conversation = await findOrCreateActiveConversationForContactSource({
         contactId: contact.id,
-        sourceType: MESSAGE_SOURCE_YCLOUD,
-        sourceId: resolveMessageSourceId(MESSAGE_SOURCE_YCLOUD, settings),
+        sourceType: MESSAGE_SOURCE_META,
+        sourceId: resolveMessageSourceId(MESSAGE_SOURCE_META, settings),
         defaults: {
             assignedUserId,
             botActive: false,

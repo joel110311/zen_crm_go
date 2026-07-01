@@ -21,26 +21,26 @@ import { cn } from "@/lib/utils";
 import type {
     CampaignFormState,
     CampaignVariantFormState,
-    YCloudCampaignTemplateComponent,
+    MetaCampaignTemplateComponent,
 } from "@/components/settings/bulk-campaign-manager-shared";
 
-type YCloudTemplateListItem = {
+type MetaTemplateListItem = {
     id: string;
     name: string;
     language: string;
     status: string;
     category: string;
-    components: YCloudCampaignTemplateComponent[];
+    components: MetaCampaignTemplateComponent[];
 };
 
-type YCloudTemplateVariableSlot = {
+type MetaTemplateVariableSlot = {
     key: string;
     componentType: "HEADER" | "BODY";
     variableIndex: string;
     label: string;
 };
 
-const YCloudTemplateValueDefaults = ["{{nombre}}", "{{empresa}}", "{{agente}}", "{{telefono}}"];
+const MetaTemplateValueDefaults = ["{{nombre}}", "{{empresa}}", "{{agente}}", "{{telefono}}"];
 const TEMPLATE_PREVIEW_CONTEXT = {
     contact: {
         name: "Karen",
@@ -50,7 +50,7 @@ const TEMPLATE_PREVIEW_CONTEXT = {
     agentName: "Joel",
 };
 
-function normalizeYCloudTemplateItem(value: unknown): YCloudTemplateListItem | null {
+function normalizeMetaTemplateItem(value: unknown): MetaTemplateListItem | null {
     if (!value || typeof value !== "object") return null;
 
     const record = value as Record<string, unknown>;
@@ -71,19 +71,19 @@ function normalizeYCloudTemplateItem(value: unknown): YCloudTemplateListItem | n
         status: typeof record.status === "string" ? record.status : "",
         category: typeof record.category === "string" ? record.category : "",
         components: Array.isArray(record.components)
-            ? record.components.filter((component): component is YCloudCampaignTemplateComponent =>
+            ? record.components.filter((component): component is MetaCampaignTemplateComponent =>
                 Boolean(component) && typeof component === "object",
             )
             : [],
     };
 }
 
-function isApprovedYCloudTemplate(template: YCloudTemplateListItem) {
+function isApprovedMetaTemplate(template: MetaTemplateListItem) {
     const status = template.status.trim().toUpperCase();
     return !status || status === "APPROVED" || status === "APROBADA";
 }
 
-function extractYCloudNumericVariables(text: string) {
+function extractMetaNumericVariables(text: string) {
     const variables: string[] = [];
     const matches = text.matchAll(/{{\s*(\d+)\s*}}/g);
 
@@ -97,11 +97,11 @@ function extractYCloudNumericVariables(text: string) {
     return variables;
 }
 
-function getYCloudTemplateVariableKey(componentType: string, variableIndex: string) {
+function getMetaTemplateVariableKey(componentType: string, variableIndex: string) {
     return `${componentType.toUpperCase()}:${variableIndex}`;
 }
 
-function listYCloudTemplateVariableSlots(components: YCloudCampaignTemplateComponent[]) {
+function listMetaTemplateVariableSlots(components: MetaCampaignTemplateComponent[]) {
     return components.flatMap((component) => {
         const componentType = component.type.toUpperCase();
         const text = component.text || "";
@@ -110,8 +110,8 @@ function listYCloudTemplateVariableSlots(components: YCloudCampaignTemplateCompo
             return [];
         }
 
-        return extractYCloudNumericVariables(text).map((variableIndex) => ({
-            key: getYCloudTemplateVariableKey(componentType, variableIndex),
+        return extractMetaNumericVariables(text).map((variableIndex) => ({
+            key: getMetaTemplateVariableKey(componentType, variableIndex),
             componentType: componentType as "HEADER" | "BODY",
             variableIndex,
             label: `${componentType === "HEADER" ? "Header" : "Cuerpo"} {{${variableIndex}}}`,
@@ -119,18 +119,18 @@ function listYCloudTemplateVariableSlots(components: YCloudCampaignTemplateCompo
     });
 }
 
-function getYCloudTemplateComponentText(components: YCloudCampaignTemplateComponent[], type: string) {
+function getMetaTemplateComponentText(components: MetaCampaignTemplateComponent[], type: string) {
     return components.find((component) => component.type.toUpperCase() === type.toUpperCase())?.text || "";
 }
 
-function renderYCloudTemplateText(
-    components: YCloudCampaignTemplateComponent[],
+function renderMetaTemplateText(
+    components: MetaCampaignTemplateComponent[],
     variableValues: Record<string, string>,
 ) {
     const renderComponent = (componentType: "HEADER" | "BODY" | "FOOTER") => {
-        const source = getYCloudTemplateComponentText(components, componentType);
+        const source = getMetaTemplateComponentText(components, componentType);
         return source.replace(/{{\s*(\d+)\s*}}/g, (_match, variableIndex: string) => {
-            const value = variableValues[getYCloudTemplateVariableKey(componentType, variableIndex)]
+            const value = variableValues[getMetaTemplateVariableKey(componentType, variableIndex)]
                 || variableValues[variableIndex]
                 || `{{${variableIndex}}}`;
             return renderTemplateContent(value, TEMPLATE_PREVIEW_CONTEXT).trim() || `{{${variableIndex}}}`;
@@ -144,11 +144,11 @@ function renderYCloudTemplateText(
     ].filter(Boolean).join("\n\n");
 }
 
-function buildDefaultYCloudTemplateVariableValues(components: YCloudCampaignTemplateComponent[]) {
+function buildDefaultMetaTemplateVariableValues(components: MetaCampaignTemplateComponent[]) {
     return Object.fromEntries(
-        listYCloudTemplateVariableSlots(components).map((slot, index) => [
+        listMetaTemplateVariableSlots(components).map((slot, index) => [
             slot.key,
-            YCloudTemplateValueDefaults[index] || "{{nombre}}",
+            MetaTemplateValueDefaults[index] || "{{nombre}}",
         ]),
     );
 }
@@ -187,20 +187,20 @@ export function BulkCampaignMessageTab({
 }: BulkCampaignMessageTabProps) {
     const variantLayoutRef = useRef<HTMLDivElement | null>(null);
     const [variantLayoutWidth, setVariantLayoutWidth] = useState(0);
-    const [ycloudTemplates, setYCloudTemplates] = useState<YCloudTemplateListItem[]>([]);
-    const [isLoadingYCloudTemplates, setIsLoadingYCloudTemplates] = useState(false);
-    const [ycloudTemplatesError, setYCloudTemplatesError] = useState("");
+    const [metaTemplates, setMetaTemplates] = useState<MetaTemplateListItem[]>([]);
+    const [isLoadingMetaTemplates, setIsLoadingMetaTemplates] = useState(false);
+    const [metaTemplatesError, setMetaTemplatesError] = useState("");
     const previewMediaUrl = getSafeMediaUrl(form.mediaUrl);
     const useTwoColumnVariantFields = variantLayoutWidth >= 560;
     const useInlineActiveActions = variantLayoutWidth >= 460;
-    const approvedYCloudTemplates = ycloudTemplates.filter(isApprovedYCloudTemplate);
-    const selectedYCloudTemplate = approvedYCloudTemplates.find((template) =>
-        template.name === form.ycloudTemplateName && template.language === form.ycloudTemplateLanguage,
+    const approvedMetaTemplates = metaTemplates.filter(isApprovedMetaTemplate);
+    const selectedMetaTemplate = approvedMetaTemplates.find((template) =>
+        template.name === form.metaTemplateName && template.language === form.metaTemplateLanguage,
     ) || null;
-    const ycloudVariableSlots = listYCloudTemplateVariableSlots(form.ycloudTemplateComponents);
-    const ycloudPreviewContent = renderYCloudTemplateText(
-        form.ycloudTemplateComponents,
-        form.ycloudTemplateVariableValues,
+    const metaVariableSlots = listMetaTemplateVariableSlots(form.metaTemplateComponents);
+    const metaPreviewContent = renderMetaTemplateText(
+        form.metaTemplateComponents,
+        form.metaTemplateVariableValues,
     );
 
     useEffect(() => {
@@ -224,36 +224,36 @@ export function BulkCampaignMessageTab({
     }, []);
 
     useEffect(() => {
-        if (form.type !== "template" || isLoadingYCloudTemplates || ycloudTemplates.length > 0) {
+        if (form.type !== "template" || isLoadingMetaTemplates || metaTemplates.length > 0) {
             return;
         }
 
         const controller = new AbortController();
         const timer = window.setTimeout(() => {
-            setIsLoadingYCloudTemplates(true);
-            setYCloudTemplatesError("");
+            setIsLoadingMetaTemplates(true);
+            setMetaTemplatesError("");
 
-            void fetch("/api/templates/ycloud?limit=100", { cache: "no-store", signal: controller.signal })
+            void fetch("/api/templates/meta?limit=100", { cache: "no-store", signal: controller.signal })
                 .then(async (response) => {
                     const result = await response.json();
                     if (!response.ok) {
-                        throw new Error(result.error || "No se pudieron cargar las plantillas YCloud.");
+                        throw new Error(result.error || "No se pudieron cargar las plantillas Meta.");
                     }
 
-                    setYCloudTemplates(
+                    setMetaTemplates(
                         (Array.isArray(result.items) ? result.items : [])
-                            .map(normalizeYCloudTemplateItem)
-                            .filter((template): template is YCloudTemplateListItem => Boolean(template)),
+                            .map(normalizeMetaTemplateItem)
+                            .filter((template): template is MetaTemplateListItem => Boolean(template)),
                     );
                 })
                 .catch((error) => {
                     if (!controller.signal.aborted) {
-                        setYCloudTemplatesError(error instanceof Error ? error.message : "No se pudieron cargar las plantillas YCloud.");
+                        setMetaTemplatesError(error instanceof Error ? error.message : "No se pudieron cargar las plantillas Meta.");
                     }
                 })
                 .finally(() => {
                     if (!controller.signal.aborted) {
-                        setIsLoadingYCloudTemplates(false);
+                        setIsLoadingMetaTemplates(false);
                     }
                 });
         }, 0);
@@ -262,34 +262,34 @@ export function BulkCampaignMessageTab({
             controller.abort();
             window.clearTimeout(timer);
         };
-    }, [form.type, isLoadingYCloudTemplates, ycloudTemplates.length]);
+    }, [form.type, isLoadingMetaTemplates, metaTemplates.length]);
 
-    const refreshYCloudTemplates = () => {
-        setYCloudTemplates([]);
-        setYCloudTemplatesError("");
+    const refreshMetaTemplates = () => {
+        setMetaTemplates([]);
+        setMetaTemplatesError("");
     };
 
-    const applyYCloudTemplate = (templateId: string) => {
-        const template = approvedYCloudTemplates.find((entry) => entry.id === templateId);
+    const applyMetaTemplate = (templateId: string) => {
+        const template = approvedMetaTemplates.find((entry) => entry.id === templateId);
         if (!template) return;
 
-        const variableValues = buildDefaultYCloudTemplateVariableValues(template.components);
-        const content = renderYCloudTemplateText(template.components, variableValues);
+        const variableValues = buildDefaultMetaTemplateVariableValues(template.components);
+        const content = renderMetaTemplateText(template.components, variableValues);
 
         onActiveVariantIndexChange(0);
         onFormChange((current) => ({
             ...current,
-            sourceType: "ycloud",
+            sourceType: "meta",
             type: "template",
             mediaUrl: null,
             mediaType: null,
             mediaFileName: null,
             followUpCount: 0,
-            audienceOnlyOpenYCloudWindow: false,
-            ycloudTemplateName: template.name,
-            ycloudTemplateLanguage: template.language,
-            ycloudTemplateComponents: template.components,
-            ycloudTemplateVariableValues: variableValues,
+            audienceOnlyOpenMetaWindow: false,
+            metaTemplateName: template.name,
+            metaTemplateLanguage: template.language,
+            metaTemplateComponents: template.components,
+            metaTemplateVariableValues: variableValues,
             variants: [
                 {
                     label: "A",
@@ -301,17 +301,17 @@ export function BulkCampaignMessageTab({
         }));
     };
 
-    const updateYCloudTemplateVariable = (slot: YCloudTemplateVariableSlot, value: string) => {
+    const updateMetaTemplateVariable = (slot: MetaTemplateVariableSlot, value: string) => {
         onFormChange((current) => {
             const variableValues = {
-                ...current.ycloudTemplateVariableValues,
+                ...current.metaTemplateVariableValues,
                 [slot.key]: value,
             };
-            const content = renderYCloudTemplateText(current.ycloudTemplateComponents, variableValues);
+            const content = renderMetaTemplateText(current.metaTemplateComponents, variableValues);
 
             return {
                 ...current,
-                ycloudTemplateVariableValues: variableValues,
+                metaTemplateVariableValues: variableValues,
                 variants: [
                     {
                         ...(current.variants[0] || { label: "A", weight: 1, isActive: true }),
@@ -328,19 +328,19 @@ export function BulkCampaignMessageTab({
                 <div className="rounded-xl border bg-muted/15 p-4">
                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                         <div className="space-y-1">
-                            <p className="text-sm font-semibold">Plantilla Meta/YCloud</p>
+                            <p className="text-sm font-semibold">Plantilla Meta</p>
                             <p className="text-sm leading-6 text-muted-foreground">
-                                Usa una plantilla aprobada por Meta para contactos sin ventana abierta. El envio se hara siempre por YCloud.
+                                Usa una plantilla aprobada por Meta para contactos sin ventana abierta. El envio se hara siempre por Meta.
                             </p>
                         </div>
                         <Button
                             type="button"
                             variant="outline"
                             className="h-10 rounded-xl bg-background"
-                            onClick={refreshYCloudTemplates}
-                            disabled={isLoadingYCloudTemplates}
+                            onClick={refreshMetaTemplates}
+                            disabled={isLoadingMetaTemplates}
                         >
-                            {isLoadingYCloudTemplates ? (
+                            {isLoadingMetaTemplates ? (
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             ) : (
                                 <RefreshCw className="mr-2 h-4 w-4" />
@@ -354,47 +354,47 @@ export function BulkCampaignMessageTab({
                             <div className="space-y-2">
                                 <Label>Plantilla aprobada</Label>
                                 <Select
-                                    value={selectedYCloudTemplate?.id || ""}
-                                    onValueChange={applyYCloudTemplate}
-                                    disabled={isLoadingYCloudTemplates || approvedYCloudTemplates.length === 0}
+                                    value={selectedMetaTemplate?.id || ""}
+                                    onValueChange={applyMetaTemplate}
+                                    disabled={isLoadingMetaTemplates || approvedMetaTemplates.length === 0}
                                 >
                                     <SelectTrigger className="h-11 rounded-xl bg-background">
-                                        <SelectValue placeholder={isLoadingYCloudTemplates ? "Cargando plantillas..." : "Selecciona una plantilla"} />
+                                        <SelectValue placeholder={isLoadingMetaTemplates ? "Cargando plantillas..." : "Selecciona una plantilla"} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {approvedYCloudTemplates.map((template) => (
+                                        {approvedMetaTemplates.map((template) => (
                                             <SelectItem key={template.id} value={template.id}>
                                                 {template.name} - {template.language}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
-                                {ycloudTemplatesError ? (
-                                    <p className="text-sm text-destructive">{ycloudTemplatesError}</p>
+                                {metaTemplatesError ? (
+                                    <p className="text-sm text-destructive">{metaTemplatesError}</p>
                                 ) : null}
-                                {!isLoadingYCloudTemplates && approvedYCloudTemplates.length === 0 ? (
+                                {!isLoadingMetaTemplates && approvedMetaTemplates.length === 0 ? (
                                     <p className="text-sm text-muted-foreground">
-                                        No hay plantillas aprobadas disponibles desde YCloud con la configuracion actual.
+                                        No hay plantillas aprobadas disponibles desde Meta con la configuracion actual.
                                     </p>
                                 ) : null}
                             </div>
 
-                            {form.ycloudTemplateName ? (
+                            {form.metaTemplateName ? (
                                 <div className="rounded-xl border bg-background/90 p-4">
                                     <div className="flex flex-wrap items-center justify-between gap-2">
                                         <div>
-                                            <p className="font-medium">{form.ycloudTemplateName}</p>
+                                            <p className="font-medium">{form.metaTemplateName}</p>
                                             <p className="text-sm text-muted-foreground">
-                                                Idioma {form.ycloudTemplateLanguage || "es"}
-                                                {selectedYCloudTemplate?.category ? ` - ${selectedYCloudTemplate.category}` : ""}
+                                                Idioma {form.metaTemplateLanguage || "es"}
+                                                {selectedMetaTemplate?.category ? ` - ${selectedMetaTemplate.category}` : ""}
                                             </p>
                                         </div>
                                         <span className="rounded-full border border-border bg-secondary px-3 py-1 text-xs font-semibold text-foreground">
-                                            Meta/YCloud
+                                            Meta
                                         </span>
                                     </div>
 
-                                    {ycloudVariableSlots.length > 0 ? (
+                                    {metaVariableSlots.length > 0 ? (
                                         <div className="mt-4 space-y-4">
                                             <div>
                                                 <p className="text-sm font-semibold">Variables de Meta</p>
@@ -403,12 +403,12 @@ export function BulkCampaignMessageTab({
                                                 </p>
                                             </div>
 
-                                            {ycloudVariableSlots.map((slot) => (
+                                            {metaVariableSlots.map((slot) => (
                                                 <div key={slot.key} className="space-y-2 rounded-xl border bg-muted/15 p-3">
                                                     <Label>{slot.label}</Label>
                                                     <Input
-                                                        value={form.ycloudTemplateVariableValues[slot.key] || ""}
-                                                        onChange={(event) => updateYCloudTemplateVariable(slot, event.target.value)}
+                                                        value={form.metaTemplateVariableValues[slot.key] || ""}
+                                                        onChange={(event) => updateMetaTemplateVariable(slot, event.target.value)}
                                                         placeholder="Ej. {{nombre}} o texto fijo"
                                                         className="h-10 rounded-xl bg-background"
                                                     />
@@ -417,7 +417,7 @@ export function BulkCampaignMessageTab({
                                                             <button
                                                                 key={`${slot.key}-${variable.key}`}
                                                                 type="button"
-                                                                onClick={() => updateYCloudTemplateVariable(slot, variable.placeholder)}
+                                                                onClick={() => updateMetaTemplateVariable(slot, variable.placeholder)}
                                                                 className="rounded-full border bg-background px-2.5 py-1 text-xs font-semibold transition hover:border-primary hover:text-primary"
                                                             >
                                                                 {variable.placeholder}
@@ -451,10 +451,10 @@ export function BulkCampaignMessageTab({
                                 </p>
                                 <div className="mt-4">
                                     <WhatsAppTemplatePreview
-                                        title={form.ycloudTemplateName || form.name || "Plantilla YCloud"}
-                                        subtitle={form.ycloudTemplateLanguage || "Meta template"}
+                                        title={form.metaTemplateName || form.name || "Plantilla Meta"}
+                                        subtitle={form.metaTemplateLanguage || "Meta template"}
                                         type="text"
-                                        content={ycloudPreviewContent || "Selecciona una plantilla para ver el contenido."}
+                                        content={metaPreviewContent || "Selecciona una plantilla para ver el contenido."}
                                     />
                                 </div>
                             </div>
@@ -465,7 +465,7 @@ export function BulkCampaignMessageTab({
                                     Esta modalidad no filtra por ventana abierta: sirve para reactivar o iniciar conversaciones con una plantilla aprobada.
                                 </p>
                                 <p className="mt-2">
-                                    Si quieres mandar texto libre por YCloud, cambia el tipo a texto y la audiencia solo incluira ventanas abiertas.
+                                    Si quieres mandar texto libre por Meta, cambia el tipo a texto y la audiencia solo incluira ventanas abiertas.
                                 </p>
                             </div>
                         </div>

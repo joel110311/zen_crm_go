@@ -15,9 +15,10 @@ export type CampaignAudienceFilters = {
     tags?: string[];
     query?: string;
     limit?: number | null;
-    sourceType?: "any" | "wuzapi" | "ycloud";
+    sourceType?: "any" | "wuzapi" | "meta";
     sourceId?: string;
-    onlyOpenYCloudWindow?: boolean;
+    onlyOpenMetaWindow?: boolean;
+    onlyOpenOfficialWindow?: boolean;
     lastInboundFrom?: string;
     lastInboundTo?: string;
     selectedContactIds?: string[];
@@ -26,7 +27,7 @@ export type CampaignAudienceFilters = {
 
 export type CampaignMessageType = "text" | "image" | "document" | "template";
 
-export type YCloudCampaignTemplateComponent = {
+export type MetaCampaignTemplateComponent = {
     type: string;
     text?: string;
     format?: string;
@@ -39,16 +40,16 @@ export type CampaignRecord = {
     description: string | null;
     status: string;
     audienceFilters: CampaignAudienceFilters | null;
-    sourceType?: "wuzapi" | "ycloud";
+    sourceType?: "wuzapi" | "meta";
     sourceId?: string | null;
     type: CampaignMessageType;
     mediaUrl: string | null;
     mediaType: string | null;
     mediaFileName: string | null;
-    ycloudTemplateName?: string | null;
-    ycloudTemplateLanguage?: string | null;
-    ycloudTemplateComponents?: YCloudCampaignTemplateComponent[] | null;
-    ycloudTemplateVariableValues?: Record<string, string> | null;
+    metaTemplateName?: string | null;
+    metaTemplateLanguage?: string | null;
+    metaTemplateComponents?: MetaCampaignTemplateComponent[] | null;
+    metaTemplateVariableValues?: Record<string, string> | null;
     batchSize: number;
     batchDelayMinutes: number;
     randomDelayMinSeconds: number;
@@ -114,7 +115,7 @@ export type AudiencePreview = {
         status: string;
         value: number;
     }>;
-    ycloudWindow?: {
+    metaWindow?: {
         enabled: boolean;
         eligibleContacts: number | null;
         onlyOpenWindow: boolean;
@@ -139,10 +140,10 @@ export type CampaignFormState = {
     mediaUrl: string | null;
     mediaType: string | null;
     mediaFileName: string | null;
-    ycloudTemplateName: string;
-    ycloudTemplateLanguage: string;
-    ycloudTemplateComponents: YCloudCampaignTemplateComponent[];
-    ycloudTemplateVariableValues: Record<string, string>;
+    metaTemplateName: string;
+    metaTemplateLanguage: string;
+    metaTemplateComponents: MetaCampaignTemplateComponent[];
+    metaTemplateVariableValues: Record<string, string>;
     batchSize: number;
     batchDelayMinutes: number;
     randomDelayMinSeconds: number;
@@ -152,14 +153,14 @@ export type CampaignFormState = {
     stopOnReply: boolean;
     followUpCount: number;
     followUpDelayDays: number;
-    sourceType: "wuzapi" | "ycloud";
+    sourceType: "wuzapi" | "meta";
     sourceId: string;
     audienceMode: BulkCampaignAudienceMode;
     audienceStatuses: string[];
     audienceTags: string;
     audienceQuery: string;
     audienceLimit: string;
-    audienceOnlyOpenYCloudWindow: boolean;
+    audienceOnlyOpenMetaWindow: boolean;
     audienceLastInboundFrom: string;
     audienceLastInboundTo: string;
     audienceSelectedContactIds: string[];
@@ -185,10 +186,10 @@ export const EMPTY_FORM: CampaignFormState = {
     mediaUrl: null,
     mediaType: null,
     mediaFileName: null,
-    ycloudTemplateName: "",
-    ycloudTemplateLanguage: "",
-    ycloudTemplateComponents: [],
-    ycloudTemplateVariableValues: {},
+    metaTemplateName: "",
+    metaTemplateLanguage: "",
+    metaTemplateComponents: [],
+    metaTemplateVariableValues: {},
     batchSize: 3,
     batchDelayMinutes: 5,
     randomDelayMinSeconds: 25,
@@ -205,7 +206,7 @@ export const EMPTY_FORM: CampaignFormState = {
     audienceTags: "",
     audienceQuery: "",
     audienceLimit: "",
-    audienceOnlyOpenYCloudWindow: true,
+    audienceOnlyOpenMetaWindow: true,
     audienceLastInboundFrom: "",
     audienceLastInboundTo: "",
     audienceSelectedContactIds: [],

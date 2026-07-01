@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { signOut, useSession } from "next-auth/react";
+import { signOut } from "next-auth/react";
+import type { Session } from "next-auth";
 import {
     Bot,
     Calendar,
@@ -39,6 +40,10 @@ const sidebarNavItems = [
     { title: "Configuracion", href: "/dashboard/settings", icon: Settings },
 ];
 
+type SidebarProps = React.HTMLAttributes<HTMLDivElement> & {
+    session?: Session | null;
+};
+
 function BrandMark({ compact = false }: { compact?: boolean }) {
     return (
         <Link
@@ -62,14 +67,12 @@ function BrandMark({ compact = false }: { compact?: boolean }) {
     );
 }
 
-export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
+export function Sidebar({ className, session }: SidebarProps) {
     const pathname = usePathname();
     const [open, setOpen] = useState(false);
     const [collapsed, setCollapsed] = useState(true);
-    const { data: session, status } = useSession();
-    const sessionLoading = status === "loading";
     const userRole = (session?.user as { role?: string } | undefined)?.role;
-    const userName = session?.user?.name || (sessionLoading ? "..." : "Usuario");
+    const userName = session?.user?.name || "Usuario";
     const userEmail = session?.user?.email || "";
 
     useEffect(() => {
@@ -82,7 +85,6 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
     const toggleCollapsed = () => setCollapsed((current) => !current);
 
     const filteredNavItems = sidebarNavItems.filter((item) => {
-        if (sessionLoading) return !item.superadminOnly;
         if (item.superadminOnly && userRole !== "SUPERADMIN") return false;
         return true;
     });
@@ -124,24 +126,22 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
         >
             <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
-                    {!sessionLoading && userName.charAt(0).toUpperCase()}
+                    {userName.charAt(0).toUpperCase()}
                 </div>
                 {!isCompact ? (
                     <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-semibold text-sidebar-foreground">
-                            {sessionLoading ? <div className="h-3 w-20 animate-pulse rounded bg-sidebar-foreground/10" /> : userName}
+                            {userName}
                         </div>
                         <div className="truncate text-xs text-sidebar-foreground/55">
-                            {sessionLoading ? "Cargando..." : userEmail || "Sin correo"}
+                            {userEmail || "Sin correo"}
                         </div>
                     </div>
                 ) : null}
             </div>
             {!isCompact ? (
                 <Badge variant="outline" className="mt-3 border-sidebar-border bg-sidebar px-2 py-0 text-[10px] text-sidebar-foreground/70">
-                    {sessionLoading ? (
-                        <div className="my-1 h-2 w-12 animate-pulse rounded bg-sidebar-foreground/10" />
-                    ) : userRole === "SUPERADMIN" ? (
+                    {userRole === "SUPERADMIN" ? (
                         <>
                             <ShieldCheck className="mr-1 h-3 w-3" /> Super Admin
                         </>
@@ -238,7 +238,7 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                 </button>
                 <BrandMark compact />
                 <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
-                    {!sessionLoading && userName.charAt(0).toUpperCase()}
+                    {userName.charAt(0).toUpperCase()}
                 </div>
             </header>
 

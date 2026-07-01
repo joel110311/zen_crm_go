@@ -11,17 +11,12 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
     console.log("Seeding database...");
 
-    // Create or update system settings with YCloud credentials
+    // Create default system settings without provider-specific secrets.
     const settings = await prisma.systemSettings.upsert({
         where: { id: "default" },
-        update: {
-            ycloudApiKey: "b5df62fc3757e5f7ab51166591c6645c",
-            ycloudPhoneId: "+524771075025",
-        },
+        update: {},
         create: {
             id: "default",
-            ycloudApiKey: "b5df62fc3757e5f7ab51166591c6645c",
-            ycloudPhoneId: "+524771075025",
         },
     });
     console.log("Created settings:", settings.id);

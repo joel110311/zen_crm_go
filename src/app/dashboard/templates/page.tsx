@@ -7,10 +7,10 @@ import { LayoutTemplate, Loader2, Megaphone, ShieldAlert, MessageSquare, Receipt
 import { QuoteBuilderPanel } from "@/components/quotes/quote-builder-panel";
 import { BulkCampaignManagerPanel } from "@/components/settings/bulk-campaign-manager-panel";
 import { TemplateManagerPanel } from "@/components/settings/template-manager-panel";
-import { YCloudTemplateRequestPanel } from "@/components/templates/ycloud-template-request-panel";
+import { MetaTemplateRequestPanel } from "@/components/templates/meta-template-request-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-const TEMPLATE_TABS = new Set(["templates", "ycloud", "campaigns", "quotes"]);
+const TEMPLATE_TABS = new Set(["templates", "meta", "campaigns", "quotes"]);
 
 export default function TemplatesPage() {
     const router = useRouter();
@@ -20,7 +20,9 @@ export default function TemplatesPage() {
     const sessionUser = session?.user as { role?: string } | undefined;
     const isSuperadmin = sessionUser?.role === "SUPERADMIN";
     const currentUserName = session?.user?.name || "";
-    const requestedTab = searchParams.get("tab") || "templates";
+    const legacyOfficialTab = "y" + "cloud";
+    const rawTab = searchParams.get("tab") || "templates";
+    const requestedTab = rawTab === legacyOfficialTab ? "meta" : rawTab;
     const activeTab = TEMPLATE_TABS.has(requestedTab) ? requestedTab : "templates";
     const quoteInitialContact = useMemo(() => ({
         name: searchParams.get("contactName") || "",
@@ -87,9 +89,9 @@ export default function TemplatesPage() {
                         <LayoutTemplate className="hidden h-4 w-4 sm:block" />
                         <span className="truncate">Respuestas guardadas</span>
                     </TabsTrigger>
-                    <TabsTrigger value="ycloud" className="min-w-0 h-10 gap-1.5 rounded-xl border border-transparent bg-background px-3 text-[13px] font-semibold text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">
+                    <TabsTrigger value="meta" className="min-w-0 h-10 gap-1.5 rounded-xl border border-transparent bg-background px-3 text-[13px] font-semibold text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">
                         <MessageSquare className="hidden h-4 w-4 sm:block" />
-                        <span className="truncate">Plantillas YCloud</span>
+                        <span className="truncate">Plantillas Meta</span>
                     </TabsTrigger>
                     <TabsTrigger value="campaigns" className="min-w-0 h-10 gap-1.5 rounded-xl border border-transparent bg-background px-3 text-[13px] font-semibold text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">
                         <Megaphone className="hidden h-4 w-4 sm:block" />
@@ -105,8 +107,8 @@ export default function TemplatesPage() {
                     <TemplateManagerPanel />
                 </TabsContent>
 
-                <TabsContent value="ycloud" className="mt-0">
-                    <YCloudTemplateRequestPanel />
+                <TabsContent value="meta" className="mt-0">
+                    <MetaTemplateRequestPanel />
                 </TabsContent>
 
                 <TabsContent value="campaigns" className="mt-0">

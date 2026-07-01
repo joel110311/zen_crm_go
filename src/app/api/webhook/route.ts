@@ -10,7 +10,6 @@ import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { MESSAGE_SOURCE_WUZAPI, resolveMessageSourceId } from "@/lib/message-source";
 import { downloadWuzapiMedia } from "@/lib/wuzapi";
 import { refreshWhatsAppAvatarForContact } from "@/lib/whatsapp-avatar";
-import { handleYCloudWebhookPayload, looksLikeYCloudWebhookPayload } from "@/lib/ycloud-webhook-handler";
 import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 
 type JsonObject = Record<string, unknown>;
@@ -1445,11 +1444,6 @@ export async function GET() {
 export async function POST(req: NextRequest) {
     try {
         const rawPayload = await req.json();
-        if (looksLikeYCloudWebhookPayload(rawPayload)) {
-            await handleYCloudWebhookPayload(rawPayload);
-            return new NextResponse("EVENT_RECEIVED", { status: 200 });
-        }
-
         const payload = normalizeIncomingPayload(rawPayload);
         const settings = await getSystemSettingsOrDefaults();
         const wuzapiSourceId = resolveMessageSourceId(MESSAGE_SOURCE_WUZAPI, settings);

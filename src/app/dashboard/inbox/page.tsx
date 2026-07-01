@@ -33,7 +33,7 @@ import { getSafeMediaUrl } from "@/lib/media-url";
 import { TemplateRecord, extractTemplateSlashQuery, renderTemplateContent } from "@/lib/templates";
 import { writeUnreadCounts } from "@/lib/inbox-browser-badge";
 import { parseInboundAdPreviewMessageContent } from "@/lib/inbound-ad-preview";
-import { YCloudTemplateSendModal } from "@/components/inbox/ycloud-template-send-modal";
+import { MetaTemplateSendModal } from "@/components/inbox/meta-template-send-modal";
 import { type GeneratedQuoteAsset, QuoteBuilderPanel } from "@/components/quotes/quote-builder-panel";
 import {
     Dialog,
@@ -57,6 +57,17 @@ const INBOX_MESSAGE_PAGE_SIZE = 75;
 const INBOX_DELTA_POLL_INTERVAL_MS = 3000;
 const INBOX_FULL_RESYNC_INTERVAL_MS = 60000;
 
+type MessageSourceType = "wuzapi" | "meta";
+const LEGACY_OFFICIAL_SOURCE = "y" + "cloud";
+
+function normalizeUiSourceType(sourceType: unknown): MessageSourceType {
+    if (sourceType === "meta" || sourceType === LEGACY_OFFICIAL_SOURCE) {
+        return "meta";
+    }
+
+    return "wuzapi";
+}
+
 // ──────────── Types ────────────
 export type Message = {
     id: string;
@@ -66,7 +77,7 @@ export type Message = {
     createdAt: Date;
     type: string;
     status?: string | null;
-    sourceType: "wuzapi" | "ycloud";
+    sourceType: MessageSourceType;
     sourceId?: string | null;
     senderType?: string | null;
     mediaUrl?: string | null;
@@ -83,7 +94,7 @@ type RawMessageRecord = {
     createdAt: string | Date;
     type: string;
     status?: string | null;
-    sourceType?: "wuzapi" | "ycloud";
+    sourceType?: string | null;
     sourceId?: string | null;
     senderType?: string | null;
     mediaUrl?: string | null;
@@ -101,7 +112,7 @@ function normalizeMessageRecord(raw: RawMessageRecord): Message {
         createdAt: raw.createdAt instanceof Date ? raw.createdAt : new Date(raw.createdAt),
         type: raw.type,
         status: raw.status ?? null,
-        sourceType: raw.sourceType === "ycloud" ? "ycloud" : "wuzapi",
+        sourceType: normalizeUiSourceType(raw.sourceType),
         sourceId: raw.sourceId ?? null,
         senderType: raw.senderType ?? null,
         mediaUrl: raw.mediaUrl ?? null,
@@ -258,7 +269,7 @@ export type Conversation = {
     isMuted: boolean;
     isFavorite: boolean;
     isGroup: boolean;
-    sourceType: "wuzapi" | "ycloud";
+    sourceType: MessageSourceType;
     sourceId?: string | null;
     botActive: boolean;
     assignedUserId?: string | null;
@@ -286,8 +297,9 @@ type WhatsAppSessionStatus = {
     loggedIn?: boolean;
     jid?: string | null;
     qrCode?: string | null;
-    ycloudConfigured?: boolean;
-    ycloudPhoneId?: string | null;
+    metaConfigured?: boolean;
+    metaPhoneNumberId?: string | null;
+    metaDisplayPhoneNumber?: string | null;
     error?: string;
 };
 
@@ -338,9 +350,9 @@ type ConversationRecord = {
     lastMessageDirection?: string | null;
     lastMessageType?: string | null;
     lastMessageSenderType?: string | null;
-    sourceType?: "wuzapi" | "ycloud" | null;
+    sourceType?: string | null;
     sourceId?: string | null;
-    lastMessageSourceType?: "wuzapi" | "ycloud" | null;
+    lastMessageSourceType?: MessageSourceType | null;
     lastMessageSourceId?: string | null;
     status?: string | null;
     isMuted?: boolean;
@@ -376,7 +388,7 @@ function transformConversation(conv: ConversationRecord): Conversation {
             senderId: null,
             direction: conv.lastMessageDirection || "inbound",
             type: conv.lastMessageType || "text",
-            sourceType: conv.lastMessageSourceType === "ycloud" ? "ycloud" : "wuzapi",
+            sourceType: normalizeUiSourceType(conv.lastMessageSourceType),
             sourceId: conv.lastMessageSourceId || null,
             senderType: conv.lastMessageSenderType || null,
         }] : [],
@@ -386,7 +398,7 @@ function transformConversation(conv: ConversationRecord): Conversation {
         isMuted: conv.isMuted || false,
         isFavorite: conv.isFavorite || false,
         isGroup: conv.isGroup || false,
-        sourceType: conv.sourceType === "ycloud" ? "ycloud" : "wuzapi",
+        sourceType: normalizeUiSourceType(conv.sourceType),
         sourceId: conv.sourceId || null,
         botActive: conv.botActive ?? true,
         assignedUserId: conv.assignedUserId ?? null,
@@ -557,15 +569,16 @@ function ConversationSourceIcon({
     sourceType: Conversation["sourceType"];
     className?: string;
 }) {
-    const isYCloud = sourceType === "ycloud";
-    const Icon = isYCloud ? CheckCircle2 : MessageSquare;
+    const isOfficialApi = sourceType === "meta";
+    const Icon = isOfficialApi ? CheckCircle2 : MessageSquare;
+    const title = isOfficialApi ? "WhatsApp Business API oficial" : "WhatsApp por QR";
 
     return (
         <span
-            title={isYCloud ? "YCloud API oficial" : "WhatsApp por QR"}
+            title={title}
             className={cn(
                 "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border shadow-sm ring-2 ring-background",
-                isYCloud
+                isOfficialApi
                     ? "border-border bg-secondary text-foreground dark:bg-secondary dark:text-foreground"
                     : "border-border bg-secondary text-foreground",
                 className,
@@ -1193,26 +1206,29 @@ export default function InboxPage() {
         whatsAppSession?.connected &&
         whatsAppSession?.loggedIn,
     );
-    const isYCloudTransportReady = Boolean(whatsAppSession?.ycloudConfigured);
-    const isWhatsAppTransportReady = outboundSourceType === "ycloud"
-        ? isYCloudTransportReady
+    const isMetaTransportReady = Boolean(whatsAppSession?.metaConfigured);
+    const isOfficialOutboundSource = outboundSourceType === "meta";
+    const isWhatsAppTransportReady = outboundSourceType === "meta"
+        ? isMetaTransportReady
         : isWuzapiTransportReady;
     const isConversationTransportReady = useCallback((conversation: Conversation) => (
-        conversation.sourceType === "ycloud" ? isYCloudTransportReady : isWuzapiTransportReady
-    ), [isWuzapiTransportReady, isYCloudTransportReady]);
+        conversation.sourceType === "meta"
+            ? isMetaTransportReady
+            : isWuzapiTransportReady
+    ), [isWuzapiTransportReady, isMetaTransportReady]);
     const shouldShowWhatsAppWarning = whatsAppSession !== null && !isWhatsAppTransportReady;
-    const isYCloudReplyWindowExpired = outboundSourceType === "ycloud" && (
+    const isOfficialReplyWindowExpired = isOfficialOutboundSource && (
         !selectedChat?.sessionExpiresAt ||
         !isWindowOpen ||
         (selectedChat?.sessionExpiresAt ? new Date(selectedChat.sessionExpiresAt).getTime() <= Date.now() : false)
     );
     const whatsAppWarningText = useMemo(() => {
-        if (outboundSourceType === "ycloud") {
-            if (!whatsAppSession?.ycloudConfigured) {
-                return "Configura YCloud API Key y Phone Number ID en Configuracion para responder desde este chat.";
+        if (outboundSourceType === "meta") {
+            if (!whatsAppSession?.metaConfigured) {
+                return "Configura WhatsApp Business oficial en Configuracion para responder desde este chat.";
             }
 
-            return "YCloud esta configurado, pero no se pudo validar el estado del canal en este momento.";
+            return "WhatsApp Business oficial esta configurado, pero no se pudo validar el estado del canal en este momento.";
         }
 
         if (whatsAppSession?.error) {
@@ -1507,14 +1523,15 @@ export default function InboxPage() {
                     loggedIn: payload?.loggedIn ?? false,
                     jid: payload?.jid || null,
                     qrCode: payload?.qrCode || null,
-                    ycloudConfigured: Boolean(payload?.ycloudConfigured),
-                    ycloudPhoneId: payload?.ycloudPhoneId || null,
+                    metaConfigured: Boolean(payload?.metaConfigured),
+                    metaPhoneNumberId: payload?.phoneNumberId || null,
+                    metaDisplayPhoneNumber: payload?.displayPhoneNumber || null,
                     error: payload?.error || undefined,
                 });
             } catch (error) {
                 setWhatsAppSession({
                     configured: false,
-                    ycloudConfigured: false,
+                    metaConfigured: false,
                     error: error instanceof Error ? error.message : "No se pudo consultar el canal de WhatsApp.",
                 });
             }
@@ -1684,7 +1701,11 @@ export default function InboxPage() {
                     const contactIdParam = searchParams.get("contactId");
                     const phoneParam = searchParams.get("phone");
                     const sourceParam = searchParams.get("sourceType") || searchParams.get("source");
-                    const requestedSource = sourceParam === "ycloud" || sourceParam === "wuzapi" ? sourceParam : null;
+                    const requestedSource = sourceParam === "meta" || sourceParam === LEGACY_OFFICIAL_SOURCE
+                        ? "meta"
+                        : sourceParam === "wuzapi"
+                            ? "wuzapi"
+                            : null;
 
                     if (conversationIdParam && transformed.length > 0) {
                         const match = transformed.find((conversation) => conversation.id === conversationIdParam);
@@ -3391,12 +3412,12 @@ export default function InboxPage() {
                             )}
 
                             {/* Window Timer */}
-                            {outboundSourceType === "ycloud" ? (
+                            {isOfficialOutboundSource ? (
                                 <WindowTimer expiresAt={selectedChat.sessionExpiresAt} onWindowChange={handleWindowChange} />
                             ) : null}
 
                             {/* Input Area — Locked when 24h window is closed */}
-                            {isYCloudReplyWindowExpired ? (
+                            {isOfficialReplyWindowExpired ? (
                                 /* ═══ LOCKED: 24h window expired ═══ */
                                 <div className="shrink-0 space-y-0">
                                     <p className="text-xs text-center text-muted-foreground px-6 py-3">
@@ -3412,7 +3433,7 @@ export default function InboxPage() {
                                             onClick={() => setTemplateModalOpen(true)}
                                         >
                                             <LayoutTemplate className="h-4 w-4" />
-                                            Mensaje de plantilla (YCloud)
+                                            Mensaje de plantilla
                                         </Button>
                                     </div>
                                 </div>
@@ -3579,7 +3600,7 @@ export default function InboxPage() {
                 )
             }
             {selectedChat && (
-                <YCloudTemplateSendModal
+                <MetaTemplateSendModal
                     open={templateModalOpen}
                     onOpenChange={setTemplateModalOpen}
                     conversationId={selectedChat.id}

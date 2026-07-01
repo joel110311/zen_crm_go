@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
                 await removeIfExists(filePath);
 
                 return NextResponse.json(
-                    { error: "El video final supera 16MB. WhatsApp/YCloud solo aceptan videos MP4 de hasta 16MB." },
+                    { error: "El video final supera 16MB. WhatsApp solo acepta videos MP4 de hasta 16MB." },
                     { status: 413 },
                 );
             }

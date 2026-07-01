@@ -9,7 +9,7 @@ import {
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 import { sendWuzapiMediaMessage, sendWuzapiTextMessage } from "@/lib/wuzapi";
-import { sendYCloudMediaMessage, sendYCloudTextMessage } from "@/lib/ycloud";
+import { sendMetaMediaMessage, sendMetaTextMessage } from "@/lib/meta-whatsapp";
 
 export type OutboundMessageType = "text" | "image" | "document" | "audio" | "video";
 
@@ -140,18 +140,18 @@ export async function sendOutboundConversationMessage(
             let providerMessageId: string | null = null;
 
             if (type === "text") {
-                const result = selectedSourceType === "ycloud"
-                    ? await sendYCloudTextMessage(conversation.contact.phone, content)
+                const result = selectedSourceType === "meta"
+                    ? await sendMetaTextMessage(conversation.contact.phone, content)
                     : await sendWuzapiTextMessage(conversation.contact.phone, content);
                 providerMessageId = result?.Id || null;
             } else if (params.mediaUrl) {
                 let result: { Id?: string | null } | null = null;
 
-                if (selectedSourceType === "ycloud") {
+                if (selectedSourceType === "meta") {
                     const appBaseUrl = (process.env.APP_BASE_URL || process.env.AUTH_URL || "").trim();
                     const publicMediaUrl = getPublicMediaUrl(params.mediaUrl, appBaseUrl);
 
-                    result = await sendYCloudMediaMessage({
+                    result = await sendMetaMediaMessage({
                         to: conversation.contact.phone,
                         mediaType: type,
                         link: publicMediaUrl,

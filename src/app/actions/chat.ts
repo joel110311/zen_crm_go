@@ -22,7 +22,7 @@ import { buildInboundMediaContext, shouldSkipAutoReplyText } from "@/lib/ai/medi
 import { maybeHandleAppointmentBooking } from "@/lib/ai/appointment-booking";
 import { processLeadAutomationTurn } from "@/lib/ai/lead-intelligence";
 import { buildPhoneMatchClauses, normalizePhoneDigits } from "@/lib/phone";
-import { sendYCloudMediaMessage, sendYCloudTextMessage } from "@/lib/ycloud";
+import { sendMetaMediaMessage, sendMetaTextMessage } from "@/lib/meta-whatsapp";
 import {
     normalizeMessageSourceType,
     resolveMessageSourceId,
@@ -130,7 +130,7 @@ export type InboundAttribution = {
     decodedCtwaPayload?: string;
 };
 
-type InboundMediaPayload = {
+export type InboundMediaPayload = {
     type?: string;
     mediaUrl?: string;
     mediaType?: string;
@@ -1094,7 +1094,7 @@ function buildPublicMediaUrl(mediaUrl: string) {
 
     const appBaseUrl = (process.env.APP_BASE_URL || process.env.AUTH_URL || "").trim();
     if (!appBaseUrl) {
-        throw new Error("APP_BASE_URL o AUTH_URL es requerido para enviar multimedia por YCloud.");
+        throw new Error("APP_BASE_URL o AUTH_URL es requerido para enviar multimedia por WhatsApp Business.");
     }
 
     return `${appBaseUrl.replace(/\/+$/, "")}${mediaUrl.startsWith("/") ? "" : "/"}${mediaUrl}`;
@@ -1198,8 +1198,8 @@ async function sendAutomatedBotText(params: {
     const source = await getAutomatedConversationSource(params.conversationId);
 
     try {
-        const transportResult = source.sourceType === "ycloud"
-            ? await sendYCloudTextMessage(params.phone, content)
+        const transportResult = source.sourceType === "meta"
+            ? await sendMetaTextMessage(params.phone, content)
             : await sendWuzapiTextMessage(params.phone, content);
 
         await prisma.message.create({
@@ -1259,8 +1259,8 @@ async function sendAutomatedBotMedia(params: {
             console.warn("[Catalog] Failed to persist automated media locally:", persistError);
         }
 
-        const result = source.sourceType === "ycloud"
-            ? await sendYCloudMediaMessage({
+        const result = source.sourceType === "meta"
+            ? await sendMetaMediaMessage({
                 to: params.phone,
                 mediaType: params.mediaCategory,
                 link: buildPublicMediaUrl(storedMediaUrl),
@@ -2441,7 +2441,7 @@ export async function processInboundMessage(
             where: { id: conversation.id },
             data: {
                 updatedAt: new Date(),
-                ...(normalizedSourceType === "ycloud"
+                ...(normalizedSourceType === "meta"
                     ? { sessionExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) }
                     : {}),
             },

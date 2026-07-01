@@ -218,7 +218,7 @@ export function WhatsAppGatewayPanel(props: Props) {
             <div>
                 <h3 className="font-semibold text-base text-foreground">Canal de WhatsApp por QR</h3>
                 <p className="text-sm text-muted-foreground">
-                    Guarda los datos del servicio, prepara la sesion QR y enlaza tu numero sin tocar la logica del CRM.
+                    Guarda los datos del servicio, prepara la sesion QR y enlaza tu numero al CRM.
                 </p>
             </div>
 
@@ -284,7 +284,7 @@ export function WhatsAppGatewayPanel(props: Props) {
                         <div>
                             <p className="font-medium">Proxy residencial opcional</p>
                             <p className="text-sm text-muted-foreground">
-                                Se enviara a WuzAPI como proxyConfig para que la sesion de WhatsApp salga por el proxy configurado.
+                                Se enviara al servicio de WhatsApp por QR para que la sesion salga por el proxy configurado.
                             </p>
                         </div>
                         <div className="flex items-start justify-between gap-4 rounded-xl border bg-background/75 px-4 py-3">

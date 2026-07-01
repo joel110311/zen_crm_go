@@ -56,22 +56,28 @@ function normalizeTemplateVariableValuesForForm(value: unknown) {
     );
 }
 
+function isOfficialCampaignSource(sourceType: CampaignFormState["sourceType"]) {
+    return sourceType === "meta";
+}
+
 function mapCampaignToForm(campaign: CampaignRecord): CampaignFormState {
+    const sourceType = campaign.sourceType === "meta" ? "meta" : "wuzapi";
+
     return {
         id: campaign.id,
         name: campaign.name,
         description: campaign.description || "",
         status: campaign.status,
-        sourceType: campaign.sourceType === "ycloud" ? "ycloud" : "wuzapi",
+        sourceType,
         sourceId: campaign.sourceId || "",
         type: normalizeCampaignTypeForForm(campaign.type),
         mediaUrl: campaign.mediaUrl,
         mediaType: campaign.mediaType,
         mediaFileName: campaign.mediaFileName,
-        ycloudTemplateName: campaign.ycloudTemplateName || "",
-        ycloudTemplateLanguage: campaign.ycloudTemplateLanguage || "",
-        ycloudTemplateComponents: normalizeTemplateComponentsForForm(campaign.ycloudTemplateComponents),
-        ycloudTemplateVariableValues: normalizeTemplateVariableValuesForForm(campaign.ycloudTemplateVariableValues),
+        metaTemplateName: campaign.metaTemplateName || "",
+        metaTemplateLanguage: campaign.metaTemplateLanguage || "",
+        metaTemplateComponents: normalizeTemplateComponentsForForm(campaign.metaTemplateComponents),
+        metaTemplateVariableValues: normalizeTemplateVariableValuesForForm(campaign.metaTemplateVariableValues),
         batchSize: campaign.batchSize,
         batchDelayMinutes: campaign.batchDelayMinutes,
         randomDelayMinSeconds: campaign.randomDelayMinSeconds,
@@ -86,7 +92,11 @@ function mapCampaignToForm(campaign: CampaignRecord): CampaignFormState {
         audienceTags: (campaign.audienceFilters?.tags || []).join(", "),
         audienceQuery: campaign.audienceFilters?.query || "",
         audienceLimit: campaign.audienceFilters?.limit ? String(campaign.audienceFilters.limit) : "",
-        audienceOnlyOpenYCloudWindow: campaign.audienceFilters?.onlyOpenYCloudWindow ?? (campaign.sourceType === "ycloud"),
+        audienceOnlyOpenMetaWindow: (
+            campaign.audienceFilters?.onlyOpenMetaWindow
+            ?? campaign.audienceFilters?.onlyOpenOfficialWindow
+            ?? isOfficialCampaignSource(sourceType)
+        ),
         audienceLastInboundFrom: toLocalDateTimeValue(campaign.audienceFilters?.lastInboundFrom || null),
         audienceLastInboundTo: toLocalDateTimeValue(campaign.audienceFilters?.lastInboundTo || null),
         audienceSelectedContactIds: campaign.audienceFilters?.selectedContactIds || [],
@@ -209,9 +219,9 @@ export function BulkCampaignManagerPanel() {
         tags: splitCommaSeparatedValues(form.audienceTags),
         query: form.audienceQuery,
         limit: form.audienceLimit.trim() ? Number.parseInt(form.audienceLimit, 10) : null,
-        sourceType: form.sourceType === "ycloud" && form.type !== "template" ? "ycloud" : "any",
+        sourceType: isOfficialCampaignSource(form.sourceType) && form.type !== "template" ? form.sourceType : "any",
         sourceId: form.sourceId.trim(),
-        onlyOpenYCloudWindow: form.sourceType === "ycloud" && form.type !== "template" ? form.audienceOnlyOpenYCloudWindow : false,
+        onlyOpenMetaWindow: isOfficialCampaignSource(form.sourceType) && form.type !== "template" ? form.audienceOnlyOpenMetaWindow : false,
         lastInboundFrom: form.audienceLastInboundFrom ? new Date(form.audienceLastInboundFrom).toISOString() : "",
         lastInboundTo: form.audienceLastInboundTo ? new Date(form.audienceLastInboundTo).toISOString() : "",
         selectedContactIds: form.audienceSelectedContactIds,
@@ -221,7 +231,7 @@ export function BulkCampaignManagerPanel() {
         form.audienceLimit,
         form.audienceLastInboundFrom,
         form.audienceLastInboundTo,
-        form.audienceOnlyOpenYCloudWindow,
+        form.audienceOnlyOpenMetaWindow,
         form.audienceQuery,
         form.audienceSelectedContactIds,
         form.audienceStatuses,
@@ -315,10 +325,10 @@ export function BulkCampaignManagerPanel() {
                 mediaUrl: form.type === "text" || form.type === "template" ? null : form.mediaUrl,
                 mediaType: form.type === "text" || form.type === "template" ? null : form.mediaType,
                 mediaFileName: form.type === "text" || form.type === "template" ? null : form.mediaFileName,
-                ycloudTemplateName: form.type === "template" ? form.ycloudTemplateName : null,
-                ycloudTemplateLanguage: form.type === "template" ? form.ycloudTemplateLanguage : null,
-                ycloudTemplateComponents: form.type === "template" ? form.ycloudTemplateComponents : null,
-                ycloudTemplateVariableValues: form.type === "template" ? form.ycloudTemplateVariableValues : null,
+                metaTemplateName: form.type === "template" ? form.metaTemplateName : null,
+                metaTemplateLanguage: form.type === "template" ? form.metaTemplateLanguage : null,
+                metaTemplateComponents: form.type === "template" ? form.metaTemplateComponents : null,
+                metaTemplateVariableValues: form.type === "template" ? form.metaTemplateVariableValues : null,
                 batchSize: form.batchSize,
                 batchDelayMinutes: form.batchDelayMinutes,
                 randomDelayMinSeconds: form.randomDelayMinSeconds,
@@ -640,15 +650,15 @@ export function BulkCampaignManagerPanel() {
                                         mediaUrl: value === "wuzapi" && current.type === "template" ? null : current.mediaUrl,
                                         mediaType: value === "wuzapi" && current.type === "template" ? null : current.mediaType,
                                         mediaFileName: value === "wuzapi" && current.type === "template" ? null : current.mediaFileName,
-                                        ycloudTemplateName: value === "wuzapi" ? "" : current.ycloudTemplateName,
-                                        ycloudTemplateLanguage: value === "wuzapi" ? "" : current.ycloudTemplateLanguage,
-                                        ycloudTemplateComponents: value === "wuzapi" ? [] : current.ycloudTemplateComponents,
-                                        ycloudTemplateVariableValues: value === "wuzapi" ? {} : current.ycloudTemplateVariableValues,
-                                        audienceOnlyOpenYCloudWindow: value === "ycloud" && current.type !== "template"
+                                        metaTemplateName: value === "wuzapi" ? "" : current.metaTemplateName,
+                                        metaTemplateLanguage: value === "wuzapi" ? "" : current.metaTemplateLanguage,
+                                        metaTemplateComponents: value === "wuzapi" ? [] : current.metaTemplateComponents,
+                                        metaTemplateVariableValues: value === "wuzapi" ? {} : current.metaTemplateVariableValues,
+                                        audienceOnlyOpenMetaWindow: isOfficialCampaignSource(value) && current.type !== "template"
                                             ? true
-                                            : current.audienceOnlyOpenYCloudWindow,
-                                        audienceMode: value === "ycloud" && current.type !== "template" ? "filters" : current.audienceMode,
-                                        followUpCount: value === "ycloud" ? 0 : current.followUpCount,
+                                            : current.audienceOnlyOpenMetaWindow,
+                                        audienceMode: isOfficialCampaignSource(value) && current.type !== "template" ? "filters" : current.audienceMode,
+                                        followUpCount: isOfficialCampaignSource(value) ? 0 : current.followUpCount,
                                     }))
                                 }
                             >
@@ -657,12 +667,12 @@ export function BulkCampaignManagerPanel() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="wuzapi">WhatsApp por QR</SelectItem>
-                                    <SelectItem value="ycloud">WhatsApp API YCloud</SelectItem>
+                                    <SelectItem value="meta">WhatsApp Business oficial</SelectItem>
                                 </SelectContent>
                             </Select>
                             <p className="text-xs text-muted-foreground">
-                                {form.sourceType === "ycloud"
-                                    ? "YCloud solo enviara mensajes libres a ventanas abiertas; fuera de ventana usa Plantillas YCloud."
+                                {isOfficialCampaignSource(form.sourceType)
+                                    ? "WhatsApp Business oficial solo envia mensajes libres a ventanas abiertas; fuera de ventana usa plantillas aprobadas."
                                     : "WhatsApp por QR mantiene el envio masivo actual sin regla de ventana 24h."}
                             </p>
                         </div>
@@ -674,20 +684,20 @@ export function BulkCampaignManagerPanel() {
                                     setForm((current) => ({
                                         ...current,
                                         type: value,
-                                        sourceType: value === "template" ? "ycloud" : current.sourceType,
+                                        sourceType: value === "template" ? "meta" : current.sourceType,
                                         mediaUrl: value === "text" || value === "template" ? null : current.mediaUrl,
                                         mediaType: value === "text" || value === "template" ? null : current.mediaType,
                                         mediaFileName: value === "text" || value === "template" ? null : current.mediaFileName,
-                                        ycloudTemplateName: value === "template" ? current.ycloudTemplateName : "",
-                                        ycloudTemplateLanguage: value === "template" ? current.ycloudTemplateLanguage : "",
-                                        ycloudTemplateComponents: value === "template" ? current.ycloudTemplateComponents : [],
-                                        ycloudTemplateVariableValues: value === "template" ? current.ycloudTemplateVariableValues : {},
-                                        audienceOnlyOpenYCloudWindow: value === "template"
+                                        metaTemplateName: value === "template" ? current.metaTemplateName : "",
+                                        metaTemplateLanguage: value === "template" ? current.metaTemplateLanguage : "",
+                                        metaTemplateComponents: value === "template" ? current.metaTemplateComponents : [],
+                                        metaTemplateVariableValues: value === "template" ? current.metaTemplateVariableValues : {},
+                                        audienceOnlyOpenMetaWindow: value === "template"
                                             ? false
-                                            : current.sourceType === "ycloud"
+                                            : isOfficialCampaignSource(current.sourceType)
                                                 ? true
-                                                : current.audienceOnlyOpenYCloudWindow,
-                                        followUpCount: value === "template" || current.sourceType === "ycloud" ? 0 : current.followUpCount,
+                                                : current.audienceOnlyOpenMetaWindow,
+                                        followUpCount: value === "template" || isOfficialCampaignSource(current.sourceType) ? 0 : current.followUpCount,
                                     }))
                                 }
                             >
@@ -698,7 +708,7 @@ export function BulkCampaignManagerPanel() {
                                     <SelectItem value="text">Solo texto</SelectItem>
                                     <SelectItem value="image">Imagen + caption</SelectItem>
                                     <SelectItem value="document">Documento + caption</SelectItem>
-                                    <SelectItem value="template">Plantilla Meta/YCloud</SelectItem>
+                                    <SelectItem value="template">Plantilla oficial Meta</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
