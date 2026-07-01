@@ -103,6 +103,15 @@ type EmbeddedSignupSession = {
     businessId: string;
 };
 
+type EmbeddedSignupConfigResponse = {
+    ok?: boolean;
+    appId?: string | null;
+    configId?: string | null;
+    solutionId?: string | null;
+    graphApiVersion?: string | null;
+    error?: string;
+};
+
 declare global {
     interface Window {
         FB?: FacebookSdk;
@@ -208,6 +217,14 @@ function generateToken() {
     return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function isNumericMetaAppId(value: string) {
+    return /^\d+$/.test(value.trim());
+}
+
+function formatSignupIssues(issues: string[]) {
+    return issues.join(" | ");
+}
+
 export function MetaWhatsAppPanel(props: Props) {
     const { toast } = useToast();
     const [session, setSession] = useState<SessionState>({ configured: false });
@@ -216,18 +233,41 @@ export function MetaWhatsAppPanel(props: Props) {
     const [embeddedSession, setEmbeddedSession] = useState<EmbeddedSignupSession | null>(null);
     const [clearChatsOnDelete, setClearChatsOnDelete] = useState(false);
     const [browserBaseUrl, setBrowserBaseUrl] = useState("");
+    const [showTechnicalSettings, setShowTechnicalSettings] = useState(false);
     const finalizeInFlightRef = useRef(false);
 
-    const graphApiVersion = normalizeGraphVersion(props.whatsappGraphApiVersion);
+    const effectiveMetaAppId = (session.appId || props.whatsappMetaAppId || "").trim();
+    const effectiveConfigId = (session.configId || props.whatsappEmbeddedSignupConfigId || "").trim();
+    const effectiveSolutionId = (session.solutionId || props.whatsappTechProviderSolutionId || "").trim();
+    const graphApiVersion = normalizeGraphVersion(session.graphApiVersion || props.whatsappGraphApiVersion);
+    const providerConfigReady = Boolean(effectiveMetaAppId && effectiveConfigId && session.appSecretConfigured);
     const effectiveWebhookBaseUrl = useMemo(() => (
         props.whatsappWebhookBaseUrl.trim() || session.webhookBaseUrl || browserBaseUrl
     ).replace(/\/+$/, ""), [browserBaseUrl, props.whatsappWebhookBaseUrl, session.webhookBaseUrl]);
     const webhookEndpoint = `${effectiveWebhookBaseUrl}/api/webhooks/whatsapp`;
     const isConnected = Boolean(session.connected || session.metaConfigured);
-    const canStartSignup = Boolean(
-        props.whatsappMetaAppId.trim() &&
-        props.whatsappEmbeddedSignupConfigId.trim(),
-    );
+    const signupIssues = useMemo(() => {
+        const issues: string[] = [];
+        const appId = effectiveMetaAppId;
+        const hasAppSecret = Boolean(props.whatsappMetaAppSecret.trim() || session.appSecretConfigured);
+
+        if (!appId) {
+            issues.push("Meta App ID");
+        } else if (!isNumericMetaAppId(appId)) {
+            issues.push("Meta App ID debe ser numerico, no correo");
+        }
+
+        if (!hasAppSecret) issues.push("App Secret");
+        if (!effectiveConfigId) issues.push("Configuration ID");
+
+        return issues;
+    }, [
+        effectiveConfigId,
+        effectiveMetaAppId,
+        props.whatsappMetaAppSecret,
+        session.appSecretConfigured,
+    ]);
+    const canStartSignup = signupIssues.length === 0;
     const usesPublicHttps = effectiveWebhookBaseUrl.startsWith("https://");
     const canOpenEmbeddedSignup = usesPublicHttps || isLocalOrigin(effectiveWebhookBaseUrl);
 
@@ -364,7 +404,7 @@ export function MetaWhatsAppPanel(props: Props) {
         if (!canStartSignup) {
             toast({
                 title: "Falta configuracion Meta",
-                description: "Captura Meta App ID y Configuration ID antes de abrir el signup.",
+                description: `Configura estos datos de proveedor antes de abrir Meta: ${formatSignupIssues(signupIssues)}.`,
                 variant: "destructive",
             });
             return;
@@ -381,14 +421,34 @@ export function MetaWhatsAppPanel(props: Props) {
 
         setIsWorking(true);
         try {
-            const saved = await props.onSave();
-            if (!saved) return;
+            if (!providerConfigReady || showTechnicalSettings) {
+                const saved = await props.onSave();
+                if (!saved) return;
+            }
+
+            const configResponse = await fetch("/api/whatsapp/embedded-signup", { cache: "no-store" });
+            const configPayload = await configResponse.json().catch(() => null) as EmbeddedSignupConfigResponse | null;
+            if (!configResponse.ok || !configPayload?.ok) {
+                throw new Error(configPayload?.error || "Falta configuracion de proveedor para Embedded Signup.");
+            }
+
+            const signupAppId = (configPayload.appId || effectiveMetaAppId).trim();
+            const signupConfigId = (configPayload.configId || effectiveConfigId).trim();
+            const signupSolutionId = (configPayload.solutionId || effectiveSolutionId || "").trim();
+            const signupGraphApiVersion = normalizeGraphVersion(configPayload.graphApiVersion || graphApiVersion);
+
+            if (!signupAppId || !isNumericMetaAppId(signupAppId)) {
+                throw new Error("Meta App ID debe ser el identificador numerico de la app de proveedor.");
+            }
+            if (!signupConfigId) {
+                throw new Error("Falta Configuration ID de Facebook Login for Business.");
+            }
 
             setEmbeddedCode("");
             setEmbeddedSession(null);
             finalizeInFlightRef.current = false;
 
-            await loadFacebookSdk(props.whatsappMetaAppId.trim(), graphApiVersion);
+            await loadFacebookSdk(signupAppId, signupGraphApiVersion);
             if (!window.FB) {
                 throw new Error("Facebook SDK no quedo disponible.");
             }
@@ -408,13 +468,13 @@ export function MetaWhatsAppPanel(props: Props) {
                 }
                 setEmbeddedCode(code);
             }, {
-                config_id: props.whatsappEmbeddedSignupConfigId.trim(),
+                config_id: signupConfigId,
                 response_type: "code",
                 override_default_response_type: true,
                 auth_type: "rerequest",
                 extras: {
-                    setup: props.whatsappTechProviderSolutionId.trim()
-                        ? { solutionID: props.whatsappTechProviderSolutionId.trim() }
+                    setup: signupSolutionId
+                        ? { solutionID: signupSolutionId }
                         : {},
                     featureType: "",
                     sessionInfoVersion: 3,
@@ -466,23 +526,50 @@ export function MetaWhatsAppPanel(props: Props) {
                             <div>
                                 <h2 className="text-2xl font-semibold">Conexion de WhatsApp Business</h2>
                                 <p className="mt-2 text-sm text-muted-foreground">
-                                    Guarda tus datos de Meta y abre el popup oficial para seleccionar o crear la cuenta de WhatsApp Business.
+                                    Tu cliente abre el popup oficial de Meta para seleccionar o crear su cuenta de WhatsApp Business bajo tu proveedor.
                                 </p>
                             </div>
                             <Button
                                 onClick={handleEmbeddedSignup}
-                                disabled={props.isSaving || isWorking || !canStartSignup}
+                                disabled={props.isSaving || isWorking}
                                 className="h-11 w-full max-w-md text-base font-semibold"
                             >
                                 {isWorking ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}
                                 Conectar mi WhatsApp
                             </Button>
+                            {!canStartSignup ? (
+                                <p className="mx-auto max-w-md text-xs text-muted-foreground">
+                                    El boton queda disponible; si falta configuracion te dire que dato completar antes de abrir Meta.
+                                </p>
+                            ) : null}
                             <p className="text-xs text-muted-foreground">
                                 Cliente: <span className="font-medium">{props.whatsappInstanceName || "zen-crm"}</span>
                             </p>
                         </div>
                     </div>
 
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-muted/20 p-4">
+                        <div>
+                            <p className="text-sm font-medium">
+                                {providerConfigReady ? "Configuracion de proveedor lista" : "Configuracion de proveedor pendiente"}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                                {providerConfigReady
+                                    ? "El cliente no necesita capturar credenciales: el boton usa tu App ID, Configuration ID y Secret del servidor."
+                                    : "Completa los ajustes tecnicos o configura las variables de entorno del proveedor antes de conectar clientes."}
+                            </p>
+                        </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setShowTechnicalSettings((value) => !value)}
+                        >
+                            {showTechnicalSettings ? "Ocultar ajustes tecnicos" : "Ver ajustes tecnicos"}
+                        </Button>
+                    </div>
+
+                    {showTechnicalSettings ? (
                     <div className="grid gap-4 rounded-2xl border bg-muted/20 p-4 lg:grid-cols-2">
                         <div className="space-y-2">
                             <Label>Nombre interno del canal</Label>
@@ -507,6 +594,11 @@ export function MetaWhatsAppPanel(props: Props) {
                                 onChange={(event) => props.onChange("whatsappMetaAppId", event.target.value)}
                                 placeholder="123456789012345"
                             />
+                            {props.whatsappMetaAppId.trim() && !isNumericMetaAppId(props.whatsappMetaAppId) ? (
+                                <p className="text-xs text-destructive">
+                                    Usa el identificador numerico de la app de Meta, no el correo.
+                                </p>
+                            ) : null}
                         </div>
                         <div className="space-y-2">
                             <Label>App Secret</Label>
@@ -572,6 +664,7 @@ export function MetaWhatsAppPanel(props: Props) {
                             ) : null}
                         </div>
                     </div>
+                    ) : null}
 
                     <div className="space-y-3 rounded-2xl border bg-muted/20 p-4">
                         <div>

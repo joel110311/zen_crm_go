@@ -3,11 +3,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { withSettingsDefaults } from "@/lib/system-settings";
 
+function maskClientSettings(settings: ReturnType<typeof withSettingsDefaults>) {
+    return {
+        ...settings,
+        openaiApiKey: "",
+        geminiApiKey: "",
+        whatsappAdminToken: "",
+        whatsappUserToken: "",
+        whatsappProxyUrl: "",
+        whatsappAccessToken: "",
+        whatsappMetaAppSecret: "",
+        whatsappRegistrationPin: "",
+        whatsappWebhookVerifyToken: "",
+        googleClientSecret: "",
+    };
+}
+
 export async function GET() {
     console.log("[API] GET /api/settings called");
     try {
         const settings = await prisma.systemSettings.findFirst();
-        return NextResponse.json(withSettingsDefaults(settings));
+        return NextResponse.json(maskClientSettings(withSettingsDefaults(settings)));
     } catch (error) {
         console.error("[API] Failed to get settings:", error);
         return NextResponse.json({ error: "Failed to get settings" }, { status: 500 });
@@ -54,7 +70,7 @@ export async function POST(request: NextRequest) {
         ] as const;
 
         for (const field of secretFields) {
-            if (data[field] === "" && existing?.[field]) {
+            if (data[field] === "") {
                 delete data[field];
             }
         }

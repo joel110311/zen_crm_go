@@ -86,6 +86,10 @@ function normalizeGraphApiVersion(value: string | null | undefined) {
     return normalized.startsWith("v") ? normalized : `v${normalized}`;
 }
 
+function providerSetting(envName: string, databaseValue: string | null | undefined) {
+    return (process.env[envName] || databaseValue || "").trim();
+}
+
 function graphBaseUrl(version?: string | null) {
     const normalizedVersion = normalizeGraphApiVersion(version);
     return `https://graph.facebook.com/${normalizedVersion.replace(/^\/+|\/+$/g, "")}`;
@@ -140,14 +144,19 @@ export class MetaWhatsAppApiError extends Error {
 
 export async function getMetaEmbeddedSignupConfig(): Promise<MetaEmbeddedSignupConfig> {
     const settings = await getSystemSettingsOrDefaults();
-    const appId = (settings.whatsappMetaAppId || process.env.META_APP_ID || "").trim();
-    const appSecret = (settings.whatsappMetaAppSecret || process.env.META_APP_SECRET || "").trim();
-    const configId = (settings.whatsappEmbeddedSignupConfigId || process.env.META_EMBEDDED_SIGNUP_CONFIG_ID || "").trim();
-    const solutionId = (settings.whatsappTechProviderSolutionId || process.env.META_TECH_PROVIDER_SOLUTION_ID || "").trim();
-    const graphApiVersion = normalizeGraphApiVersion(settings.whatsappGraphApiVersion);
-    const registrationPin = (settings.whatsappRegistrationPin || process.env.WHATSAPP_REGISTRATION_PIN || "").trim();
-    const webhookVerifyToken = (settings.whatsappWebhookVerifyToken || process.env.WEBHOOK_VERIFY_TOKEN || "").trim();
-    const webhookBaseUrl = (settings.whatsappWebhookBaseUrl || process.env.WHATSAPP_WEBHOOK_BASE_URL || "").trim().replace(/\/+$/, "");
+    const appId = providerSetting("META_APP_ID", settings.whatsappMetaAppId);
+    const appSecret = providerSetting("META_APP_SECRET", settings.whatsappMetaAppSecret);
+    const configId = providerSetting("META_EMBEDDED_SIGNUP_CONFIG_ID", settings.whatsappEmbeddedSignupConfigId);
+    const solutionId = providerSetting("META_TECH_PROVIDER_SOLUTION_ID", settings.whatsappTechProviderSolutionId);
+    const graphApiVersion = normalizeGraphApiVersion(process.env.META_GRAPH_API_VERSION || settings.whatsappGraphApiVersion);
+    const registrationPin = providerSetting("WHATSAPP_REGISTRATION_PIN", settings.whatsappRegistrationPin);
+    const webhookVerifyToken = (
+        process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN ||
+        process.env.WEBHOOK_VERIFY_TOKEN ||
+        settings.whatsappWebhookVerifyToken ||
+        ""
+    ).trim();
+    const webhookBaseUrl = providerSetting("WHATSAPP_WEBHOOK_BASE_URL", settings.whatsappWebhookBaseUrl).replace(/\/+$/, "");
 
     if (!appId) {
         throw new MetaWhatsAppConfigError("Falta Meta App ID para Embedded Signup.");
@@ -201,13 +210,19 @@ export async function getMetaWhatsAppSessionSnapshot() {
     const phoneNumberId = (settings.whatsappPhoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
     const wabaId = (settings.whatsappWabaId || process.env.WHATSAPP_WABA_ID || "").trim();
     const displayPhoneNumber = (settings.whatsappDisplayPhoneNumber || process.env.WHATSAPP_DISPLAY_PHONE_NUMBER || "").trim();
-    const appId = (settings.whatsappMetaAppId || process.env.META_APP_ID || "").trim();
-    const configId = (settings.whatsappEmbeddedSignupConfigId || process.env.META_EMBEDDED_SIGNUP_CONFIG_ID || "").trim();
-    const solutionId = (settings.whatsappTechProviderSolutionId || process.env.META_TECH_PROVIDER_SOLUTION_ID || "").trim();
-    const graphApiVersion = normalizeGraphApiVersion(settings.whatsappGraphApiVersion);
-    const webhookVerifyToken = (settings.whatsappWebhookVerifyToken || process.env.WEBHOOK_VERIFY_TOKEN || "").trim();
-    const webhookBaseUrl = (settings.whatsappWebhookBaseUrl || process.env.WHATSAPP_WEBHOOK_BASE_URL || "").trim().replace(/\/+$/, "");
-    const registrationPin = (settings.whatsappRegistrationPin || process.env.WHATSAPP_REGISTRATION_PIN || "").trim();
+    const appId = providerSetting("META_APP_ID", settings.whatsappMetaAppId);
+    const configId = providerSetting("META_EMBEDDED_SIGNUP_CONFIG_ID", settings.whatsappEmbeddedSignupConfigId);
+    const solutionId = providerSetting("META_TECH_PROVIDER_SOLUTION_ID", settings.whatsappTechProviderSolutionId);
+    const graphApiVersion = normalizeGraphApiVersion(process.env.META_GRAPH_API_VERSION || settings.whatsappGraphApiVersion);
+    const webhookVerifyToken = (
+        process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN ||
+        process.env.WEBHOOK_VERIFY_TOKEN ||
+        settings.whatsappWebhookVerifyToken ||
+        ""
+    ).trim();
+    const webhookBaseUrl = providerSetting("WHATSAPP_WEBHOOK_BASE_URL", settings.whatsappWebhookBaseUrl).replace(/\/+$/, "");
+    const registrationPin = providerSetting("WHATSAPP_REGISTRATION_PIN", settings.whatsappRegistrationPin);
+    const appSecret = providerSetting("META_APP_SECRET", settings.whatsappMetaAppSecret);
     const configured = Boolean(accessToken && phoneNumberId);
 
     return {
@@ -228,7 +243,7 @@ export async function getMetaWhatsAppSessionSnapshot() {
         webhookVerifyToken: webhookVerifyToken || null,
         webhookBaseUrl: webhookBaseUrl || null,
         registrationPinConfigured: Boolean(registrationPin),
-        appSecretConfigured: Boolean(settings.whatsappMetaAppSecret || process.env.META_APP_SECRET),
+        appSecretConfigured: Boolean(appSecret),
     };
 }
 
@@ -374,12 +389,17 @@ async function subscribeWabaToApp(wabaId: string, accessToken: string, config: M
 
 export async function getMetaWebhookVerifyToken() {
     const settings = await getSystemSettingsOrDefaults();
-    return (settings.whatsappWebhookVerifyToken || process.env.WEBHOOK_VERIFY_TOKEN || "").trim();
+    return (
+        process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN ||
+        process.env.WEBHOOK_VERIFY_TOKEN ||
+        settings.whatsappWebhookVerifyToken ||
+        ""
+    ).trim();
 }
 
 export async function verifyMetaWebhookSignature(rawBody: string, signatureHeader: string | null) {
     const settings = await getSystemSettingsOrDefaults();
-    const appSecret = (settings.whatsappMetaAppSecret || process.env.META_APP_SECRET || "").trim();
+    const appSecret = providerSetting("META_APP_SECRET", settings.whatsappMetaAppSecret);
     if (!appSecret || !signatureHeader?.startsWith("sha256=")) return false;
 
     const expected = crypto
