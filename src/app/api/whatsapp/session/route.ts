@@ -30,11 +30,140 @@ async function getMetaSessionSnapshot() {
     }
 }
 
+type WuzapiSessionStatus = Awaited<ReturnType<typeof getWuzapiSessionStatus>>;
+
+function readFirstField(record: Record<string, unknown>, keys: string[]) {
+    for (const key of keys) {
+        if (key in record && record[key] !== undefined && record[key] !== null) {
+            return record[key];
+        }
+    }
+
+    return undefined;
+}
+
+function parseBooleanLike(value: unknown): boolean | undefined {
+    if (typeof value === "boolean") {
+        return value;
+    }
+
+    if (typeof value === "number") {
+        return value === 1 ? true : value === 0 ? false : undefined;
+    }
+
+    if (typeof value !== "string") {
+        return undefined;
+    }
+
+    const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+    if (!normalized) {
+        return undefined;
+    }
+
+    if ([
+        "1",
+        "true",
+        "yes",
+        "connected",
+        "online",
+        "open",
+        "active",
+        "ready",
+        "paired",
+        "loggedin",
+        "logged_in",
+        "authenticated",
+    ].includes(normalized)) {
+        return true;
+    }
+
+    if ([
+        "0",
+        "false",
+        "no",
+        "disconnected",
+        "offline",
+        "closed",
+        "inactive",
+        "not_connected",
+        "loggedout",
+        "logged_out",
+        "unauthenticated",
+    ].includes(normalized)) {
+        return false;
+    }
+
+    return undefined;
+}
+
+function stringifyField(value: unknown): string | undefined {
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        return trimmed || undefined;
+    }
+
+    if (typeof value === "number") {
+        return String(value);
+    }
+
+    return undefined;
+}
+
+function normalizeWuzapiSessionStatus(status: WuzapiSessionStatus): WuzapiSessionStatus {
+    const record = status as Record<string, unknown>;
+    const jid = stringifyField(readFirstField(record, [
+        "jid",
+        "JID",
+        "Jid",
+        "user",
+        "User",
+        "me",
+        "Me",
+        "phone",
+        "Phone",
+        "number",
+        "Number",
+    ]));
+    const connectedValue = readFirstField(record, [
+        "connected",
+        "Connected",
+        "isConnected",
+        "IsConnected",
+        "status",
+        "Status",
+        "state",
+        "State",
+    ]);
+    const loggedInValue = readFirstField(record, [
+        "loggedIn",
+        "LoggedIn",
+        "isLoggedIn",
+        "IsLoggedIn",
+        "logged_in",
+        "authenticated",
+        "Authenticated",
+        "isAuthenticated",
+        "IsAuthenticated",
+    ]);
+    const connected = parseBooleanLike(connectedValue);
+    const loggedIn = parseBooleanLike(loggedInValue);
+    const hasLinkedIdentity = Boolean(jid && (jid.includes("@s.whatsapp.net") || /\d{8,}/.test(jid)));
+    const normalizedLoggedIn = loggedIn ?? (hasLinkedIdentity ? true : connected ?? false);
+    const normalizedConnected = connected ?? (hasLinkedIdentity && normalizedLoggedIn ? true : false);
+
+    return {
+        ...status,
+        connected: normalizedConnected,
+        loggedIn: normalizedLoggedIn,
+        jid: jid ?? status.jid,
+    };
+}
+
 export async function GET(request: NextRequest) {
     try {
         const meta = await getMetaSessionSnapshot();
         const includeQr = request.nextUrl.searchParams.get("includeQr") === "1";
-        const status = await getWuzapiSessionStatus();
+        const status = normalizeWuzapiSessionStatus(await getWuzapiSessionStatus());
 
         let qrCode: string | undefined;
         if (includeQr && !status.loggedIn) {
@@ -65,10 +194,17 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        return NextResponse.json(
-            { configured: true, ...meta, error: error instanceof Error ? error.message : "No se pudo consultar WhatsApp" },
-            { status: 500 },
-        );
+        return NextResponse.json({
+            configured: true,
+            ...meta,
+            connected: false,
+            loggedIn: false,
+            qrConfigured: true,
+            qrConnected: false,
+            qrLoggedIn: false,
+            metaConfigured: Boolean(meta.metaConfigured),
+            error: error instanceof Error ? error.message : "No se pudo consultar WhatsApp",
+        });
     }
 }
 
@@ -90,7 +226,7 @@ export async function POST(request: NextRequest) {
             await ensureWuzapiUserToken();
             await provisionWuzapiInstance(request.nextUrl.origin);
             await connectWuzapiSession();
-            const status = await getWuzapiSessionStatus();
+            const status = normalizeWuzapiSessionStatus(await getWuzapiSessionStatus());
             let qrCode: string | undefined;
             if (!status.loggedIn) {
                 try {

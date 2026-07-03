@@ -295,6 +295,9 @@ type WhatsAppSessionStatus = {
     configured: boolean;
     connected?: boolean;
     loggedIn?: boolean;
+    qrConfigured?: boolean;
+    qrConnected?: boolean;
+    qrLoggedIn?: boolean;
     jid?: string | null;
     qrCode?: string | null;
     metaConfigured?: boolean;
@@ -1201,11 +1204,10 @@ export default function InboxPage() {
     );
     const outboundSourceType = selectedChat?.sourceType || "wuzapi";
 
-    const isWuzapiTransportReady = Boolean(
-        whatsAppSession?.configured &&
-        whatsAppSession?.connected &&
-        whatsAppSession?.loggedIn,
-    );
+    const isQrConfigured = Boolean(whatsAppSession?.configured || whatsAppSession?.qrConfigured);
+    const isQrConnected = Boolean(whatsAppSession?.connected || whatsAppSession?.qrConnected);
+    const isQrLoggedIn = Boolean(whatsAppSession?.loggedIn || whatsAppSession?.qrLoggedIn);
+    const isWuzapiTransportReady = Boolean(isQrConfigured && isQrConnected && isQrLoggedIn);
     const isMetaTransportReady = Boolean(whatsAppSession?.metaConfigured);
     const isOfficialOutboundSource = outboundSourceType === "meta";
     const isWhatsAppTransportReady = outboundSourceType === "meta"
@@ -1235,16 +1237,16 @@ export default function InboxPage() {
             return whatsAppSession.error;
         }
 
-        if (!whatsAppSession?.configured) {
+        if (!isQrConfigured) {
             return "Configura el canal en Configuracion para poder enviar y recibir mensajes desde el inbox.";
         }
 
-        if (whatsAppSession?.loggedIn && !whatsAppSession?.connected) {
+        if (isQrLoggedIn && !isQrConnected) {
             return "Hay un numero vinculado, pero el canal esta pausado. Reconectalo antes de responder desde Chats.";
         }
 
         return "No hay un numero de WhatsApp vinculado al CRM. Conectalo en Configuracion para enviar mensajes, usar plantillas y adjuntar archivos.";
-    }, [outboundSourceType, whatsAppSession]);
+    }, [isQrConfigured, isQrConnected, isQrLoggedIn, outboundSourceType, whatsAppSession]);
 
     const refreshConversationsAndSelect = useCallback(async (conversationId: string) => {
         const url = new URL("/api/chat", window.location.origin);
@@ -1518,9 +1520,12 @@ export default function InboxPage() {
                 const payload = await response.json();
 
                 setWhatsAppSession({
-                    configured: Boolean(payload?.configured),
-                    connected: payload?.connected ?? false,
-                    loggedIn: payload?.loggedIn ?? false,
+                    configured: Boolean(payload?.configured || payload?.qrConfigured),
+                    connected: Boolean(payload?.connected ?? payload?.qrConnected ?? false),
+                    loggedIn: Boolean(payload?.loggedIn ?? payload?.qrLoggedIn ?? false),
+                    qrConfigured: Boolean(payload?.qrConfigured),
+                    qrConnected: Boolean(payload?.qrConnected),
+                    qrLoggedIn: Boolean(payload?.qrLoggedIn),
                     jid: payload?.jid || null,
                     qrCode: payload?.qrCode || null,
                     metaConfigured: Boolean(payload?.metaConfigured),

@@ -23,6 +23,7 @@ export async function GET() {
             configId: config.configId,
             solutionId: config.solutionId || null,
             graphApiVersion: config.graphApiVersion,
+            signupBaseUrl: config.signupBaseUrl || null,
             webhookBaseUrl: config.webhookBaseUrl || null,
             webhookConfigured: Boolean(config.webhookBaseUrl && config.webhookVerifyToken),
             registrationPinConfigured: Boolean(config.registrationPin),

@@ -6,6 +6,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { fetchMetaMedia, getMetaWebhookVerifyToken, verifyMetaWebhookSignature } from "@/lib/meta-whatsapp";
 import { MESSAGE_SOURCE_META } from "@/lib/message-source";
+import { buildPhoneMatchClauses, normalizePhoneDigits, uniquePhoneCandidates } from "@/lib/phone";
+import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 import { processInboundMessage, type InboundMediaPayload } from "@/app/actions/chat";
 
 type MetaWebhookPayload = {
@@ -32,12 +34,16 @@ type MetaMessagesValue = {
         };
     }>;
     messages?: MetaInboundMessage[];
+    message_echoes?: MetaInboundMessage[];
     statuses?: MetaMessageStatus[];
 };
 
 type MetaInboundMessage = {
     from?: string;
+    to?: string;
+    recipient_id?: string;
     id?: string;
+    is_echo?: boolean;
     timestamp?: string;
     type?: string;
     text?: { body?: string };
@@ -169,6 +175,179 @@ function contactNameFor(value: MetaMessagesValue, from: string) {
     return value.contacts?.find((contact) => contact.wa_id === from)?.profile?.name;
 }
 
+function normalizeContactName(name?: string | null) {
+    const normalized = (name || "").trim();
+    return normalized.length > 0 ? normalized : undefined;
+}
+
+function resolveEchoCustomerPhone(value: MetaMessagesValue, message: MetaInboundMessage) {
+    const businessPhone = normalizePhoneDigits(value.metadata?.display_phone_number || "");
+    const from = normalizePhoneDigits(message.from || "");
+    const candidates = uniquePhoneCandidates([
+        message.to,
+        message.recipient_id,
+        value.contacts?.[0]?.wa_id,
+        from && from !== businessPhone ? from : null,
+    ]);
+
+    return candidates[0] || "";
+}
+
+async function findContactByPhoneCandidates(candidates: string[]) {
+    const phoneClauses = buildPhoneMatchClauses(candidates);
+    if (phoneClauses.length === 0) return null;
+
+    return prisma.contact.findFirst({
+        where: {
+            OR: phoneClauses,
+        },
+    });
+}
+
+async function storeMetaOutboundEcho(value: MetaMessagesValue, message: MetaInboundMessage, phoneNumberId: string) {
+    const providerMessageId = message.id || "";
+    const customerPhone = resolveEchoCustomerPhone(value, message);
+
+    if (!providerMessageId || !customerPhone) {
+        console.warn("[Meta Webhook] Eco saliente ignorado: faltan identificadores", {
+            providerMessageId,
+            customerPhone,
+            type: message.type,
+        });
+        return;
+    }
+
+    const existingMessage = await prisma.message.findFirst({
+        where: {
+            providerMessageId,
+            sourceType: MESSAGE_SOURCE_META,
+        },
+    });
+
+    if (existingMessage) {
+        await prisma.message.update({
+            where: { id: existingMessage.id },
+            data: {
+                status: existingMessage.status === "sent" ? existingMessage.status : "sent",
+            },
+        });
+        await prisma.conversation.update({
+            where: { id: existingMessage.conversationId },
+            data: {
+                updatedAt: new Date(),
+                botActive: false,
+            },
+        });
+        return;
+    }
+
+    const normalizedCandidates = uniquePhoneCandidates([customerPhone]);
+    if (normalizedCandidates.length === 0) return;
+
+    const contactName = normalizeContactName(value.contacts?.[0]?.profile?.name);
+    let contact = await findContactByPhoneCandidates(normalizedCandidates);
+
+    if (!contact) {
+        try {
+            contact = await prisma.contact.create({
+                data: {
+                    phone: normalizedCandidates[0],
+                    name: contactName,
+                    status: "lead",
+                },
+            });
+        } catch (error) {
+            console.warn("[Meta Webhook] No se pudo crear contacto para eco saliente, reintentando busqueda", {
+                providerMessageId,
+                phone: normalizedCandidates[0],
+                error,
+            });
+            contact = await findContactByPhoneCandidates(normalizedCandidates);
+        }
+    } else if (contactName && !normalizeContactName(contact.name)) {
+        contact = await prisma.contact.update({
+            where: { id: contact.id },
+            data: { name: contactName },
+        });
+    }
+
+    if (!contact) {
+        console.warn("[Meta Webhook] Eco saliente ignorado: contacto no resuelto", {
+            providerMessageId,
+            phoneCandidates: normalizedCandidates,
+        });
+        return;
+    }
+
+    const sourceId = phoneNumberId || null;
+    const conversation = await findOrCreateActiveConversationForContactSource({
+        contactId: contact.id,
+        sourceType: MESSAGE_SOURCE_META,
+        sourceId,
+        defaults: {
+            botActive: false,
+        },
+    });
+
+    const media = await saveInboundMedia(message);
+    const content = textForMessage(message);
+    const type = media?.type || "text";
+
+    const recentDuplicate = await prisma.message.findFirst({
+        where: {
+            conversationId: conversation.id,
+            sourceType: MESSAGE_SOURCE_META,
+            direction: "outbound",
+            type,
+            content,
+            createdAt: { gte: new Date(Date.now() - 15000) },
+        },
+    });
+
+    if (recentDuplicate) {
+        await prisma.message.update({
+            where: { id: recentDuplicate.id },
+            data: {
+                providerMessageId: recentDuplicate.providerMessageId || providerMessageId,
+                status: recentDuplicate.status === "sent" ? recentDuplicate.status : "sent",
+            },
+        });
+        await prisma.conversation.update({
+            where: { id: conversation.id },
+            data: {
+                updatedAt: new Date(),
+                botActive: false,
+            },
+        });
+        return;
+    }
+
+    await prisma.message.create({
+        data: {
+            conversationId: conversation.id,
+            content,
+            direction: "outbound",
+            status: "sent",
+            type,
+            mediaUrl: media?.mediaUrl || null,
+            mediaType: media?.mediaType || null,
+            mediaFileName: media?.mediaFileName || null,
+            senderType: "human",
+            providerMessageId,
+            sourceType: MESSAGE_SOURCE_META,
+            sourceId,
+        },
+    });
+
+    await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: {
+            updatedAt: new Date(),
+            botActive: false,
+        },
+    });
+}
+
 async function handleStatusUpdate(status: MetaMessageStatus) {
     if (!status.id || !status.status) return;
 
@@ -219,7 +398,7 @@ async function processMetaWebhookPayload(payload: MetaWebhookPayload) {
                 continue;
             }
 
-            if (change.field !== "messages") continue;
+            if (change.field !== "messages" && change.field !== "smb_message_echoes") continue;
 
             const value = asMessagesValue(change.value);
             const phoneNumberId = value.metadata?.phone_number_id || "";
@@ -228,7 +407,20 @@ async function processMetaWebhookPayload(payload: MetaWebhookPayload) {
                 await handleStatusUpdate(status);
             }
 
+            if (change.field === "smb_message_echoes") {
+                const echoMessages = [...(value.message_echoes || []), ...(value.messages || [])];
+                for (const message of echoMessages) {
+                    await storeMetaOutboundEcho(value, message, phoneNumberId);
+                }
+                continue;
+            }
+
             for (const message of value.messages || []) {
+                if (message.is_echo) {
+                    await storeMetaOutboundEcho(value, message, phoneNumberId);
+                    continue;
+                }
+
                 const from = message.from || "";
                 const providerMessageId = message.id || "";
                 if (!from || !providerMessageId) continue;

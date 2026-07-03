@@ -71,6 +71,7 @@ type SessionState = {
     businessId?: string | null;
     webhookVerifyToken?: string | null;
     webhookBaseUrl?: string | null;
+    signupBaseUrl?: string | null;
     registrationPinConfigured?: boolean;
     appSecretConfigured?: boolean;
     error?: string;
@@ -109,7 +110,19 @@ type EmbeddedSignupConfigResponse = {
     configId?: string | null;
     solutionId?: string | null;
     graphApiVersion?: string | null;
+    signupBaseUrl?: string | null;
     error?: string;
+};
+
+type ConnectSignupMessage = {
+    type?: unknown;
+    code?: unknown;
+    session?: {
+        wabaId?: unknown;
+        phoneNumberId?: unknown;
+        businessId?: unknown;
+    };
+    error?: unknown;
 };
 
 declare global {
@@ -120,6 +133,7 @@ declare global {
 }
 
 let facebookSdkPromise: Promise<void> | null = null;
+const META_COEXISTENCE_FEATURE_TYPE = "whatsapp_business_app_onboarding";
 
 function normalizeGraphVersion(value: string) {
     const trimmed = (value || "v23.0").trim();
@@ -225,6 +239,26 @@ function formatSignupIssues(issues: string[]) {
     return issues.join(" | ");
 }
 
+function normalizeBaseUrl(value: string | null | undefined) {
+    return (value || "").trim().replace(/\/+$/, "");
+}
+
+function sameOrigin(a: string, b: string) {
+    try {
+        return new URL(a).origin === new URL(b).origin;
+    } catch {
+        return false;
+    }
+}
+
+function originFor(value: string) {
+    try {
+        return new URL(value).origin;
+    } catch {
+        return "";
+    }
+}
+
 export function MetaWhatsAppPanel(props: Props) {
     const { toast } = useToast();
     const [session, setSession] = useState<SessionState>({ configured: false });
@@ -235,6 +269,7 @@ export function MetaWhatsAppPanel(props: Props) {
     const [browserBaseUrl, setBrowserBaseUrl] = useState("");
     const [showTechnicalSettings, setShowTechnicalSettings] = useState(false);
     const finalizeInFlightRef = useRef(false);
+    const centralSignupResolvedRef = useRef(false);
 
     const effectiveMetaAppId = (session.appId || props.whatsappMetaAppId || "").trim();
     const effectiveConfigId = (session.configId || props.whatsappEmbeddedSignupConfigId || "").trim();
@@ -242,8 +277,10 @@ export function MetaWhatsAppPanel(props: Props) {
     const graphApiVersion = normalizeGraphVersion(session.graphApiVersion || props.whatsappGraphApiVersion);
     const providerConfigReady = Boolean(effectiveMetaAppId && effectiveConfigId && session.appSecretConfigured);
     const effectiveWebhookBaseUrl = useMemo(() => (
-        props.whatsappWebhookBaseUrl.trim() || session.webhookBaseUrl || browserBaseUrl
-    ).replace(/\/+$/, ""), [browserBaseUrl, props.whatsappWebhookBaseUrl, session.webhookBaseUrl]);
+        normalizeBaseUrl(props.whatsappWebhookBaseUrl) || normalizeBaseUrl(session.webhookBaseUrl) || browserBaseUrl
+    ), [browserBaseUrl, props.whatsappWebhookBaseUrl, session.webhookBaseUrl]);
+    const effectiveSignupBaseUrl = useMemo(() => normalizeBaseUrl(session.signupBaseUrl), [session.signupBaseUrl]);
+    const signupExecutionBaseUrl = effectiveSignupBaseUrl || browserBaseUrl;
     const webhookEndpoint = `${effectiveWebhookBaseUrl}/api/webhooks/whatsapp`;
     const isConnected = Boolean(session.connected || session.metaConfigured);
     const signupIssues = useMemo(() => {
@@ -268,8 +305,9 @@ export function MetaWhatsAppPanel(props: Props) {
         session.appSecretConfigured,
     ]);
     const canStartSignup = signupIssues.length === 0;
-    const usesPublicHttps = effectiveWebhookBaseUrl.startsWith("https://");
-    const canOpenEmbeddedSignup = usesPublicHttps || isLocalOrigin(effectiveWebhookBaseUrl);
+    const usesPublicHttps = signupExecutionBaseUrl.startsWith("https://");
+    const canOpenEmbeddedSignup = usesPublicHttps || isLocalOrigin(signupExecutionBaseUrl);
+    const usesCentralSignup = Boolean(effectiveSignupBaseUrl && browserBaseUrl && !sameOrigin(effectiveSignupBaseUrl, browserBaseUrl));
 
     const loadSession = async () => {
         try {
@@ -295,6 +333,61 @@ export function MetaWhatsAppPanel(props: Props) {
 
     useEffect(() => {
         const onMessage = (event: MessageEvent) => {
+            const connectOrigin = originFor(effectiveSignupBaseUrl);
+            if (connectOrigin && event.origin === connectOrigin) {
+                const payload = event.data as ConnectSignupMessage;
+                if (!payload || typeof payload !== "object") return;
+
+                if (payload.type === "ZEN_META_EMBEDDED_SIGNUP_CANCELLED") {
+                    centralSignupResolvedRef.current = true;
+                    setIsWorking(false);
+                    toast({
+                        title: "Onboarding cancelado",
+                        description: "No se guardaron cambios en el canal de WhatsApp.",
+                    });
+                    return;
+                }
+
+                if (payload.type === "ZEN_META_EMBEDDED_SIGNUP_ERROR") {
+                    centralSignupResolvedRef.current = true;
+                    setIsWorking(false);
+                    toast({
+                        title: "No se pudo completar Meta",
+                        description: typeof payload.error === "string" ? payload.error : "El alta centralizada no devolvio una respuesta valida.",
+                        variant: "destructive",
+                    });
+                    return;
+                }
+
+                if (payload.type === "ZEN_META_EMBEDDED_SIGNUP_COMPLETE") {
+                    centralSignupResolvedRef.current = true;
+                    const code = typeof payload.code === "string" ? payload.code : "";
+                    const sessionPayload = payload.session || {};
+                    const wabaId = typeof sessionPayload.wabaId === "string" ? sessionPayload.wabaId : "";
+                    const phoneNumberId = typeof sessionPayload.phoneNumberId === "string" ? sessionPayload.phoneNumberId : "";
+                    const businessId = typeof sessionPayload.businessId === "string" ? sessionPayload.businessId : "";
+
+                    if (!code || !wabaId || !phoneNumberId) {
+                        setIsWorking(false);
+                        toast({
+                            title: "Meta no devolvio todos los datos",
+                            description: "Faltan authorization code, WABA ID o Phone Number ID en el alta centralizada.",
+                            variant: "destructive",
+                        });
+                        return;
+                    }
+
+                    setEmbeddedSession({
+                        event: "FINISH",
+                        wabaId,
+                        phoneNumberId,
+                        businessId,
+                    });
+                    setEmbeddedCode(code);
+                    return;
+                }
+            }
+
             if (!isFacebookOrigin(event.origin)) return;
             const parsed = parseEmbeddedSignupMessage(event.data);
             if (!parsed) return;
@@ -322,7 +415,7 @@ export function MetaWhatsAppPanel(props: Props) {
 
         window.addEventListener("message", onMessage);
         return () => window.removeEventListener("message", onMessage);
-    }, [toast]);
+    }, [effectiveSignupBaseUrl, toast]);
 
     useEffect(() => {
         if (!embeddedCode || !embeddedSession || finalizeInFlightRef.current) return;
@@ -436,6 +529,7 @@ export function MetaWhatsAppPanel(props: Props) {
             const signupConfigId = (configPayload.configId || effectiveConfigId).trim();
             const signupSolutionId = (configPayload.solutionId || effectiveSolutionId || "").trim();
             const signupGraphApiVersion = normalizeGraphVersion(configPayload.graphApiVersion || graphApiVersion);
+            const signupBaseUrl = normalizeBaseUrl(configPayload.signupBaseUrl);
 
             if (!signupAppId || !isNumericMetaAppId(signupAppId)) {
                 throw new Error("Meta App ID debe ser el identificador numerico de la app de proveedor.");
@@ -447,6 +541,50 @@ export function MetaWhatsAppPanel(props: Props) {
             setEmbeddedCode("");
             setEmbeddedSession(null);
             finalizeInFlightRef.current = false;
+
+            if (signupBaseUrl && !sameOrigin(signupBaseUrl, window.location.origin)) {
+                const signupOriginIsAllowed = signupBaseUrl.startsWith("https://") || isLocalOrigin(signupBaseUrl);
+                if (!signupOriginIsAllowed) {
+                    throw new Error("El dominio central de alta Meta debe ser HTTPS publico.");
+                }
+
+                const signupUrl = new URL("/connect/whatsapp", signupBaseUrl);
+                signupUrl.searchParams.set("return_origin", window.location.origin);
+                signupUrl.searchParams.set("client", props.whatsappInstanceName || "zen-crm");
+                signupUrl.searchParams.set("app_id", signupAppId);
+                signupUrl.searchParams.set("config_id", signupConfigId);
+                signupUrl.searchParams.set("graph_api_version", signupGraphApiVersion);
+                signupUrl.searchParams.set("feature_type", META_COEXISTENCE_FEATURE_TYPE);
+                if (signupSolutionId) {
+                    signupUrl.searchParams.set("solution_id", signupSolutionId);
+                }
+
+                const popup = window.open(
+                    signupUrl.toString(),
+                    "zen_meta_embedded_signup",
+                    "width=760,height=820,menubar=no,toolbar=no,location=yes,status=no,resizable=yes,scrollbars=yes",
+                );
+                if (!popup) {
+                    throw new Error("El navegador bloqueo la ventana de Meta. Permite popups para continuar.");
+                }
+                centralSignupResolvedRef.current = false;
+                const popupWatcher = window.setInterval(() => {
+                    if (centralSignupResolvedRef.current) {
+                        window.clearInterval(popupWatcher);
+                        return;
+                    }
+                    if (popup.closed) {
+                        window.clearInterval(popupWatcher);
+                        setIsWorking(false);
+                        toast({
+                            title: "Alta de Meta cerrada",
+                            description: "No se recibio confirmacion del popup central.",
+                        });
+                    }
+                }, 1000);
+                popup.focus();
+                return;
+            }
 
             await loadFacebookSdk(signupAppId, signupGraphApiVersion);
             if (!window.FB) {
@@ -476,8 +614,8 @@ export function MetaWhatsAppPanel(props: Props) {
                     setup: signupSolutionId
                         ? { solutionID: signupSolutionId }
                         : {},
-                    featureType: "",
-                    sessionInfoVersion: 3,
+                    featureType: META_COEXISTENCE_FEATURE_TYPE,
+                    sessionInfoVersion: "3",
                 },
             });
         } catch (error) {
@@ -540,6 +678,11 @@ export function MetaWhatsAppPanel(props: Props) {
                             {!canStartSignup ? (
                                 <p className="mx-auto max-w-md text-xs text-muted-foreground">
                                     El boton queda disponible; si falta configuracion te dire que dato completar antes de abrir Meta.
+                                </p>
+                            ) : null}
+                            {usesCentralSignup ? (
+                                <p className="mx-auto max-w-md text-xs text-muted-foreground">
+                                    El alta se abrira en {effectiveSignupBaseUrl} y regresara el resultado a este CRM para guardar el numero.
                                 </p>
                             ) : null}
                             <p className="text-xs text-muted-foreground">
@@ -679,9 +822,9 @@ export function MetaWhatsAppPanel(props: Props) {
                             onCopy={() => copyToClipboard(webhookEndpoint, "Callback URL")}
                         />
                         <EndpointRow
-                            label="Valid OAuth Redirect URI / Allowed Domain"
-                            value={effectiveWebhookBaseUrl}
-                            onCopy={() => copyToClipboard(effectiveWebhookBaseUrl, "Dominio publico")}
+                            label={usesCentralSignup ? "Allowed Domain para Embedded Signup" : "Valid OAuth Redirect URI / Allowed Domain"}
+                            value={effectiveSignupBaseUrl || effectiveWebhookBaseUrl}
+                            onCopy={() => copyToClipboard(effectiveSignupBaseUrl || effectiveWebhookBaseUrl, "Dominio publico")}
                         />
                     </div>
 

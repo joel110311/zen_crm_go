@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 
 const DEFAULT_GRAPH_API_VERSION = "v23.0";
+const META_WEBHOOK_SUBSCRIBED_FIELDS = "messages,smb_message_echoes";
 
 type MetaWhatsAppConfig = {
     accessToken: string;
@@ -21,6 +22,7 @@ type MetaEmbeddedSignupConfig = {
     registrationPin: string;
     webhookVerifyToken: string;
     webhookBaseUrl: string;
+    signupBaseUrl: string;
 };
 
 type MetaApiErrorPayload = {
@@ -157,6 +159,11 @@ export async function getMetaEmbeddedSignupConfig(): Promise<MetaEmbeddedSignupC
         ""
     ).trim();
     const webhookBaseUrl = providerSetting("WHATSAPP_WEBHOOK_BASE_URL", settings.whatsappWebhookBaseUrl).replace(/\/+$/, "");
+    const signupBaseUrl = (
+        process.env.META_EMBEDDED_SIGNUP_BASE_URL ||
+        process.env.META_CONNECT_BASE_URL ||
+        ""
+    ).trim().replace(/\/+$/, "");
 
     if (!appId) {
         throw new MetaWhatsAppConfigError("Falta Meta App ID para Embedded Signup.");
@@ -177,6 +184,7 @@ export async function getMetaEmbeddedSignupConfig(): Promise<MetaEmbeddedSignupC
         registrationPin,
         webhookVerifyToken,
         webhookBaseUrl,
+        signupBaseUrl,
     };
 }
 
@@ -221,6 +229,11 @@ export async function getMetaWhatsAppSessionSnapshot() {
         ""
     ).trim();
     const webhookBaseUrl = providerSetting("WHATSAPP_WEBHOOK_BASE_URL", settings.whatsappWebhookBaseUrl).replace(/\/+$/, "");
+    const signupBaseUrl = (
+        process.env.META_EMBEDDED_SIGNUP_BASE_URL ||
+        process.env.META_CONNECT_BASE_URL ||
+        ""
+    ).trim().replace(/\/+$/, "");
     const registrationPin = providerSetting("WHATSAPP_REGISTRATION_PIN", settings.whatsappRegistrationPin);
     const appSecret = providerSetting("META_APP_SECRET", settings.whatsappMetaAppSecret);
     const configured = Boolean(accessToken && phoneNumberId);
@@ -242,6 +255,7 @@ export async function getMetaWhatsAppSessionSnapshot() {
         graphApiVersion,
         webhookVerifyToken: webhookVerifyToken || null,
         webhookBaseUrl: webhookBaseUrl || null,
+        signupBaseUrl: signupBaseUrl || null,
         registrationPinConfigured: Boolean(registrationPin),
         appSecretConfigured: Boolean(appSecret),
     };
@@ -362,7 +376,7 @@ async function subscribeWabaToApp(wabaId: string, accessToken: string, config: M
         `/${encodeURIComponent(wabaId)}/subscribed_apps`,
         accessToken,
         config.graphApiVersion,
-        { method: "POST", body: JSON.stringify({ subscribed_fields: "messages" }) },
+        { method: "POST", body: JSON.stringify({ subscribed_fields: META_WEBHOOK_SUBSCRIBED_FIELDS }) },
     );
 
     if (!config.webhookBaseUrl || !config.webhookVerifyToken) {
@@ -377,7 +391,7 @@ async function subscribeWabaToApp(wabaId: string, accessToken: string, config: M
         {
             method: "POST",
             body: JSON.stringify({
-                subscribed_fields: "messages",
+                subscribed_fields: META_WEBHOOK_SUBSCRIBED_FIELDS,
                 override_callback_uri: callbackUrl,
                 verify_token: config.webhookVerifyToken,
             }),

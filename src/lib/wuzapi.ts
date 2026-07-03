@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
-import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
+import { SYSTEM_SETTINGS_DEFAULTS, getSystemSettingsOrDefaults } from "@/lib/system-settings";
 
 type WuzapiUser = {
     id?: string | number;
@@ -236,10 +236,10 @@ function buildWebhookUrl(appBaseUrl?: string) {
 
 export async function getWuzapiConfig(): Promise<WuzapiConfig> {
     const settings = await getSystemSettingsOrDefaults();
-    const baseUrl = normalizeBaseUrl(settings.whatsappBaseUrl || "");
-    const adminToken = (settings.whatsappAdminToken || "").trim();
-    const userToken = (settings.whatsappUserToken || "").trim();
-    const instanceName = (settings.whatsappInstanceName || "zen-crm").trim() || "zen-crm";
+    const baseUrl = normalizeBaseUrl(settings.whatsappBaseUrl || SYSTEM_SETTINGS_DEFAULTS.whatsappBaseUrl || "");
+    const adminToken = (settings.whatsappAdminToken || SYSTEM_SETTINGS_DEFAULTS.whatsappAdminToken || "").trim();
+    const userToken = (settings.whatsappUserToken || SYSTEM_SETTINGS_DEFAULTS.whatsappUserToken || "").trim();
+    const instanceName = (settings.whatsappInstanceName || SYSTEM_SETTINGS_DEFAULTS.whatsappInstanceName || "zen-crm").trim() || "zen-crm";
     const proxyEnabled = Boolean(settings.whatsappProxyEnabled);
     const proxyUrl = normalizeProxyUrl(settings.whatsappProxyUrl || "");
 
