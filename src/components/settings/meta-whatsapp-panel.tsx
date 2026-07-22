@@ -114,6 +114,14 @@ type EmbeddedSignupConfigResponse = {
     error?: string;
 };
 
+type ConnectSessionResponse = {
+    ok?: boolean;
+    signupUrl?: string;
+    signupOrigin?: string;
+    expiresAt?: string;
+    error?: string;
+};
+
 type ConnectSignupMessage = {
     type?: unknown;
     code?: unknown;
@@ -548,19 +556,21 @@ export function MetaWhatsAppPanel(props: Props) {
                     throw new Error("El dominio central de alta Meta debe ser HTTPS publico.");
                 }
 
-                const signupUrl = new URL("/connect/whatsapp", signupBaseUrl);
-                signupUrl.searchParams.set("return_origin", window.location.origin);
-                signupUrl.searchParams.set("client", props.whatsappInstanceName || "zen-crm");
-                signupUrl.searchParams.set("app_id", signupAppId);
-                signupUrl.searchParams.set("config_id", signupConfigId);
-                signupUrl.searchParams.set("graph_api_version", signupGraphApiVersion);
-                signupUrl.searchParams.set("feature_type", META_COEXISTENCE_FEATURE_TYPE);
-                if (signupSolutionId) {
-                    signupUrl.searchParams.set("solution_id", signupSolutionId);
+                const sessionResponse = await fetch("/api/whatsapp/connect-session", {
+                    method: "POST",
+                });
+                const sessionPayload = await sessionResponse.json().catch(() => null) as ConnectSessionResponse | null;
+                if (!sessionResponse.ok || !sessionPayload?.ok || !sessionPayload.signupUrl) {
+                    throw new Error(sessionPayload?.error || "No se pudo crear la sesion segura para abrir Meta.");
+                }
+
+                const signedSignupUrl = new URL(sessionPayload.signupUrl);
+                if (signedSignupUrl.origin !== new URL(signupBaseUrl).origin) {
+                    throw new Error("La sesion Meta intento abrir un dominio central distinto al configurado.");
                 }
 
                 const popup = window.open(
-                    signupUrl.toString(),
+                    signedSignupUrl.toString(),
                     "zen_meta_embedded_signup",
                     "width=760,height=820,menubar=no,toolbar=no,location=yes,status=no,resizable=yes,scrollbars=yes",
                 );

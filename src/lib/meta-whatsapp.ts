@@ -3,7 +3,13 @@ import { prisma } from "@/lib/db";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 
 const DEFAULT_GRAPH_API_VERSION = "v23.0";
-const META_WEBHOOK_SUBSCRIBED_FIELDS = "messages,smb_message_echoes";
+const META_WEBHOOK_SUBSCRIBED_FIELDS = [
+    "messages",
+    "smb_message_echoes",
+    "message_template_status_update",
+    "history",
+    "smb_app_state_sync",
+].join(",");
 
 type MetaWhatsAppConfig = {
     accessToken: string;

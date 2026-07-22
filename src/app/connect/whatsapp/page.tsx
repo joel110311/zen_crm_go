@@ -48,9 +48,8 @@ declare global {
     }
 }
 
-const DEFAULT_GRAPH_API_VERSION = "v23.0";
-const DEFAULT_COEXISTENCE_FEATURE_TYPE = "whatsapp_business_app_onboarding";
 let facebookSdkPromise: Promise<void> | null = null;
+const DEFAULT_GRAPH_API_VERSION = "v25.0";
 
 function normalizeGraphVersion(value: string) {
     const trimmed = (value || DEFAULT_GRAPH_API_VERSION).trim();
@@ -66,51 +65,45 @@ function isFacebookOrigin(origin: string) {
     }
 }
 
-function isLocalHost(hostname: string) {
-    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]";
-}
-
-function isAllowedReturnOrigin(value: string) {
-    try {
-        const url = new URL(value);
-        return url.protocol === "https:" || (url.protocol === "http:" && isLocalHost(url.hostname));
-    } catch {
-        return false;
-    }
-}
-
-function readQueryConfig(): { config: ConnectConfig | null; error: string | null } {
+async function readSessionConfig(): Promise<{ config: ConnectConfig | null; error: string | null }> {
     const params = new URLSearchParams(window.location.search);
-    const appId = (params.get("app_id") || "").trim();
-    const configId = (params.get("config_id") || "").trim();
-    const solutionId = (params.get("solution_id") || "").trim();
-    const featureType = (params.get("feature_type") || DEFAULT_COEXISTENCE_FEATURE_TYPE).trim();
-    const graphApiVersion = normalizeGraphVersion(params.get("graph_api_version") || DEFAULT_GRAPH_API_VERSION);
-    const returnOrigin = (params.get("return_origin") || "").trim();
-    const client = (params.get("client") || "zen-crm").trim();
+    const session = (params.get("session") || "").trim();
+    if (!session) return { config: null, error: "Abre esta conexion desde el CRM para generar una sesion segura." };
 
-    if (!returnOrigin || !isAllowedReturnOrigin(returnOrigin)) {
-        return { config: null, error: "El origen de retorno no es valido para devolver el alta al CRM." };
-    }
-    if (!appId || !/^\d+$/.test(appId)) {
-        return { config: null, error: "Falta el Meta App ID numerico del proveedor." };
-    }
-    if (!configId) {
-        return { config: null, error: "Falta el Configuration ID de Facebook Login for Business." };
-    }
+    try {
+        const response = await fetch(`/api/whatsapp/connect-session?session=${encodeURIComponent(session)}`, {
+            cache: "no-store",
+        });
+        const payload = await response.json().catch(() => null) as (Partial<ConnectConfig> & { ok?: boolean; error?: string }) | null;
+        if (!response.ok || !payload?.ok) {
+            return { config: null, error: payload?.error || "La sesion segura de Meta no es valida." };
+        }
 
-    return {
-        config: {
-            appId,
-            configId,
-            solutionId,
-            featureType,
-            graphApiVersion,
-            returnOrigin,
-            client,
-        },
-        error: null,
-    };
+        const appId = (payload.appId || "").trim();
+        const configId = (payload.configId || "").trim();
+        const returnOrigin = (payload.returnOrigin || "").trim();
+        if (!appId || !/^\d+$/.test(appId) || !configId || !returnOrigin) {
+            return { config: null, error: "La sesion segura no contiene la configuracion completa de Meta." };
+        }
+
+        return {
+            config: {
+                appId,
+                configId,
+                solutionId: (payload.solutionId || "").trim(),
+                featureType: (payload.featureType || "whatsapp_business_app_onboarding").trim(),
+                graphApiVersion: normalizeGraphVersion(payload.graphApiVersion || "v23.0"),
+                returnOrigin,
+                client: (payload.client || "zen-crm").trim(),
+            },
+            error: null,
+        };
+    } catch (error) {
+        return {
+            config: null,
+            error: error instanceof Error ? error.message : "No se pudo validar la sesion segura de Meta.",
+        };
+    }
 }
 
 function parseEmbeddedSignupMessage(data: unknown): EmbeddedSignupSession | null {
@@ -192,10 +185,16 @@ export default function WhatsAppConnectPage() {
     const postedRef = useRef(false);
 
     useEffect(() => {
-        const result = readQueryConfig();
-        setConfig(result.config);
-        setError(result.error);
         setHasOpener(Boolean(window.opener));
+        let active = true;
+        void readSessionConfig().then((result) => {
+            if (!active) return;
+            setConfig(result.config);
+            setError(result.error);
+        });
+        return () => {
+            active = false;
+        };
     }, []);
 
     const canNotifyParent = Boolean(config?.returnOrigin && hasOpener);
@@ -325,21 +324,13 @@ export default function WhatsAppConnectPage() {
                     </p>
                 </div>
 
-                <div className="mt-7 w-full max-w-lg rounded-2xl border border-[#e5e5e5] bg-[#fafafa] p-4 text-left">
-                    <p className="text-xs uppercase tracking-[0.18em] text-[#888888]">Cliente</p>
-                    <p className="mt-1 font-semibold">{config?.client || "zen-crm"}</p>
-                    <p className="mt-4 text-xs uppercase tracking-[0.18em] text-[#888888]">Retorno seguro</p>
-                    <p className="mt-1 break-all text-sm text-[#555555]">
-                        {config?.returnOrigin || "No configurado"}
-                    </p>
-                </div>
-
                 {error ? (
-                    <div className="mt-6 w-full max-w-lg rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-left text-sm text-red-700">
+                    <div className="mt-7 w-full max-w-lg rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-left text-sm text-red-700">
                         {error}
                     </div>
                 ) : (
-                    <div className="mt-6 w-full max-w-lg rounded-2xl border border-[#e5e5e5] bg-white px-4 py-3 text-left text-sm text-[#555555]">
+                    <div className="mt-7 flex w-full max-w-lg items-center gap-2 rounded-2xl border border-[#e5e5e5] bg-white px-4 py-3 text-left text-sm text-[#555555]">
+                        <ShieldCheck className="h-4 w-4 shrink-0" />
                         {status}
                     </div>
                 )}
