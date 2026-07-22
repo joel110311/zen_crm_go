@@ -1,0 +1,771 @@
+{
+  "name": "WhatsApp Embedded Signup - Respaldo seguro desde CRM",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-login-code-crm",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1100,
+        0
+      ],
+      "id": "webhook-embedded-signup",
+      "name": "Webhook Embedded Signup",
+      "webhookId": "whatsapp-login-code-crm"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $json.body ?? $json;\nconst text = (value) => typeof value === 'string' ? value.trim() : '';\nconst bool = (value) => value === true || value === 'true' || value === 1;\nconst result = {\n  event: text(input.event) || 'meta_embedded_signup_completed',\n  source: text(input.source) || 'zen_crm',\n  client: text(input.client),\n  app_id: text(input.app_id),\n  config_id: text(input.config_id),\n  solution_id: text(input.solution_id),\n  graph_api_version: text(input.graph_api_version) || 'v25.0',\n  business_id: text(input.business_id),\n  waba_id: text(input.waba_id),\n  phone_number_id: text(input.phone_number_id),\n  display_phone_number: text(input.display_phone_number),\n  verified_name: text(input.verified_name),\n  access_token: text(input.access_token),\n  callback_url: text(input.callback_url),\n  registration: input.registration ?? null,\n  subscription: input.subscription ?? null,\n  received_at: text(input.received_at) || new Date().toISOString(),\n};\nconst missing = ['client', 'waba_id', 'phone_number_id', 'access_token']\n  .filter((key) => !result[key]);\nconst callbackValid = !result.callback_url || /^https:\\/\\//i.test(result.callback_url);\nreturn [{ json: {\n  ...result,\n  valid: missing.length === 0 && callbackValid,\n  validation_error: missing.length ? 'Faltan campos: ' + missing.join(', ') : (!callbackValid ? 'callback_url debe usar HTTPS' : ''),\n  suscripcion_webhooks: bool(input.subscription?.subscribed ?? input.suscripcion_webhooks),\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -880,
+        0
+      ],
+      "id": "validar-y-normalizar-payload",
+      "name": "Validar y normalizar payload"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "payload-valid",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -650,
+        0
+      ],
+      "id": "payload-valido",
+      "name": "Payload valido"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, error: $json.validation_error } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        -420,
+        180
+      ],
+      "id": "responder-payload-invalido",
+      "name": "Responder payload invalido"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.facebook.com/{{$json.graph_api_version}}/{{$json.waba_id}}/phone_numbers",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$json.access_token}}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,display_phone_number,verified_name,quality_rating"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -420,
+        -80
+      ],
+      "id": "verificar-telefono-en-meta",
+      "name": "Verificar telefono en Meta",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const context = $('Validar y normalizar payload').item.json;\nconst phones = Array.isArray($json.data) ? $json.data : [];\nconst phone = phones.find((item) => String(item.id || '') === context.phone_number_id);\nconst graphError = $json.error?.message || (!phone ? 'El phone_number_id no pertenece al WABA o el token no tiene acceso.' : '');\nreturn [{ json: {\n  ...context,\n  meta_verified: Boolean(phone),\n  meta_error: graphError,\n  display_phone_number: phone?.display_phone_number || context.display_phone_number,\n  verified_name: phone?.verified_name || context.verified_name,\n  quality_rating: phone?.quality_rating || null,\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -190,
+        -80
+      ],
+      "id": "validar-respuesta-de-meta",
+      "name": "Validar respuesta de Meta"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "phone-verified",
+              "leftValue": "={{ $json.meta_verified }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        40,
+        -80
+      ],
+      "id": "telefono-verificado",
+      "name": "Telefono verificado"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, error: $json.meta_error || \"No se pudo verificar el numero en Meta\" } }}",
+        "options": {
+          "responseCode": 422
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        270,
+        100
+      ],
+      "id": "responder-verificacion-fallida",
+      "name": "Responder verificacion fallida"
+    },
+    {
+      "parameters": {
+        "resource": "credential",
+        "name": "=meta-{{$json.client}}-{{$json.phone_number_id}}-{{$now.toMillis()}}",
+        "credentialTypeName": "httpBearerAuth",
+        "data": "={\n  \"token\": \"{{$json.access_token}}\"\n}",
+        "requestOptions": {}
+      },
+      "type": "n8n-nodes-base.n8n",
+      "typeVersion": 1,
+      "position": [
+        270,
+        -160
+      ],
+      "id": "crear-credencial-cifrada",
+      "name": "Crear credencial cifrada"
+    },
+    {
+      "parameters": {
+        "jsCode": "const context = $('Validar respuesta de Meta').item.json;\nconst credential = $json;\nreturn [{ json: {\n  client: context.client,\n  phone_number_id: context.phone_number_id,\n  waba_id: context.waba_id,\n  business_id: context.business_id,\n  received_at: context.received_at,\n  type: 'meta_tech_provider',\n  event: context.event,\n  business_credential: credential.name || credential.id || '',\n  suscripcion_webhooks: context.suscripcion_webhooks,\n  override_callback_url: context.callback_url,\n  display_phone_number: context.display_phone_number,\n  verified_name: context.verified_name,\n  quality_rating: context.quality_rating,\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        -160
+      ],
+      "id": "preparar-registro-seguro",
+      "name": "Preparar registro seguro"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "2Yv17KaZo4t3iSZ4",
+          "mode": "list",
+          "cachedResultName": "meta accounts onboarding finish",
+          "cachedResultUrl": "/projects/208lOvT2SI7iVJtP/datatables/2Yv17KaZo4t3iSZ4"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "client",
+              "keyValue": "={{ $('Preparar registro seguro').item.json.client }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        730,
+        -160
+      ],
+      "id": "buscar-cliente",
+      "name": "Buscar cliente",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "client-exists",
+              "leftValue": "={{ $json.client }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        -160
+      ],
+      "id": "cliente-existente",
+      "name": "Cliente existente"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "value": "2Yv17KaZo4t3iSZ4",
+          "mode": "list",
+          "cachedResultName": "meta accounts onboarding finish",
+          "cachedResultUrl": "/projects/208lOvT2SI7iVJtP/datatables/2Yv17KaZo4t3iSZ4"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "client",
+              "keyValue": "={{ $('Preparar registro seguro').item.json.client }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "client": "={{ $('Preparar registro seguro').item.json.client }}",
+            "phone_number_id": "={{ $('Preparar registro seguro').item.json.phone_number_id }}",
+            "waba_id": "={{ $('Preparar registro seguro').item.json.waba_id }}",
+            "business_id": "={{ $('Preparar registro seguro').item.json.business_id }}",
+            "received_at": "={{ $('Preparar registro seguro').item.json.received_at }}",
+            "type": "={{ $('Preparar registro seguro').item.json.type }}",
+            "event": "={{ $('Preparar registro seguro').item.json.event }}",
+            "business_credential": "={{ $('Preparar registro seguro').item.json.business_credential }}",
+            "suscripcion_webhooks": "={{ $('Preparar registro seguro').item.json.suscripcion_webhooks }}",
+            "override_callback_url": "={{ $('Preparar registro seguro').item.json.override_callback_url }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "client",
+              "displayName": "client",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "phone_number_id",
+              "displayName": "phone_number_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "waba_id",
+              "displayName": "waba_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "business_id",
+              "displayName": "business_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "event",
+              "displayName": "event",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "business_credential",
+              "displayName": "business_credential",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "suscripcion_webhooks",
+              "displayName": "suscripcion_webhooks",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "override_callback_url",
+              "displayName": "override_callback_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        1190,
+        -260
+      ],
+      "id": "actualizar-registro",
+      "name": "Actualizar registro"
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "value": "2Yv17KaZo4t3iSZ4",
+          "mode": "list",
+          "cachedResultName": "meta accounts onboarding finish",
+          "cachedResultUrl": "/projects/208lOvT2SI7iVJtP/datatables/2Yv17KaZo4t3iSZ4"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "client": "={{ $('Preparar registro seguro').item.json.client }}",
+            "phone_number_id": "={{ $('Preparar registro seguro').item.json.phone_number_id }}",
+            "waba_id": "={{ $('Preparar registro seguro').item.json.waba_id }}",
+            "business_id": "={{ $('Preparar registro seguro').item.json.business_id }}",
+            "received_at": "={{ $('Preparar registro seguro').item.json.received_at }}",
+            "type": "={{ $('Preparar registro seguro').item.json.type }}",
+            "event": "={{ $('Preparar registro seguro').item.json.event }}",
+            "business_credential": "={{ $('Preparar registro seguro').item.json.business_credential }}",
+            "suscripcion_webhooks": "={{ $('Preparar registro seguro').item.json.suscripcion_webhooks }}",
+            "override_callback_url": "={{ $('Preparar registro seguro').item.json.override_callback_url }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "client",
+              "displayName": "client",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "phone_number_id",
+              "displayName": "phone_number_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "waba_id",
+              "displayName": "waba_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "business_id",
+              "displayName": "business_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "event",
+              "displayName": "event",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "business_credential",
+              "displayName": "business_credential",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "suscripcion_webhooks",
+              "displayName": "suscripcion_webhooks",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "override_callback_url",
+              "displayName": "override_callback_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        1190,
+        -60
+      ],
+      "id": "insertar-registro",
+      "name": "Insertar registro"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, action: 'updated', client: $('Preparar registro seguro').item.json.client, phone_number_id: $('Preparar registro seguro').item.json.phone_number_id } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1420,
+        -260
+      ],
+      "id": "responder-actualizado",
+      "name": "Responder actualizado"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, action: 'created', client: $('Preparar registro seguro').item.json.client, phone_number_id: $('Preparar registro seguro').item.json.phone_number_id } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1420,
+        -60
+      ],
+      "id": "responder-creado",
+      "name": "Responder creado"
+    }
+  ],
+  "connections": {
+    "Webhook Embedded Signup": {
+      "main": [
+        [
+          {
+            "node": "Validar y normalizar payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar y normalizar payload": {
+      "main": [
+        [
+          {
+            "node": "Payload valido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Payload valido": {
+      "main": [
+        [
+          {
+            "node": "Verificar telefono en Meta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder payload invalido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar telefono en Meta": {
+      "main": [
+        [
+          {
+            "node": "Validar respuesta de Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar respuesta de Meta": {
+      "main": [
+        [
+          {
+            "node": "Telefono verificado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telefono verificado": {
+      "main": [
+        [
+          {
+            "node": "Crear credencial cifrada",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder verificacion fallida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear credencial cifrada": {
+      "main": [
+        [
+          {
+            "node": "Preparar registro seguro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar registro seguro": {
+      "main": [
+        [
+          {
+            "node": "Buscar cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar cliente": {
+      "main": [
+        [
+          {
+            "node": "Cliente existente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cliente existente": {
+      "main": [
+        [
+          {
+            "node": "Actualizar registro",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insertar registro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Actualizar registro": {
+      "main": [
+        [
+          {
+            "node": "Responder actualizado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insertar registro": {
+      "main": [
+        [
+          {
+            "node": "Responder creado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveExecutionProgress": false,
+    "saveManualExecutions": false
+  },
+  "versionId": "whatsapp-login-code-crm-secure-v1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

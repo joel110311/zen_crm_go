@@ -80,6 +80,7 @@ export async function POST(request: NextRequest) {
             businessId: result.settings.whatsappBusinessId,
             webhook: result.subscription,
             registration: result.registration,
+            credentialForwarding: result.credentialForwarding,
         });
     } catch (error) {
         console.error("[Meta Embedded Signup] Finalization failed:", error);

@@ -57,6 +57,13 @@ type CompleteEmbeddedSignupInput = {
     client?: string | null;
 };
 
+type CredentialForwardingResult = {
+    attempted: boolean;
+    delivered: boolean;
+    status?: number;
+    reason?: string;
+};
+
 type MetaMessageResult = {
     Id: string | null;
     raw: unknown;
@@ -407,6 +414,89 @@ async function subscribeWabaToApp(wabaId: string, accessToken: string, config: M
     return { subscribed: true, overrideConfigured: true, callbackUrl };
 }
 
+async function forwardEmbeddedSignupCredentials(params: {
+    input: CompleteEmbeddedSignupInput;
+    config: MetaEmbeddedSignupConfig;
+    accessToken: string;
+    displayPhoneNumber: string;
+    verifiedName: string;
+    registration: unknown;
+    subscription: unknown;
+}): Promise<CredentialForwardingResult> {
+    const webhookUrl = (
+        process.env.N8N_WHATSAPP_LOGIN_WEBHOOK_URL ||
+        "https://n8nla.synapselogik.com/webhook/whatsapp-login-code-crm"
+    ).trim();
+    if (!webhookUrl) {
+        return { attempted: false, delivered: false, reason: "webhook_not_configured" };
+    }
+
+    const headerName = (process.env.N8N_WHATSAPP_LOGIN_WEBHOOK_HEADER_NAME || "X-Zen-CRM-Key").trim();
+    const headerValue = (
+        process.env.N8N_WHATSAPP_LOGIN_WEBHOOK_HEADER_VALUE ||
+        process.env.AUTH_SECRET ||
+        ""
+    ).trim();
+    const callbackUrl = params.config.webhookBaseUrl
+        ? `${params.config.webhookBaseUrl}/api/webhooks/whatsapp`
+        : "";
+    const payload = JSON.stringify({
+        event: "meta_embedded_signup_completed",
+        source: "zen_crm",
+        client: params.input.client?.trim() || "zen-crm",
+        app_id: params.config.appId,
+        config_id: params.config.configId,
+        solution_id: params.config.solutionId || null,
+        graph_api_version: params.config.graphApiVersion,
+        business_id: params.input.businessId?.trim() || null,
+        waba_id: params.input.wabaId.trim(),
+        phone_number_id: params.input.phoneNumberId.trim(),
+        display_phone_number: params.displayPhoneNumber,
+        verified_name: params.verifiedName,
+        access_token: params.accessToken,
+        callback_url: callbackUrl || null,
+        registration: params.registration,
+        subscription: params.subscription,
+        received_at: new Date().toISOString(),
+    });
+
+    let lastStatus: number | undefined;
+    let lastReason = "delivery_failed";
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+            const response = await fetch(webhookUrl, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(headerName && headerValue ? { [headerName]: headerValue } : {}),
+                },
+                body: payload,
+                cache: "no-store",
+                signal: AbortSignal.timeout(15_000),
+            });
+            lastStatus = response.status;
+            if (response.ok) {
+                return { attempted: true, delivered: true, status: response.status };
+            }
+            lastReason = `http_${response.status}`;
+        } catch (error) {
+            lastReason = error instanceof Error && error.name === "TimeoutError"
+                ? "timeout"
+                : "network_error";
+        }
+
+        if (attempt < 3) {
+            await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+        }
+    }
+
+    console.error("[Meta Embedded Signup] No se pudo respaldar la conexion en n8n.", {
+        status: lastStatus,
+        reason: lastReason,
+    });
+    return { attempted: true, delivered: false, status: lastStatus, reason: lastReason };
+}
+
 export async function getMetaWebhookVerifyToken() {
     const settings = await getSystemSettingsOrDefaults();
     return (
@@ -482,6 +572,15 @@ export async function completeMetaEmbeddedSignup(input: CompleteEmbeddedSignupIn
         business_id: input.businessId || undefined,
         client: input.client || undefined,
     });
+    const credentialForwarding = await forwardEmbeddedSignupCredentials({
+        input,
+        config,
+        accessToken,
+        displayPhoneNumber: phoneSnapshot.displayPhoneNumber || phoneNumberId,
+        verifiedName: phoneSnapshot.verifiedName,
+        registration,
+        subscription,
+    });
 
     return {
         ok: true,
@@ -489,6 +588,7 @@ export async function completeMetaEmbeddedSignup(input: CompleteEmbeddedSignupIn
         phoneSnapshot,
         registration,
         subscription,
+        credentialForwarding,
     };
 }
 
