@@ -48,6 +48,13 @@ export async function sendOutboundConversationMessage(
     }
 
     const selectedSourceType = normalizeMessageSourceType(params.sourceType);
+    if (selectedSourceType === "messenger") {
+        throw new Error("Facebook Messenger aun no esta configurado para enviar mensajes.");
+    }
+    if (selectedSourceType === "instagram") {
+        throw new Error("Instagram aun no esta configurado para enviar mensajes.");
+    }
+
     const requestedSourceId = typeof params.sourceId === "string" && params.sourceId.trim()
         ? params.sourceId.trim()
         : null;

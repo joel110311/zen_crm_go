@@ -34,6 +34,7 @@ import {
     type NotificationPrefs,
 } from "@/lib/notificationSounds";
 import { createUser, deleteUser, getUsers, updateUser } from "@/app/actions/users";
+import { MetaChannelConnectors } from "@/components/settings/meta-channel-connectors";
 import { MetaWhatsAppPanel } from "@/components/settings/meta-whatsapp-panel";
 import { WhatsAppGatewayPanel } from "@/components/settings/whatsapp-gateway-panel";
 import { GoogleCalendarPanel } from "@/components/settings/google-calendar-panel";
@@ -392,6 +393,8 @@ export default function SettingsPage() {
 
                 {activeSection === "whatsapp" && isSuperadmin && (
                     <div className="space-y-6">
+                        <MetaChannelConnectors />
+
                         <MetaWhatsAppPanel
                             whatsappBaseUrl={whatsappBaseUrl}
                             whatsappAdminToken={whatsappAdminToken}

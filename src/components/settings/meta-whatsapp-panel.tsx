@@ -678,6 +678,7 @@ export function MetaWhatsAppPanel(props: Props) {
                                 </p>
                             </div>
                             <Button
+                                id="meta-whatsapp-embedded-signup-button"
                                 onClick={handleEmbeddedSignup}
                                 disabled={props.isSaving || isWorking}
                                 className="h-11 w-full max-w-md text-base font-semibold"

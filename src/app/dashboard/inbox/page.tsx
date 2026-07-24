@@ -7,9 +7,9 @@ import { useSession } from "next-auth/react";
 import {
     Search, MoreVertical, Phone, Paperclip, Send, Mic, X,
     FileText, Download, Star, BellOff, Bell, Archive, Trash2,
-    Info, Users, MessageSquare, ChevronDown, Mail, Tag, Clock,
+    Info, Users, ChevronDown, Mail, Tag, Clock,
     Eraser, Image as ImageIcon, Play, Pause, Bot, User as UserIcon, AlertTriangle, LayoutTemplate,
-    Reply, Copy, SmilePlus, Forward, CheckCircle2, ReceiptText
+    Reply, Copy, SmilePlus, Forward, ReceiptText
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -27,9 +27,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { maybePlayNotification } from "@/lib/notificationSounds";
 import { ImageViewer } from "@/components/inbox/image-viewer";
+import { ChannelSourceIcon } from "@/components/inbox/channel-source-icon";
 import { TemplatePicker } from "@/components/inbox/template-picker";
 import { WhatsAppFormattedText } from "@/components/shared/whatsapp-formatted-text";
 import { getSafeMediaUrl } from "@/lib/media-url";
+import {
+    normalizeMessageSourceType,
+    type MessageSourceType,
+} from "@/lib/message-source";
 import { TemplateRecord, extractTemplateSlashQuery, renderTemplateContent } from "@/lib/templates";
 import { writeUnreadCounts } from "@/lib/inbox-browser-badge";
 import { parseInboundAdPreviewMessageContent } from "@/lib/inbound-ad-preview";
@@ -57,15 +62,29 @@ const INBOX_MESSAGE_PAGE_SIZE = 75;
 const INBOX_DELTA_POLL_INTERVAL_MS = 3000;
 const INBOX_FULL_RESYNC_INTERVAL_MS = 60000;
 
-type MessageSourceType = "wuzapi" | "meta";
-const LEGACY_OFFICIAL_SOURCE = "y" + "cloud";
+const SUPPORTED_SOURCE_ALIASES = new Set([
+    "wuzapi",
+    "meta",
+    "ycloud",
+    "whatsapp_api",
+    "whatsapp_business",
+    "whatsapp_cloud",
+    "messenger",
+    "facebook",
+    "instagram",
+    "instagram_direct",
+]);
 
 function normalizeUiSourceType(sourceType: unknown): MessageSourceType {
-    if (sourceType === "meta" || sourceType === LEGACY_OFFICIAL_SOURCE) {
-        return "meta";
-    }
+    return normalizeMessageSourceType(
+        typeof sourceType === "string" ? sourceType : null,
+    );
+}
 
-    return "wuzapi";
+function parseUiSourceType(sourceType: string | null): MessageSourceType | null {
+    const normalizedSource = sourceType?.trim().toLowerCase().replace(/-/g, "_") || "";
+    if (!SUPPORTED_SOURCE_ALIASES.has(normalizedSource)) return null;
+    return normalizeMessageSourceType(normalizedSource);
 }
 
 // ──────────── Types ────────────
@@ -572,24 +591,7 @@ function ConversationSourceIcon({
     sourceType: Conversation["sourceType"];
     className?: string;
 }) {
-    const isOfficialApi = sourceType === "meta";
-    const Icon = isOfficialApi ? CheckCircle2 : MessageSquare;
-    const title = isOfficialApi ? "WhatsApp Business API oficial" : "WhatsApp por QR";
-
-    return (
-        <span
-            title={title}
-            className={cn(
-                "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border shadow-sm ring-2 ring-background",
-                isOfficialApi
-                    ? "border-border bg-secondary text-foreground dark:bg-secondary dark:text-foreground"
-                    : "border-border bg-secondary text-foreground",
-                className,
-            )}
-        >
-            <Icon className="h-3 w-3" aria-hidden="true" />
-        </span>
-    );
+    return <ChannelSourceIcon sourceType={sourceType} className={className} />;
 }
 
 // ──────────── Media Renderer ────────────
@@ -1210,21 +1212,32 @@ export default function InboxPage() {
     const isWuzapiTransportReady = Boolean(isQrConfigured && isQrConnected && isQrLoggedIn);
     const isMetaTransportReady = Boolean(whatsAppSession?.metaConfigured);
     const isOfficialOutboundSource = outboundSourceType === "meta";
-    const isWhatsAppTransportReady = outboundSourceType === "meta"
-        ? isMetaTransportReady
+    const isSocialInboxSource = outboundSourceType === "messenger"
+        || outboundSourceType === "instagram";
+    const isConversationTransportReady = useCallback((conversation: Conversation) => {
+        if (conversation.sourceType === "meta") return isMetaTransportReady;
+        if (conversation.sourceType === "wuzapi") return isWuzapiTransportReady;
+        return false;
+    }, [isWuzapiTransportReady, isMetaTransportReady]);
+    const isWhatsAppTransportReady = selectedChat
+        ? isConversationTransportReady(selectedChat)
         : isWuzapiTransportReady;
-    const isConversationTransportReady = useCallback((conversation: Conversation) => (
-        conversation.sourceType === "meta"
-            ? isMetaTransportReady
-            : isWuzapiTransportReady
-    ), [isWuzapiTransportReady, isMetaTransportReady]);
-    const shouldShowWhatsAppWarning = whatsAppSession !== null && !isWhatsAppTransportReady;
+    const shouldShowWhatsAppWarning = isSocialInboxSource
+        || (whatsAppSession !== null && !isWhatsAppTransportReady);
     const isOfficialReplyWindowExpired = isOfficialOutboundSource && (
         !selectedChat?.sessionExpiresAt ||
         !isWindowOpen ||
         (selectedChat?.sessionExpiresAt ? new Date(selectedChat.sessionExpiresAt).getTime() <= Date.now() : false)
     );
     const whatsAppWarningText = useMemo(() => {
+        if (outboundSourceType === "messenger") {
+            return "Facebook Messenger se muestra como una conversacion independiente. Configura su conexion para responder desde este canal.";
+        }
+
+        if (outboundSourceType === "instagram") {
+            return "Instagram se muestra como una conversacion independiente. Configura su conexion para responder desde este canal.";
+        }
+
         if (outboundSourceType === "meta") {
             if (!whatsAppSession?.metaConfigured) {
                 return "Configura WhatsApp Business oficial en Configuracion para responder desde este chat.";
@@ -1706,11 +1719,8 @@ export default function InboxPage() {
                     const contactIdParam = searchParams.get("contactId");
                     const phoneParam = searchParams.get("phone");
                     const sourceParam = searchParams.get("sourceType") || searchParams.get("source");
-                    const requestedSource = sourceParam === "meta" || sourceParam === LEGACY_OFFICIAL_SOURCE
-                        ? "meta"
-                        : sourceParam === "wuzapi"
-                            ? "wuzapi"
-                            : null;
+                    const requestedSource = parseUiSourceType(sourceParam);
+                    const requestedSourceId = searchParams.get("sourceId");
 
                     if (conversationIdParam && transformed.length > 0) {
                         const match = transformed.find((conversation) => conversation.id === conversationIdParam);
@@ -1726,7 +1736,10 @@ export default function InboxPage() {
                             return Boolean(phoneParam && conversation.contact?.phone?.includes(phoneParam.slice(-10)));
                         });
                         const match = requestedSource
-                            ? contactMatches.find((conversation) => conversation.sourceType === requestedSource) || contactMatches[0]
+                            ? contactMatches.find((conversation) => (
+                                conversation.sourceType === requestedSource
+                                && (!requestedSourceId || conversation.sourceId === requestedSourceId)
+                            ))
                             : contactMatches[0];
                         if (match) {
                             setSelectedChat(match);
@@ -3453,7 +3466,11 @@ export default function InboxPage() {
                                             <div className="flex items-start gap-3">
                                                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                                                 <div>
-                                                    <p className="text-sm font-semibold">No puedes responder todavia desde este chat</p>
+                                                    <p className="text-sm font-semibold">
+                                                        {isSocialInboxSource
+                                                            ? "Este canal aun no permite responder desde el CRM"
+                                                            : "No puedes responder todavia desde este chat"}
+                                                    </p>
                                                     <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                                                         {whatsAppWarningText}
                                                     </p>

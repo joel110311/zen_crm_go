@@ -17,7 +17,6 @@ import {
     MESSAGE_SOURCE_WUZAPI,
     normalizeMessageSourceType,
     resolveMessageSourceId,
-    type MessageSourceType,
 } from "@/lib/message-source";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { listTemplateVariableKeys, renderTemplateContent } from "@/lib/templates";
@@ -42,8 +41,10 @@ const ALLOWED_CAMPAIGN_TYPES = new Set<BulkCampaignMessageType>(["text", "image"
 const OFFICIAL_OPEN_WINDOW_GRACE_MS = 60_000;
 const OFFICIAL_TEMPLATE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-function isOfficialWhatsAppSource(sourceType: MessageSourceType) {
-    return sourceType === MESSAGE_SOURCE_META;
+type BulkCampaignSourceType = "wuzapi" | "meta";
+
+function isOfficialWhatsAppSource(sourceType: BulkCampaignSourceType) {
+    return sourceType === "meta";
 }
 
 export type BulkCampaignVariantInput = {
@@ -57,7 +58,7 @@ export type BulkCampaignVariantInput = {
 export type BulkCampaignUpsertInput = {
     name: string;
     description: string;
-    sourceType: MessageSourceType;
+    sourceType: BulkCampaignSourceType;
     sourceId: string | null;
     type: BulkCampaignMessageType;
     mediaUrl: string | null;
@@ -114,8 +115,17 @@ function normalizeCampaignType(value: unknown): BulkCampaignMessageType {
     return "text";
 }
 
-function normalizeCampaignSourceType(value: unknown): MessageSourceType {
-    return normalizeMessageSourceType(typeof value === "string" ? value : MESSAGE_SOURCE_WUZAPI);
+function normalizeCampaignSourceType(value: unknown): BulkCampaignSourceType {
+    const normalizedSourceType = normalizeMessageSourceType(
+        typeof value === "string" ? value : MESSAGE_SOURCE_WUZAPI,
+    );
+
+    if (normalizedSourceType === MESSAGE_SOURCE_META) return "meta";
+    if (normalizedSourceType === MESSAGE_SOURCE_WUZAPI) return "wuzapi";
+
+    throw new Error(
+        `El canal ${normalizedSourceType} todavia no admite envios masivos.`,
+    );
 }
 
 function normalizeCampaignSourceId(value: unknown) {
@@ -446,7 +456,7 @@ function ensureCampaignCanLaunch(campaign: BulkCampaignRecord) {
     }
 
     if (campaign.type === "template") {
-        const campaignSourceType = normalizeMessageSourceType(campaign.sourceType);
+        const campaignSourceType = normalizeCampaignSourceType(campaign.sourceType);
         if (!isOfficialWhatsAppSource(campaignSourceType)) {
             throw new Error("Las plantillas oficiales solo se pueden enviar por WhatsApp Business");
         }
@@ -1707,7 +1717,7 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
         }
 
         const settings = await getSystemSettingsOrDefaults();
-        const campaignSourceType = normalizeMessageSourceType(campaign.sourceType);
+        const campaignSourceType = normalizeCampaignSourceType(campaign.sourceType);
         const campaignSourceId = campaign.sourceId || resolveMessageSourceId(campaignSourceType, settings);
         const campaignMessageType = normalizeCampaignType(campaign.type);
         const variant = chooseVariant(campaign.variants, campaignMessageType);

@@ -2,6 +2,25 @@
 
 CRM conversacional para WhatsApp con inbox multiusuario, bot con IA, RAG interno, pipeline visual, agenda y canal QR sobre librerias Go.
 
+## Webhook de Messenger
+
+La ruta publica inicial para Messenger Platform es:
+
+```text
+GET|POST /api/webhooks/messenger
+```
+
+Configura un token independiente y largo tanto en Meta como en el despliegue:
+
+```text
+MESSENGER_WEBHOOK_VERIFY_TOKEN=<secreto-aleatorio>
+```
+
+Los eventos `POST` se aceptan solamente si `X-Hub-Signature-256` coincide con
+el `META_APP_SECRET` de la aplicacion. Esta primera fase verifica y clasifica
+eventos firmados; la persistencia en el inbox se habilita al conectar una
+Pagina y guardar su Page Access Token.
+
 Este repositorio esta preparado para despliegue tipo SaaS por instancia: cada cliente levanta su propio stack, conecta su numero por QR, configura sus claves y trabaja sobre una base limpia, sin mensajes ni leads precargados.
 
 ## Stack
