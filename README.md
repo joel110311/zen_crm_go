@@ -200,3 +200,32 @@ docker compose -f docker-compose.local.yml up -d --build
 ```
 
 El compose local deja `ALLOW_ENV_AI_FALLBACK=true` para facilitar pruebas con variables de entorno.
+
+## Facebook Messenger
+
+La conexion se administra en `Configuracion > WhatsApp > Canales oficiales de Meta` y es
+independiente de WhatsApp por QR y WhatsApp Business API.
+
+Antes de conectar una Pagina:
+
+1. habilita Messenger y Facebook Login for Business en la app de Meta;
+2. agrega el dominio publico HTTPS del CRM a los dominios permitidos de la app;
+3. configura como callback `https://tu-crm/api/webhooks/messenger`;
+4. suscribe los campos `messages`, `messaging_postbacks`, `message_deliveries` y `message_reads`;
+5. autoriza los permisos `pages_show_list`, `pages_messaging`, `pages_manage_metadata` y `pages_read_engagement`.
+
+La pantalla permite guardar App ID, App Secret, version de Graph API, URL publica y token
+de verificacion; despues abre Facebook Login, lista las Paginas administrables y suscribe la
+Pagina elegida. La desconexion cancela `subscribed_apps` antes de eliminar el token local.
+
+Las mismas opciones pueden definirse por entorno:
+
+```env
+MESSENGER_APP_ID=
+MESSENGER_APP_SECRET=
+MESSENGER_GRAPH_API_VERSION=v23.0
+MESSENGER_WEBHOOK_VERIFY_TOKEN=
+MESSENGER_WEBHOOK_BASE_URL=https://tu-crm
+MESSENGER_PAGE_ID=
+MESSENGER_PAGE_ACCESS_TOKEN=
+```

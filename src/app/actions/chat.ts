@@ -23,6 +23,7 @@ import { maybeHandleAppointmentBooking } from "@/lib/ai/appointment-booking";
 import { processLeadAutomationTurn } from "@/lib/ai/lead-intelligence";
 import { buildPhoneMatchClauses, normalizePhoneDigits } from "@/lib/phone";
 import { sendMetaMediaMessage, sendMetaTextMessage } from "@/lib/meta-whatsapp";
+import { sendMessengerMessage } from "@/lib/meta-messenger";
 import {
     normalizeMessageSourceType,
     resolveMessageSourceId,
@@ -316,7 +317,8 @@ function hasFacebookAdsAttribution(attribution?: InboundAttribution) {
     );
 }
 
-function resolveInboundDealSource(attribution?: InboundAttribution) {
+function resolveInboundDealSource(attribution?: InboundAttribution, sourceType?: MessageSourceType) {
+    if (sourceType === "messenger") return "facebook";
     return hasFacebookAdsAttribution(attribution) ? "facebook_ads" : "whatsapp";
 }
 
@@ -1200,7 +1202,13 @@ async function sendAutomatedBotText(params: {
     try {
         const transportResult = source.sourceType === "meta"
             ? await sendMetaTextMessage(params.phone, content)
-            : await sendWuzapiTextMessage(params.phone, content);
+            : source.sourceType === "messenger"
+                ? await sendMessengerMessage({
+                    recipientId: params.phone,
+                    text: content,
+                    pageId: source.sourceId,
+                })
+                : await sendWuzapiTextMessage(params.phone, content);
 
         await prisma.message.create({
             data: {
@@ -1215,7 +1223,9 @@ async function sendAutomatedBotText(params: {
                 providerMessageId: transportResult?.Id || null,
             },
         });
-        queueAvatarRefreshForConversation(params.conversationId);
+        if (source.sourceType === "wuzapi" || source.sourceType === "meta") {
+            queueAvatarRefreshForConversation(params.conversationId);
+        }
     } catch (error) {
         await prisma.message.create({
             data: {
@@ -1267,7 +1277,14 @@ async function sendAutomatedBotMedia(params: {
                 caption: params.mediaCategory === "document" ? `Catalogo PDF de ${params.development}` : undefined,
                 fileName: resolvedMedia.fileName,
             })
-            : await sendWuzapiMediaMessage({
+            : source.sourceType === "messenger"
+                ? await sendMessengerMessage({
+                    recipientId: params.phone,
+                    attachmentUrl: buildPublicMediaUrl(storedMediaUrl),
+                    attachmentType: params.mediaCategory === "document" ? "file" : "image",
+                    pageId: source.sourceId,
+                })
+                : await sendWuzapiMediaMessage({
                 phone: params.phone,
                 mediaCategory: params.mediaCategory,
                 dataUrl: resolvedMedia.dataUrl,
@@ -1292,7 +1309,9 @@ async function sendAutomatedBotMedia(params: {
                 providerMessageId: result?.Id || null,
             },
         });
-        queueAvatarRefreshForConversation(params.conversationId);
+        if (source.sourceType === "wuzapi" || source.sourceType === "meta") {
+            queueAvatarRefreshForConversation(params.conversationId);
+        }
 
         return true;
     } catch (error) {
@@ -2350,19 +2369,21 @@ export async function processInboundMessage(
             }
         }
 
-        const inboundDealSource = resolveInboundDealSource(attribution);
+        const inboundDealSource = resolveInboundDealSource(attribution, normalizedSourceType);
 
-        const shouldAwaitInitialAvatarRefresh = !contact.whatsappAvatarCheckedAt;
-        if (shouldAwaitInitialAvatarRefresh) {
-            try {
-                await refreshWhatsAppAvatarForContact(contact.id, { force: true });
-            } catch (avatarError) {
-                console.warn("[Inbound] Failed to refresh WhatsApp avatar on first contact", avatarError);
+        if (normalizedSourceType === "wuzapi" || normalizedSourceType === "meta") {
+            const shouldAwaitInitialAvatarRefresh = !contact.whatsappAvatarCheckedAt;
+            if (shouldAwaitInitialAvatarRefresh) {
+                try {
+                    await refreshWhatsAppAvatarForContact(contact.id, { force: true });
+                } catch (avatarError) {
+                    console.warn("[Inbound] Failed to refresh WhatsApp avatar on first contact", avatarError);
+                }
+            } else {
+                void refreshWhatsAppAvatarForContact(contact.id).catch((avatarError) => {
+                    console.warn("[Inbound] Failed to refresh WhatsApp avatar", avatarError);
+                });
             }
-        } else {
-            void refreshWhatsAppAvatarForContact(contact.id).catch((avatarError) => {
-                console.warn("[Inbound] Failed to refresh WhatsApp avatar", avatarError);
-            });
         }
 
         // Find or create conversation
@@ -2441,7 +2462,7 @@ export async function processInboundMessage(
             where: { id: conversation.id },
             data: {
                 updatedAt: new Date(),
-                ...(normalizedSourceType === "meta"
+                ...(["meta", "messenger"].includes(normalizedSourceType)
                     ? { sessionExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) }
                     : {}),
             },
@@ -2469,7 +2490,9 @@ export async function processInboundMessage(
                     const displayName = normalizeContactName(contact.name) || normalizedCustomerName;
                     const dealTitle = displayName
                         ? `Lead - ${displayName}`
-                        : `Lead WhatsApp - ${from}`;
+                        : normalizedSourceType === "messenger"
+                            ? `Lead Messenger - ${from}`
+                            : `Lead WhatsApp - ${from}`;
 
                     await prisma.deal.create({
                         data: {

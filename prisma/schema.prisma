@@ -554,6 +554,16 @@ model SystemSettings {
   whatsappWebhookVerifyToken     String?
   whatsappWebhookBaseUrl         String?
   whatsappConnectedAt            DateTime?
+  messengerAppId                 String?
+  messengerAppSecret             String?
+  messengerGraphApiVersion       String?                @default("v23.0")
+  messengerWebhookVerifyToken    String?
+  messengerWebhookBaseUrl        String?
+  messengerPageId                String?
+  messengerPageName              String?
+  messengerPageAccessToken       String?
+  messengerWebhookSubscribed     Boolean                @default(false)
+  messengerConnectedAt           DateTime?
   isBotEnabled                   Boolean                @default(false)
   n8nWebhookUrl                  String?
   agentName                      String?                @default("Asistente Zen")

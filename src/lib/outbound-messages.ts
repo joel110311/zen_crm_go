@@ -10,6 +10,7 @@ import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 import { sendWuzapiMediaMessage, sendWuzapiTextMessage } from "@/lib/wuzapi";
 import { sendMetaMediaMessage, sendMetaTextMessage } from "@/lib/meta-whatsapp";
+import { sendMessengerMessage } from "@/lib/meta-messenger";
 
 export type OutboundMessageType = "text" | "image" | "document" | "audio" | "video";
 
@@ -48,9 +49,6 @@ export async function sendOutboundConversationMessage(
     }
 
     const selectedSourceType = normalizeMessageSourceType(params.sourceType);
-    if (selectedSourceType === "messenger") {
-        throw new Error("Facebook Messenger aun no esta configurado para enviar mensajes.");
-    }
     if (selectedSourceType === "instagram") {
         throw new Error("Instagram aun no esta configurado para enviar mensajes.");
     }
@@ -113,6 +111,15 @@ export async function sendOutboundConversationMessage(
         }
     }
 
+    if (
+        selectedSourceType === "messenger"
+        && (!conversation.sessionExpiresAt || conversation.sessionExpiresAt.getTime() <= Date.now())
+    ) {
+        throw new Error(
+            "La ventana de respuesta de Messenger esta cerrada. Espera un nuevo mensaje del contacto.",
+        );
+    }
+
     const message = await prisma.message.create({
         data: {
             conversationId: conversation.id,
@@ -149,7 +156,13 @@ export async function sendOutboundConversationMessage(
             if (type === "text") {
                 const result = selectedSourceType === "meta"
                     ? await sendMetaTextMessage(conversation.contact.phone, content)
-                    : await sendWuzapiTextMessage(conversation.contact.phone, content);
+                    : selectedSourceType === "messenger"
+                        ? await sendMessengerMessage({
+                            recipientId: conversation.contact.phone,
+                            text: content,
+                            pageId: selectedSourceId,
+                        })
+                        : await sendWuzapiTextMessage(conversation.contact.phone, content);
                 providerMessageId = result?.Id || null;
             } else if (params.mediaUrl) {
                 let result: { Id?: string | null } | null = null;
@@ -164,6 +177,15 @@ export async function sendOutboundConversationMessage(
                         link: publicMediaUrl,
                         caption: content && content !== `[${type}]` ? content : undefined,
                         fileName: params.mediaFileName || undefined,
+                    });
+                } else if (selectedSourceType === "messenger") {
+                    const appBaseUrl = (process.env.APP_BASE_URL || process.env.AUTH_URL || "").trim();
+                    const publicMediaUrl = getPublicMediaUrl(params.mediaUrl, appBaseUrl);
+                    result = await sendMessengerMessage({
+                        recipientId: conversation.contact.phone,
+                        attachmentUrl: publicMediaUrl,
+                        attachmentType: type === "document" ? "file" : type,
+                        pageId: selectedSourceId,
                     });
                 } else {
                     const resolvedMedia = await resolveMediaToDataUrl(params.mediaUrl, params.mediaType);

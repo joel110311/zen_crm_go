@@ -15,6 +15,9 @@ function maskClientSettings(settings: ReturnType<typeof withSettingsDefaults>) {
         whatsappMetaAppSecret: "",
         whatsappRegistrationPin: "",
         whatsappWebhookVerifyToken: "",
+        messengerAppSecret: "",
+        messengerWebhookVerifyToken: "",
+        messengerPageAccessToken: "",
         googleClientSecret: "",
     };
 }
@@ -51,6 +54,9 @@ export async function POST(request: NextRequest) {
             whatsappMetaAppSecret: data.whatsappMetaAppSecret ? "***" : undefined,
             whatsappRegistrationPin: data.whatsappRegistrationPin ? "***" : undefined,
             whatsappWebhookVerifyToken: data.whatsappWebhookVerifyToken ? "***" : undefined,
+            messengerAppSecret: data.messengerAppSecret ? "***" : undefined,
+            messengerWebhookVerifyToken: data.messengerWebhookVerifyToken ? "***" : undefined,
+            messengerPageAccessToken: data.messengerPageAccessToken ? "***" : undefined,
             googleClientSecret: data.googleClientSecret ? "***" : undefined,
         });
 
@@ -66,6 +72,9 @@ export async function POST(request: NextRequest) {
             "whatsappMetaAppSecret",
             "whatsappRegistrationPin",
             "whatsappWebhookVerifyToken",
+            "messengerAppSecret",
+            "messengerWebhookVerifyToken",
+            "messengerPageAccessToken",
             "googleClientSecret",
         ] as const;
 

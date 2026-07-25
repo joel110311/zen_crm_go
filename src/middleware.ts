@@ -15,6 +15,10 @@ export async function middleware(req: NextRequest) {
         "/api/bot-message",
         "/api/health",
         "/api/media",
+        // The central Embedded Signup window has no CRM auth cookie (especially
+        // in private browsing). GET validates its short-lived signed token;
+        // POST still enforces auth inside the route before issuing a token.
+        "/api/whatsapp/connect-session",
     ];
     const isPublicPath = publicPaths.some((path) => pathname.startsWith(path));
 

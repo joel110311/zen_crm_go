@@ -31,6 +31,16 @@ export const SYSTEM_SETTINGS_DEFAULTS = {
     whatsappWebhookVerifyToken: process.env.WEBHOOK_VERIFY_TOKEN || "",
     whatsappWebhookBaseUrl: process.env.WHATSAPP_WEBHOOK_BASE_URL || "",
     whatsappConnectedAt: null,
+    messengerAppId: process.env.MESSENGER_APP_ID || "",
+    messengerAppSecret: process.env.MESSENGER_APP_SECRET || "",
+    messengerGraphApiVersion: process.env.MESSENGER_GRAPH_API_VERSION || process.env.META_GRAPH_API_VERSION || "v23.0",
+    messengerWebhookVerifyToken: process.env.MESSENGER_WEBHOOK_VERIFY_TOKEN || "",
+    messengerWebhookBaseUrl: process.env.MESSENGER_WEBHOOK_BASE_URL || process.env.APP_BASE_URL || "",
+    messengerPageId: process.env.MESSENGER_PAGE_ID || "",
+    messengerPageName: "",
+    messengerPageAccessToken: process.env.MESSENGER_PAGE_ACCESS_TOKEN || "",
+    messengerWebhookSubscribed: false,
+    messengerConnectedAt: null,
     agentName: "Asistente Zen",
     agentPrompt: `Eres un asistente de WhatsApp para un CRM. Responde siempre en espanol claro, breve y profesional.
 Usa el contexto recuperado cuando sea relevante.

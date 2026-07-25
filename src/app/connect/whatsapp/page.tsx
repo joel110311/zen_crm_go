@@ -74,7 +74,16 @@ async function readSessionConfig(): Promise<{ config: ConnectConfig | null; erro
         const response = await fetch(`/api/whatsapp/connect-session?session=${encodeURIComponent(session)}`, {
             cache: "no-store",
         });
-        const payload = await response.json().catch(() => null) as (Partial<ConnectConfig> & { ok?: boolean; error?: string }) | null;
+        const contentType = response.headers.get("content-type") || "";
+        const payload = contentType.includes("application/json")
+            ? await response.json().catch(() => null) as (Partial<ConnectConfig> & { ok?: boolean; error?: string }) | null
+            : null;
+        if (response.redirected || !contentType.includes("application/json")) {
+            return {
+                config: null,
+                error: "El servidor central no pudo validar la sesion. Abre nuevamente la conexion desde el CRM.",
+            };
+        }
         if (!response.ok || !payload?.ok) {
             return { config: null, error: payload?.error || "La sesion segura de Meta no es valida." };
         }

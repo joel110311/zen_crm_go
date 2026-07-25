@@ -325,6 +325,14 @@ type WhatsAppSessionStatus = {
     error?: string;
 };
 
+type MessengerSessionStatus = {
+    connected: boolean;
+    pageId?: string | null;
+    pageName?: string | null;
+    webhookSubscribed?: boolean;
+    error?: string;
+};
+
 type LeadIntelligenceSnapshot = {
     score: number;
     interestStatus: string;
@@ -1183,6 +1191,7 @@ export default function InboxPage() {
     const [isSearchingConversations, setIsSearchingConversations] = useState(false);
     const [viewFilter, setViewFilter] = useState<"all" | "mine" | "unassigned">("all");
     const [whatsAppSession, setWhatsAppSession] = useState<WhatsAppSessionStatus | null>(null);
+    const [messengerSession, setMessengerSession] = useState<MessengerSessionStatus | null>(null);
     const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
     const [viewerMessageId, setViewerMessageId] = useState<string | null>(null);
     const [isWindowOpen, setIsWindowOpen] = useState(true);
@@ -1211,27 +1220,34 @@ export default function InboxPage() {
     const isQrLoggedIn = Boolean(whatsAppSession?.loggedIn || whatsAppSession?.qrLoggedIn);
     const isWuzapiTransportReady = Boolean(isQrConfigured && isQrConnected && isQrLoggedIn);
     const isMetaTransportReady = Boolean(whatsAppSession?.metaConfigured);
+    const isMessengerTransportReady = Boolean(
+        messengerSession?.connected && messengerSession?.webhookSubscribed,
+    );
     const isOfficialOutboundSource = outboundSourceType === "meta";
+    const isMessengerOutboundSource = outboundSourceType === "messenger";
+    const isWindowedOutboundSource = isOfficialOutboundSource || isMessengerOutboundSource;
     const isSocialInboxSource = outboundSourceType === "messenger"
         || outboundSourceType === "instagram";
     const isConversationTransportReady = useCallback((conversation: Conversation) => {
         if (conversation.sourceType === "meta") return isMetaTransportReady;
         if (conversation.sourceType === "wuzapi") return isWuzapiTransportReady;
+        if (conversation.sourceType === "messenger") return isMessengerTransportReady;
         return false;
-    }, [isWuzapiTransportReady, isMetaTransportReady]);
+    }, [isWuzapiTransportReady, isMetaTransportReady, isMessengerTransportReady]);
     const isWhatsAppTransportReady = selectedChat
         ? isConversationTransportReady(selectedChat)
         : isWuzapiTransportReady;
-    const shouldShowWhatsAppWarning = isSocialInboxSource
-        || (whatsAppSession !== null && !isWhatsAppTransportReady);
-    const isOfficialReplyWindowExpired = isOfficialOutboundSource && (
+    const shouldShowWhatsAppWarning = (isSocialInboxSource && !isWhatsAppTransportReady)
+        || (!isSocialInboxSource && whatsAppSession !== null && !isWhatsAppTransportReady);
+    const isOfficialReplyWindowExpired = isWindowedOutboundSource && (
         !selectedChat?.sessionExpiresAt ||
         !isWindowOpen ||
         (selectedChat?.sessionExpiresAt ? new Date(selectedChat.sessionExpiresAt).getTime() <= Date.now() : false)
     );
     const whatsAppWarningText = useMemo(() => {
         if (outboundSourceType === "messenger") {
-            return "Facebook Messenger se muestra como una conversacion independiente. Configura su conexion para responder desde este canal.";
+            if (messengerSession?.error) return messengerSession.error;
+            return "Conecta y suscribe la Pagina de Facebook en Configuracion para responder desde este canal.";
         }
 
         if (outboundSourceType === "instagram") {
@@ -1259,7 +1275,7 @@ export default function InboxPage() {
         }
 
         return "No hay un numero de WhatsApp vinculado al CRM. Conectalo en Configuracion para enviar mensajes, usar plantillas y adjuntar archivos.";
-    }, [isQrConfigured, isQrConnected, isQrLoggedIn, outboundSourceType, whatsAppSession]);
+    }, [isQrConfigured, isQrConnected, isQrLoggedIn, outboundSourceType, whatsAppSession, messengerSession]);
 
     const refreshConversationsAndSelect = useCallback(async (conversationId: string) => {
         const url = new URL("/api/chat", window.location.origin);
@@ -1557,6 +1573,31 @@ export default function InboxPage() {
 
         void fetchWhatsAppSession();
         const interval = setInterval(fetchWhatsAppSession, 5000);
+        return () => clearInterval(interval);
+    }, []);
+
+    useEffect(() => {
+        const fetchMessengerSession = async () => {
+            try {
+                const response = await fetch("/api/messenger", { cache: "no-store" });
+                const payload = await response.json();
+                if (!response.ok) throw new Error(payload?.error || "No se pudo consultar Messenger.");
+                setMessengerSession({
+                    connected: Boolean(payload?.connected),
+                    pageId: payload?.pageId || null,
+                    pageName: payload?.pageName || null,
+                    webhookSubscribed: Boolean(payload?.webhookSubscribed),
+                });
+            } catch (error) {
+                setMessengerSession({
+                    connected: false,
+                    error: error instanceof Error ? error.message : "No se pudo consultar Messenger.",
+                });
+            }
+        };
+
+        void fetchMessengerSession();
+        const interval = setInterval(fetchMessengerSession, 5000);
         return () => clearInterval(interval);
     }, []);
 
@@ -3430,7 +3471,7 @@ export default function InboxPage() {
                             )}
 
                             {/* Window Timer */}
-                            {isOfficialOutboundSource ? (
+                            {isWindowedOutboundSource ? (
                                 <WindowTimer expiresAt={selectedChat.sessionExpiresAt} onWindowChange={handleWindowChange} />
                             ) : null}
 
@@ -3439,21 +3480,29 @@ export default function InboxPage() {
                                 /* ═══ LOCKED: 24h window expired ═══ */
                                 <div className="shrink-0 space-y-0">
                                     <p className="text-xs text-center text-muted-foreground px-6 py-3">
-                                        Solo puedes responder a esta conversación utilizando un mensaje plantilla debido a la{" "}
-                                        <span className="text-primary underline cursor-help" title="WhatsApp requiere que las empresas respondan dentro de las 24 horas posteriores al último mensaje del cliente.">
-                                            restricción de la ventana de mensajes de 24 horas
-                                        </span>
+                                        {isMessengerOutboundSource
+                                            ? "La ventana de respuesta de Messenger termino. Podras responder cuando el contacto envie un nuevo mensaje."
+                                            : (
+                                                <>
+                                                    Solo puedes responder a esta conversación utilizando un mensaje plantilla debido a la{" "}
+                                                    <span className="text-primary underline cursor-help" title="WhatsApp requiere que las empresas respondan dentro de las 24 horas posteriores al último mensaje del cliente.">
+                                                        restricción de la ventana de mensajes de 24 horas
+                                                    </span>
+                                                </>
+                                            )}
                                     </p>
-                                    <div className="flex justify-center pb-4">
-                                        <Button
-                                            variant="outline"
-                                            className="rounded-full px-6 gap-2 border-border hover:bg-primary/5 hover:border-primary/30"
-                                            onClick={() => setTemplateModalOpen(true)}
-                                        >
-                                            <LayoutTemplate className="h-4 w-4" />
-                                            Mensaje de plantilla
-                                        </Button>
-                                    </div>
+                                    {!isMessengerOutboundSource ? (
+                                        <div className="flex justify-center pb-4">
+                                            <Button
+                                                variant="outline"
+                                                className="rounded-full px-6 gap-2 border-border hover:bg-primary/5 hover:border-primary/30"
+                                                onClick={() => setTemplateModalOpen(true)}
+                                            >
+                                                <LayoutTemplate className="h-4 w-4" />
+                                                Mensaje de plantilla
+                                            </Button>
+                                        </div>
+                                    ) : null}
                                 </div>
                             ) : (
                                 /* ═══ UNLOCKED: Normal input area ═══ */
@@ -3468,7 +3517,7 @@ export default function InboxPage() {
                                                 <div>
                                                     <p className="text-sm font-semibold">
                                                         {isSocialInboxSource
-                                                            ? "Este canal aun no permite responder desde el CRM"
+                                                            ? "Este canal no esta conectado"
                                                             : "No puedes responder todavia desde este chat"}
                                                     </p>
                                                     <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
@@ -3572,7 +3621,11 @@ export default function InboxPage() {
                                                 <Textarea
                                                     ref={composerTextareaRef}
                                                     rows={1}
-                                                    placeholder={isWhatsAppTransportReady ? (pendingFile ? "Agregar descripción..." : "Escribe un mensaje...") : "Conecta un numero de WhatsApp para responder desde este chat..."}
+                                                    placeholder={isWhatsAppTransportReady
+                                                        ? (pendingFile ? "Agregar descripción..." : "Escribe un mensaje...")
+                                                        : outboundSourceType === "messenger"
+                                                            ? "Conecta la Pagina de Facebook para responder..."
+                                                            : "Conecta un numero de WhatsApp para responder desde este chat..."}
                                                     className="min-h-[44px] max-h-32 resize-none border-0 bg-transparent px-3 py-3 text-base shadow-none focus-visible:ring-0"
                                                     disabled={!isWhatsAppTransportReady}
                                                     value={inputText}
