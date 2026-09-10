@@ -26,6 +26,7 @@ services:
       - ALLOW_ENV_AI_FALLBACK=false
       - OPENAI_API_KEY=
       - GEMINI_API_KEY=
+      - INVENTORY_SYNC_SECRET=change_this_inventory_sync_secret
       - INITIAL_ADMIN_EMAIL=owner@cliente1.com
       - INITIAL_ADMIN_PASSWORD=ChangeMe123!
       - INITIAL_ADMIN_NAME=Owner Cliente 1
