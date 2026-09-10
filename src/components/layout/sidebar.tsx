@@ -15,7 +15,6 @@ import {
     LayoutTemplate,
     LogOut,
     Menu,
-    MessageSquare,
     PackageSearch,
     ReceiptText,
     Settings,
@@ -27,13 +26,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ZenLogo } from "@/components/icons/zen-logo";
+import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
 import { cn } from "@/lib/utils";
 
 const sidebarNavItems = [
     { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { title: "Contactos", href: "/dashboard/contacts", icon: Users },
     { title: "Pipeline", href: "/dashboard/pipeline", icon: KanbanSquare },
-    { title: "Chats", href: "/dashboard/inbox", icon: MessageSquare },
+    { title: "Chats", href: "/dashboard/inbox", icon: WhatsAppIcon },
     { title: "Inventario", href: "/dashboard/inventory", icon: PackageSearch },
     { title: "Pedidos", href: "/dashboard/orders", icon: ReceiptText },
     { title: "Plantillas", href: "/dashboard/templates", icon: LayoutTemplate, superadminOnly: true },
