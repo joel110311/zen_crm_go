@@ -84,7 +84,7 @@ export function InventoryManagerPanel({ initialProducts, initialCategories, stat
         setLoading(true);
         setNotice(null);
         try {
-            const response = await fetch(`/api/inventory?q=${encodeURIComponent(query)}&includeInactive=true&pageSize=100`, { cache: "no-store" });
+            const response = await fetch(`/api/inventory?q=${encodeURIComponent(query)}&pageSize=100`, { cache: "no-store" });
             if (!response.ok) throw new Error(await readError(response));
             const data = await response.json();
             setProducts(data.products);
@@ -167,6 +167,22 @@ export function InventoryManagerPanel({ initialProducts, initialCategories, stat
         finally { setLoading(false); }
     }
 
+    async function removeProduct(product: InventoryProductView) {
+        const synchronized = product.source !== "manual";
+        const sourceWarning = synchronized ? " También retíralo de la fuente sincronizada para evitar que vuelva a activarse." : "";
+        if (!window.confirm(`¿Retirar “${product.name}” de la venta? Dejará de aparecer para la IA, pero se conservará su historial.${sourceWarning}`)) return;
+        setLoading(true); setNotice(null);
+        try {
+            const response = await fetch(`/api/inventory/${product.id}`, { method: "DELETE" });
+            if (!response.ok) throw new Error(await readError(response));
+            setProducts((current) => current.filter((item) => item.id !== product.id));
+            setNotice(synchronized
+                ? "Producto retirado. Elimínalo o márcalo inactivo también en su fuente externa para que la sincronización no lo reactive."
+                : "Producto retirado de la venta. Su historial se conservó.");
+        } catch (error) { setNotice(error instanceof Error ? error.message : "No se pudo retirar el producto."); }
+        finally { setLoading(false); }
+    }
+
     function openNewSource() {
         setEditingSource(null); setSourceForm(blankSourceForm); setNotice(null); setSourceOpen(true);
     }
@@ -233,7 +249,7 @@ export function InventoryManagerPanel({ initialProducts, initialCategories, stat
                 <Select value={status} onValueChange={setStatus}><SelectTrigger className="w-full lg:w-[170px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todo el stock</SelectItem><SelectItem value="available">Disponible</SelectItem><SelectItem value="low">Stock bajo</SelectItem><SelectItem value="out">Agotado</SelectItem></SelectContent></Select>
             </div>
             <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Producto</TableHead><TableHead>SKU</TableHead><TableHead>Precio venta</TableHead><TableHead>Disponible</TableHead><TableHead>Estado</TableHead><TableHead className="text-right">Acciones</TableHead></TableRow></TableHeader><TableBody>
-                {visibleProducts.map((product) => <TableRow key={product.id}><TableCell><div className="font-medium">{product.name}</div><div className="text-xs text-muted-foreground">{product.category?.name || "Sin categoría"}</div></TableCell><TableCell className="font-mono text-xs">{product.sku}</TableCell><TableCell><div>{priceLabel(product)}</div>{product.priceTiers.length ? <div className="text-xs text-muted-foreground">Según cantidad · {product.priceTiers.length} rangos</div> : null}</TableCell><TableCell>{product.available.toLocaleString("es-MX", { maximumFractionDigits: 3 })} {product.unit}</TableCell><TableCell><Badge variant={product.stockStatus === "available" ? "secondary" : product.stockStatus === "low" ? "outline" : "destructive"}>{statusLabel(product.stockStatus)}</Badge></TableCell><TableCell className="text-right"><Button size="sm" variant="ghost" onClick={() => { setAdjusting(product); setNextOnHand(String(product.locations[0]?.onHand ?? product.onHand)); setReason(""); }}>Ajustar</Button><Button size="icon-xs" variant="ghost" onClick={() => openEditProduct(product)} aria-label={`Editar ${product.name}`}><Pencil /></Button></TableCell></TableRow>)}
+                {visibleProducts.map((product) => <TableRow key={product.id}><TableCell><div className="font-medium">{product.name}</div><div className="text-xs text-muted-foreground">{product.category?.name || "Sin categoría"}</div></TableCell><TableCell className="font-mono text-xs">{product.sku}</TableCell><TableCell><div>{priceLabel(product)}</div>{product.priceTiers.length ? <div className="text-xs text-muted-foreground">Según cantidad · {product.priceTiers.length} rangos</div> : null}</TableCell><TableCell>{product.available.toLocaleString("es-MX", { maximumFractionDigits: 3 })} {product.unit}</TableCell><TableCell><Badge variant={product.stockStatus === "available" ? "secondary" : product.stockStatus === "low" ? "outline" : "destructive"}>{statusLabel(product.stockStatus)}</Badge></TableCell><TableCell className="text-right"><Button size="sm" variant="ghost" onClick={() => { setAdjusting(product); setNextOnHand(String(product.locations[0]?.onHand ?? product.onHand)); setReason(""); }}>Ajustar</Button><Button size="icon-xs" variant="ghost" onClick={() => openEditProduct(product)} aria-label={`Editar ${product.name}`}><Pencil /></Button><Button size="icon-xs" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => removeProduct(product)} disabled={loading} aria-label={`Retirar ${product.name}`} title="Retirar producto"><Trash2 /></Button></TableCell></TableRow>)}
                 {visibleProducts.length === 0 ? <TableRow><TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">No hay productos que coincidan con el filtro.</TableCell></TableRow> : null}
             </TableBody></Table></div>
         </section>

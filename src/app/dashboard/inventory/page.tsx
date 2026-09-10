@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export default async function InventoryPage() {
     const [dashboard, inventory, sources, session] = await Promise.all([
         getInventoryDashboard(),
-        listInventoryProducts({ includeInactive: true, pageSize: 100 }),
+        listInventoryProducts({ pageSize: 100 }),
         listInventorySources(),
         auth(),
     ]);

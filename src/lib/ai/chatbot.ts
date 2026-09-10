@@ -2,7 +2,7 @@ import type OpenAI from "openai";
 import { prisma } from "@/lib/db";
 import { generateCompletion } from "@/lib/ai/openai";
 import { buildKnowledgeContext } from "@/lib/brain/knowledge";
-import { buildInventoryConversationContext } from "@/lib/inventory";
+import { buildInventoryConversationContext, type InventoryShortage } from "@/lib/inventory";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { formatBusinessScheduleLines, normalizeBusinessHours } from "@/lib/calendar/business-hours";
 import { getContactFullName } from "@/lib/contact-name";
@@ -215,11 +215,12 @@ function buildRecentSalesFactsInstruction(
     ].join("\n");
 }
 
-export async function generateConversationReply(
+async function generateConversationReplyResult(
     conversationId: string,
     latestUserMessage: string,
     automationInstruction?: string | null,
-) {
+    options?: { skipCompletionOnInventoryShortage?: boolean },
+): Promise<{ reply: string; inventoryShortage: InventoryShortage | null }> {
     const [settings, conversation] = await Promise.all([
         getSystemSettingsOrDefaults(),
         prisma.conversation.findUnique({
@@ -276,8 +277,12 @@ export async function generateConversationReply(
     // Price and stock are operational data, so inventory wins over semantic RAG.
     // This avoids both a stale answer and an unnecessary embedding/completion cost
     // when a product was identified directly by SKU, name, or tag.
-    const inventoryContext = await buildInventoryConversationContext(knowledgeLookupQuery || latestUserMessage);
-    const { context, chunks } = inventoryContext
+    const inventoryResult = await buildInventoryConversationContext(knowledgeLookupQuery || latestUserMessage);
+    const inventoryContext = inventoryResult?.text || null;
+    if (inventoryResult?.shortage && options?.skipCompletionOnInventoryShortage) {
+        return { reply: "", inventoryShortage: inventoryResult.shortage };
+    }
+    const { context, chunks } = inventoryResult
         ? { context: "", chunks: [] }
         : await buildKnowledgeContext(
             knowledgeLookupQuery || latestUserMessage,
@@ -362,7 +367,26 @@ ${[automationInstruction, recentSalesFactsInstruction].filter(Boolean).join("\n\
     );
 
     const normalized = normalizeWhatsAppReply(response || "");
-    return stripUnverifiedAdvisorLines(normalized, conversation.assignedUser);
+    return {
+        reply: stripUnverifiedAdvisorLines(normalized, conversation.assignedUser),
+        inventoryShortage: inventoryResult?.shortage || null,
+    };
+}
+
+export async function generateConversationReplyWithMetadata(
+    conversationId: string,
+    latestUserMessage: string,
+    automationInstruction?: string | null,
+) {
+    return generateConversationReplyResult(conversationId, latestUserMessage, automationInstruction, { skipCompletionOnInventoryShortage: true });
+}
+
+export async function generateConversationReply(
+    conversationId: string,
+    latestUserMessage: string,
+    automationInstruction?: string | null,
+) {
+    return (await generateConversationReplyResult(conversationId, latestUserMessage, automationInstruction)).reply;
 }
 
 export async function processBotResponse(contactId: string, userMessage: string) {

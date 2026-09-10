@@ -16,7 +16,8 @@ import {
     splitCatalogAssets,
 } from "@/lib/catalog/catalog";
 import { sendWuzapiMediaMessage, sendWuzapiTextMessage } from "@/lib/wuzapi";
-import { generateConversationReply } from "@/lib/ai/chatbot";
+import { generateConversationReplyWithMetadata } from "@/lib/ai/chatbot";
+import type { InventoryShortage } from "@/lib/inventory";
 import { getSystemSettingsOrDefaults, type AppSystemSettings } from "@/lib/system-settings";
 import { buildInboundMediaContext, shouldSkipAutoReplyText } from "@/lib/ai/media-understanding";
 import { maybeHandleAppointmentBooking } from "@/lib/ai/appointment-booking";
@@ -1003,6 +1004,7 @@ function buildEscalationAlertMessage(params: {
     };
     latestUserMessage: string;
     conversationId: string;
+    reason?: string | null;
 }) {
     const brandName = params.brandName?.trim() || "el CRM";
     const contactName = normalizeContactName(params.contact.name) || "Sin nombre";
@@ -1013,7 +1015,7 @@ function buildEscalationAlertMessage(params: {
         `Cliente: *${contactName}*`,
         `Telefono: *${params.contact.phone || "Sin telefono"}*`,
         company ? `Empresa: *${company}*` : null,
-        `Motivo: La IA no encontro una respuesta confiable para continuar sola.`,
+        `Motivo: ${params.reason?.trim() || "La IA no encontro una respuesta confiable para continuar sola."}`,
         `Ultimo mensaje del cliente:`,
         params.latestUserMessage.trim() ? params.latestUserMessage.trim() : "(sin texto)",
         `Conversacion: ${params.conversationId}`,
@@ -1033,6 +1035,7 @@ async function triggerHumanEscalation(params: {
         company?: string | null;
     };
     latestUserMessage: string;
+    reason?: string | null;
 }) {
     const escalationPhone = sanitizeComparablePhone(params.escalationPhone);
     const contactPhone = sanitizeComparablePhone(params.contactPhone);
@@ -1054,11 +1057,29 @@ async function triggerHumanEscalation(params: {
                 contact: params.contact,
                 latestUserMessage: params.latestUserMessage,
                 conversationId: params.conversationId,
+                reason: params.reason,
             }),
         );
     } catch (error) {
         console.error("[Escalation] Failed to notify escalation phone:", error);
     }
+}
+
+function buildInventoryShortageCustomerReply(shortage: InventoryShortage, willEscalate: boolean) {
+    const unit = shortage.unit === "pieza" ? "piezas" : shortage.unit;
+    const pricing = shortage.unitPrice === null
+        ? null
+        : `Para ${shortage.requestedQuantity.toLocaleString("es-MX")} ${unit} de *${shortage.productName}*, el precio verificado es de *$${shortage.unitPrice.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN por ${shortage.unit}*${shortage.subtotal === null ? "." : `, con un subtotal de *$${shortage.subtotal.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN*.`}`;
+    const availability = shortage.revealAvailableQuantity
+        ? `Actualmente hay ${shortage.availableQuantity.toLocaleString("es-MX")} ${unit} disponibles, por lo que no puedo confirmar ${shortage.requestedQuantity.toLocaleString("es-MX")} para entrega inmediata.`
+        : `Por el momento no puedo confirmar ${shortage.requestedQuantity.toLocaleString("es-MX")} ${unit} para entrega inmediata.`;
+    return [
+        pricing,
+        availability,
+        willEscalate
+            ? "Voy a canalizarte con un asesor humano para revisar disponibilidad y tiempo de reposicion. En un momento te atenderemos por aqui."
+            : "Un asesor humano necesita revisar la disponibilidad y el tiempo de reposicion antes de confirmarte.",
+    ].filter(Boolean).join("\n\n");
 }
 
 async function touchAutomatedConversation(conversationId: string) {
@@ -1796,6 +1817,7 @@ async function maybeSendAutomatedReply(
         let usedCatalogAvailabilitySummary = false;
         let catalogDevelopmentContext: Awaited<ReturnType<typeof getCatalogDevelopmentContext>> | null = null;
         let replyFromModel = false;
+        let inventoryShortage: InventoryShortage | null = null;
 
         if (
             appointmentResult.kind === "missing" ||
@@ -1957,25 +1979,33 @@ async function maybeSendAutomatedReply(
                     .join(" ")
                     .trim() || null;
 
-                reply = await generateConversationReply(
+                const generatedReply = await generateConversationReplyWithMetadata(
                     conversationId,
                     modelUserMessage,
                     automationInstruction,
                 );
+                reply = generatedReply.reply;
+                inventoryShortage = generatedReply.inventoryShortage;
                 replyFromModel = true;
             }
         }
 
-        if (!reply) return;
+        if (!reply && !inventoryShortage) return;
+        reply ||= "";
 
+        const hasEscalationPhone = Boolean(settings.escalationPhone?.trim());
         const shouldEscalate =
             replyFromModel &&
-            settings.escalationEnabled &&
-            Boolean(settings.escalationPhone?.trim()) &&
-            shouldEscalateUnknownReply(reply);
+            hasEscalationPhone &&
+            (Boolean(inventoryShortage) || settings.escalationEnabled && shouldEscalateUnknownReply(reply));
 
-        if (shouldEscalate) {
+        if (inventoryShortage) {
+            reply = buildInventoryShortageCustomerReply(inventoryShortage, shouldEscalate);
+        } else if (shouldEscalate) {
             reply = buildEscalationCustomerReply();
+        }
+
+        if (inventoryShortage || shouldEscalate) {
             catalogItem = null;
             pendingCatalogImages = false;
             pendingCatalogPdf = false;
@@ -2065,6 +2095,9 @@ async function maybeSendAutomatedReply(
                 brandName: settings.agentName,
                 contact: latestConversation.contact,
                 latestUserMessage,
+                reason: inventoryShortage
+                    ? `Inventario insuficiente: solicito ${inventoryShortage.requestedQuantity} ${inventoryShortage.unit} de ${inventoryShortage.productName} (${inventoryShortage.sku}); disponibilidad verificada: ${inventoryShortage.availableQuantity}.`
+                    : null,
             });
         }
 
