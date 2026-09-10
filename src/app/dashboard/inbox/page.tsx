@@ -918,40 +918,40 @@ function MicPermissionBanner({ onAllow, onDeny }: { onAllow: () => void; onDeny:
 }
 
 // ──────────── Contact Info Panel ────────────
-function ContactInfoPanel({ conversation, onClose }: { conversation: Conversation; onClose: () => void }) {
+function ContactInfoPanel({ conversation, onClose, showClose = true }: { conversation: Conversation; onClose: () => void; showClose?: boolean }) {
     const contact = conversation.contact;
     const intelligence = conversation.leadIntelligence ?? null;
     const leadStatusLabel = intelligence ? (LEAD_STATUS_LABELS[intelligence.interestStatus] || intelligence.interestStatus) : null;
     const leadStepLabel = intelligence ? (LEAD_STEP_LABELS[intelligence.currentStep] || intelligence.currentStep) : null;
     return (
-        <div className="w-[22rem] border-l border-border/50 flex flex-col bg-card/90 backdrop-blur-2xl animate-in slide-in-from-right duration-200">
-            <div className="flex h-20 items-center justify-between border-b border-border/50 px-5">
-                <h3 className="text-base font-semibold tracking-tight">Info. del contacto</h3>
-                <Button variant="ghost" size="icon" onClick={onClose}>
+        <div className="flex h-full w-[19rem] flex-col border-l border-border bg-card animate-in slide-in-from-right duration-200 2xl:w-[21rem]">
+            <div className="flex h-[4.5rem] shrink-0 items-center justify-between border-b border-border px-4">
+                <div><p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gold">Ficha rápida</p><h3 className="mt-0.5 text-sm font-semibold tracking-tight">Detalles del cliente</h3></div>
+                {showClose && <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={onClose}>
                     <X className="h-4 w-4" />
-                </Button>
+                </Button>}
             </div>
             <ScrollArea className="flex-1">
-                <div className="p-6 flex flex-col gap-6">
+                <div className="flex flex-col gap-4 p-4">
                     {/* Avatar */}
-                    <div className="rounded-[1.75rem] border border-border/50 bg-background/70 px-5 py-6 text-center shadow-[0_24px_60px_-36px_rgba(15,23,42,0.35)] dark:bg-background/40">
-                    <Avatar className="mx-auto h-24 w-24 ring-4 ring-background shadow-lg">
+                    <div className="flex items-center gap-3 rounded-2xl border border-border bg-background/55 p-3.5">
+                    <Avatar className="h-12 w-12 shrink-0 ring-2 ring-card shadow-sm">
                         <AvatarImage
                             src={contact?.avatarUrl || undefined}
                             alt={contact?.name || "Contacto"}
                         />
-                        <AvatarFallback className="bg-primary/10 text-3xl text-primary">
+                        <AvatarFallback className="bg-primary/10 text-base font-semibold text-primary">
                             {contact?.name?.charAt(0) || "?"}
                         </AvatarFallback>
                     </Avatar>
-                    <div className="mt-4 text-center">
-                        <h4 className="text-lg font-semibold">{contact?.name || "Desconocido"}</h4>
-                        <p className="text-sm text-muted-foreground">{formatPhone(contact?.phone)}</p>
+                    <div className="min-w-0 flex-1">
+                        <h4 className="truncate text-sm font-semibold">{contact?.name || "Desconocido"}</h4>
+                        <p className="truncate text-xs text-muted-foreground">{formatPhone(contact?.phone)}</p>
                     </div>
 
                     {/* Status badge */}
                     {contact?.status && (
-                        <Badge variant="outline" className="mt-4 rounded-full border-border/60 bg-card/80 px-3 py-1 capitalize">
+                        <Badge variant="outline" className="mt-2 rounded-full border-primary/15 bg-primary/10 px-2.5 py-0.5 text-[10px] capitalize text-primary">
                             {contact.status === "lead" ? "Lead" : contact.status === "qualified" ? "Calificado" : contact.status === "customer" ? "Cliente" : contact.status}
                         </Badge>
                     )}
@@ -2801,25 +2801,25 @@ export default function InboxPage() {
             )}
 
             <div
-                className="fixed inset-x-4 bottom-5 top-[4.375rem] z-10 flex overflow-hidden overscroll-none rounded-[1.75rem] border border-border/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(248,250,252,0.98))] shadow-[0_28px_70px_-44px_rgba(15,23,42,0.45)] backdrop-blur-xl dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.88),rgba(2,6,23,0.98))] md:static md:inset-auto md:z-auto md:m-0 md:h-full md:min-h-0 md:rounded-[2rem] md:border md:shadow-[0_28px_80px_-48px_rgba(15,23,42,0.55)]"
+                className="fixed inset-x-2 bottom-2 top-16 z-10 flex overflow-hidden overscroll-none rounded-2xl border border-border bg-card shadow-soft md:relative md:inset-auto md:z-auto md:h-full md:min-h-0 md:rounded-none md:border-0 md:shadow-none"
             >
                 {/* ──── Sidebar ──── */}
-                <div className={cn("min-h-0 w-full md:w-[20.5rem] 2xl:w-[21.75rem] border-r border-border/50 flex flex-col bg-card/55 backdrop-blur-2xl", selectedChat ? "hidden md:flex" : "flex")}>
-                    <div className="border-b border-border/50 bg-background/35 p-4 space-y-3.5">
-                        <div>
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Inbox</p>
-                            <h2 className="mt-1 text-[1.35rem] font-semibold tracking-tight">Chats</h2>
+                <div className={cn("min-h-0 w-full border-r border-border bg-card md:w-[20.5rem] 2xl:w-[22rem] flex flex-col", selectedChat ? "hidden md:flex" : "flex")}>
+                    <div className="space-y-3 border-b border-border bg-card p-4">
+                        <div className="flex items-start justify-between gap-3">
+                            <div><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gold">Centro de mensajes</p><h2 className="mt-1 text-xl font-semibold tracking-tight">Bandeja</h2></div>
+                            <span className="mt-1 rounded-full bg-secondary px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">{filteredConversations.length} chats</span>
                         </div>
                         <div className="relative">
                             <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                             <Input
                                 placeholder="Buscar chats..."
-                                className="h-11 rounded-[1.1rem] border-border/60 bg-background/80 pl-10 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.4)] placeholder:text-muted-foreground/80"
+                                className="h-10 rounded-xl border-border bg-background/70 pl-10 shadow-none placeholder:text-muted-foreground/75"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
                         </div>
-                        <div className="inline-flex w-fit flex-wrap gap-1.5 rounded-[0.95rem] border border-border/50 bg-background/75 p-1 shadow-[0_14px_30px_-26px_rgba(15,23,42,0.45)]">
+                        <div className="inline-flex w-full flex-wrap gap-1 rounded-xl bg-secondary/60 p-1">
                             {[
                                 { id: "all", label: "Todos" },
                                 { id: "mine", label: "Mios" },
@@ -2830,9 +2830,9 @@ export default function InboxPage() {
                                     type="button"
                                     onClick={() => setViewFilter(filter.id as "all" | "mine" | "unassigned")}
                                     className={cn(
-                                        "rounded-[0.8rem] border px-3 py-1.5 text-[11px] font-medium transition-all",
+                                        "flex-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-all",
                                         viewFilter === filter.id
-                                            ? "border-border/70 bg-card text-foreground shadow-[0_10px_22px_-18px_rgba(15,23,42,0.45)]"
+                                            ? "border-border bg-card text-foreground shadow-sm"
                                             : "border-transparent bg-transparent text-muted-foreground hover:bg-card/70 hover:text-foreground",
                                     )}
                                 >
@@ -3658,9 +3658,8 @@ export default function InboxPage() {
                 </div>
 
                 {/* ──── Contact Info Panel ──── */}
-                {showContactInfo && selectedChat && (
-                    <ContactInfoPanel conversation={selectedChat} onClose={() => setShowContactInfo(false)} />
-                )}
+                {selectedChat && <div className="hidden h-full shrink-0 xl:flex"><ContactInfoPanel conversation={selectedChat} onClose={() => setShowContactInfo(false)} showClose={false} /></div>}
+                {showContactInfo && selectedChat && <div className="absolute inset-y-0 right-0 z-30 flex h-full shadow-2xl xl:hidden"><ContactInfoPanel conversation={selectedChat} onClose={() => setShowContactInfo(false)} /></div>}
             </div >
 
             {/* Image Viewer Lightbox */}

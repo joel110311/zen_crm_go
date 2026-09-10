@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Moon, Sun } from "lucide-react"
+import { Laptop, Moon, Sun } from "lucide-react"
 import { useTheme } from "next-themes"
 
 import { cn } from "@/lib/utils"
@@ -20,7 +20,7 @@ export function ThemeToggle() {
 
     return (
         <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div
                     className={cn(
                         "cursor-pointer rounded-xl border p-1 transition hover:border-foreground/40",
@@ -59,6 +59,19 @@ export function ThemeToggle() {
                         </div>
                     </div>
                     <div className="p-2 text-center text-sm font-semibold">Oscuro</div>
+                </div>
+
+                <div
+                    className={cn(
+                        "cursor-pointer rounded-xl border p-1 transition hover:border-foreground/40",
+                        theme === "system" ? "border-foreground shadow-soft" : "border-border"
+                    )}
+                    onClick={() => setTheme("system")}
+                >
+                    <div className="flex min-h-[126px] items-center justify-center rounded-lg bg-secondary p-3">
+                        <Laptop className="h-10 w-10 text-muted-foreground" />
+                    </div>
+                    <div className="p-2 text-center text-sm font-semibold">Sistema</div>
                 </div>
             </div>
         </div>

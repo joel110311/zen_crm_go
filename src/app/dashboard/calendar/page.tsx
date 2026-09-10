@@ -7,19 +7,14 @@ import { BigCalendar } from "@/components/calendar/big-calendar";
 import { AppointmentList } from "@/components/calendar/appointment-list";
 import { AppointmentDialog } from "@/components/calendar/appointment-dialog";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
     Plus,
     LayoutList,
     Calendar as CalendarIcon,
-    Clock,
-    CheckCircle,
-    CalendarDays,
-    Check,
+    Filter,
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
-import { isSameWeek, isToday } from "date-fns";
 import { formatBusinessScheduleSummary, normalizeBusinessHours } from "@/lib/calendar/business-hours";
 
 type CalendarSourceFilter = {
@@ -60,7 +55,8 @@ export default function CalendarPage() {
     const [appointments, setAppointments] = useState<any[]>([]);
     const [calendarSources, setCalendarSources] = useState<CalendarSourceFilter[]>([]);
     const [activeCalendarFilter, setActiveCalendarFilter] = useState("all");
-    const [view, setView] = useState("list");
+    const [view, setView] = useState<"list" | "calendar">("calendar");
+    const [statusFilter, setStatusFilter] = useState("all");
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [selectedEvent, setSelectedEvent] = useState<any>(null);
     const [selectedSlot, setSelectedSlot] = useState<{ start: Date; end: Date } | null>(null);
@@ -131,32 +127,17 @@ export default function CalendarPage() {
         }
     }, [activeCalendarFilter, filterOptions]);
 
-    const filteredAppointments = useMemo(() => {
-        if (activeCalendarFilter === "all") {
-            return appointments;
-        }
-
-        if (activeCalendarFilter === "internal") {
-            return appointments.filter((apt) => !apt.googleCalendarId);
-        }
-
-        return appointments.filter((apt) => apt.googleCalendarId === activeCalendarFilter);
-    }, [activeCalendarFilter, appointments]);
+    const filteredAppointments = useMemo(() => appointments.filter((apt) => {
+        const matchesCalendar = activeCalendarFilter === "all"
+            || activeCalendarFilter === "internal" && !apt.googleCalendarId
+            || apt.googleCalendarId === activeCalendarFilter;
+        return matchesCalendar && (statusFilter === "all" || apt.status === statusFilter);
+    }), [activeCalendarFilter, appointments, statusFilter]);
 
     const activeFilterMeta = useMemo(
         () => filterOptions.find((option) => option.id === activeCalendarFilter) || filterOptions[0],
         [activeCalendarFilter, filterOptions],
     );
-
-    const stats = useMemo(() => {
-        const now = new Date();
-        return {
-            today: filteredAppointments.filter((apt) => isToday(new Date(apt.startTime))).length,
-            week: filteredAppointments.filter((apt) => isSameWeek(new Date(apt.startTime), now)).length,
-            pending: filteredAppointments.filter((apt) => apt.status === "scheduled").length,
-            completed: filteredAppointments.filter((apt) => apt.status === "completed").length,
-        };
-    }, [filteredAppointments]);
 
     const handleEdit = (apt: any) => {
         const event = {
@@ -192,7 +173,11 @@ export default function CalendarPage() {
 
     const handleDelete = async (id: string) => {
         if (!confirm("¿Eliminar cita?")) return;
-        await deleteAppointment(id);
+        const result = await deleteAppointment(id);
+        if (!result.success) {
+            toast({ title: "No se eliminó la cita", description: result.error, variant: "destructive" });
+            return;
+        }
         toast({ title: "Cita eliminada" });
         void fetchAppointments();
     };
@@ -241,137 +226,30 @@ export default function CalendarPage() {
     );
 
     return (
-        <div className="flex h-full flex-col gap-2 bg-background">
-            <div className="flex items-center justify-between shrink-0">
+        <div className="flex h-full min-h-0 flex-col bg-background">
+            <div className="flex shrink-0 items-start justify-between gap-4 pb-3">
                 <div>
-                    <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Gestión de Citas</h1>
-                    <p className="text-muted-foreground text-sm">Gestiona las citas agendadas con tus clientes.</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                        Horario comercial: {formatBusinessScheduleSummary(businessHours)}
-                    </p>
+                    <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Agenda</h1>
+                    <p className="text-sm text-muted-foreground">Calendario de citas — selecciona un horario para agendar.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Horario comercial: {formatBusinessScheduleSummary(businessHours)}</p>
                 </div>
-                <Button onClick={handleNew} size="sm" className="shadow-sm">
-                    <Plus className="mr-2 h-4 w-4" /> Nueva Cita
+                <Button onClick={handleNew} size="sm" className="rounded-full px-5 shadow-sm">
+                    <Plus className="mr-2 h-4 w-4" /> Nueva cita
                 </Button>
             </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 shrink-0">
-                <Card className="border-none shadow-sm bg-card">
-                    <CardContent className="flex items-center justify-between p-3">
-                        <div>
-                            <p className="text-xs font-medium text-muted-foreground">Hoy</p>
-                            <h2 className="text-xl font-bold text-foreground">{stats.today}</h2>
-                        </div>
-                        <div className="h-8 w-8 bg-primary/10 text-primary rounded-lg flex items-center justify-center">
-                            <CalendarDays className="h-4 w-4" />
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card className="border-none shadow-sm bg-card">
-                    <CardContent className="flex items-center justify-between p-3">
-                        <div>
-                            <p className="text-xs font-medium text-muted-foreground">Semana</p>
-                            <h2 className="text-xl font-bold text-foreground">{stats.week}</h2>
-                        </div>
-                        <div className="h-8 w-8 bg-primary/10 text-primary rounded-lg flex items-center justify-center">
-                            <CalendarIcon className="h-4 w-4" />
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card className="border-none shadow-sm bg-card">
-                    <CardContent className="flex items-center justify-between p-3">
-                        <div>
-                            <p className="text-xs font-medium text-muted-foreground">Pendientes</p>
-                            <h2 className="text-xl font-bold text-foreground">{stats.pending}</h2>
-                        </div>
-                        <div className="h-8 w-8 bg-primary/10 text-primary rounded-lg flex items-center justify-center">
-                            <Clock className="h-4 w-4" />
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card className="border-none shadow-sm bg-card">
-                    <CardContent className="flex items-center justify-between p-3">
-                        <div>
-                            <p className="text-xs font-medium text-muted-foreground">Completadas</p>
-                            <h2 className="text-xl font-bold text-foreground">{stats.completed}</h2>
-                        </div>
-                        <div className="h-8 w-8 bg-primary/10 text-primary rounded-lg flex items-center justify-center">
-                            <CheckCircle className="h-4 w-4" />
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-
-            <div className="shrink-0 rounded-xl border bg-card/80 p-3 shadow-sm">
-                <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between gap-3">
-                        <div>
-                            <p className="text-sm font-semibold text-foreground">Calendarios visibles</p>
-                            <p className="text-xs text-muted-foreground">
-                                Filtra el calendario y la lista por especialista o agenda.
-                            </p>
-                        </div>
-                        <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
-                            <span
-                                className="h-2.5 w-2.5 rounded-full"
-                                style={{ backgroundColor: activeFilterMeta?.color || DEFAULT_FILTER_COLOR }}
-                            />
-                            <span>Vista actual: {activeFilterMeta?.label || "Todos"}</span>
-                        </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                        {filterOptions.map((option) => {
-                            const isActive = activeCalendarFilter === option.id;
-                            return (
-                                <button
-                                    key={option.id}
-                                    type="button"
-                                    onClick={() => setActiveCalendarFilter(option.id)}
-                                    className={`inline-flex min-w-[140px] items-center gap-3 rounded-xl border px-3 py-2 text-left transition-all ${
-                                        isActive
-                                            ? "border-transparent bg-primary/5 shadow-sm ring-2 ring-primary/10"
-                                            : "border-border bg-background hover:border-primary/20 hover:bg-muted/40"
-                                    }`}
-                                >
-                                    <span
-                                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] border"
-                                        style={{
-                                            borderColor: option.color,
-                                            backgroundColor: isActive ? option.color : "transparent",
-                                            color: isActive ? "#FFFFFF" : option.color,
-                                        }}
-                                    >
-                                        {isActive ? <Check className="h-3.5 w-3.5" /> : null}
-                                    </span>
-                                    <span className="flex min-w-0 flex-col">
-                                        <span className="truncate text-sm font-medium text-foreground">{option.label}</span>
-                                        <span className="truncate text-[11px] text-muted-foreground">{option.caption}</span>
-                                    </span>
-                                </button>
-                            );
-                        })}
-                    </div>
+            <div className="flex shrink-0 flex-col gap-3 border-y border-border py-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="inline-flex w-fit rounded-xl border border-border bg-card p-1 shadow-sm">
+                    <Button type="button" size="sm" variant={view === "list" ? "secondary" : "ghost"} onClick={() => setView("list")}><LayoutList /> Lista</Button>
+                    <Button type="button" size="sm" variant={view === "calendar" ? "secondary" : "ghost"} onClick={() => setView("calendar")}><CalendarIcon /> Calendario</Button>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center"><Filter className="hidden h-4 w-4 text-muted-foreground sm:block" />
+                    <Select value={activeCalendarFilter} onValueChange={setActiveCalendarFilter}><SelectTrigger className="w-full bg-card sm:w-[260px]"><span className="mr-2 h-2.5 w-2.5 rounded-full" style={{ backgroundColor: activeFilterMeta?.color || DEFAULT_FILTER_COLOR }} /><SelectValue /></SelectTrigger><SelectContent>{filterOptions.map((option) => <SelectItem key={option.id} value={option.id}>{option.id === "all" ? "Todos los calendarios" : option.label}</SelectItem>)}</SelectContent></Select>
+                    <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-full bg-card sm:w-[210px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos los estados</SelectItem><SelectItem value="scheduled">Programadas</SelectItem><SelectItem value="completed">Completadas</SelectItem><SelectItem value="cancelled">Canceladas</SelectItem></SelectContent></Select>
                 </div>
             </div>
 
-            <Tabs defaultValue="calendar" className="flex flex-col flex-1 w-full overflow-hidden" onValueChange={setView}>
-                <div className="flex items-center justify-between mb-2 shrink-0">
-                    <TabsList className="bg-card border h-8">
-                        <TabsTrigger value="list" className="text-xs h-6 data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
-                            <LayoutList className="mr-2 h-3 w-3" /> Lista
-                        </TabsTrigger>
-                        <TabsTrigger value="calendar" className="text-xs h-6 data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
-                            <CalendarIcon className="mr-2 h-3 w-3" /> Calendario
-                        </TabsTrigger>
-                    </TabsList>
-                </div>
-
-                <TabsContent value="list" className="mt-0 flex-1 overflow-auto border rounded-lg bg-card">
-                    <AppointmentList appointments={filteredAppointments} onEdit={handleEdit} onDelete={handleDelete} />
-                </TabsContent>
-
-                <TabsContent value="calendar" className="mt-0 flex-1 bg-card rounded-lg border p-2 overflow-hidden flex flex-col">
+            <div className="mt-3 min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-card shadow-soft">
+                {view === "list" ? <div className="h-full overflow-auto"><AppointmentList appointments={filteredAppointments} onEdit={handleEdit} onDelete={handleDelete} /></div> : <div className="flex h-full min-h-[640px] flex-col p-2">
                     <BigCalendar
                         initialEvents={events}
                         onSelectSlot={handleSelectSlot}
@@ -380,8 +258,8 @@ export default function CalendarPage() {
                         onMutationSettled={fetchAppointments}
                         businessHours={businessHours}
                     />
-                </TabsContent>
-            </Tabs>
+                </div>}
+            </div>
 
             <AppointmentDialog
                 open={isDialogOpen}

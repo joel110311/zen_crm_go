@@ -76,7 +76,7 @@ export function BigCalendar({
     onMutationSettled,
 }: BigCalendarProps) {
     const [events, setEvents] = useState<CalendarEvent[]>(() => normalizeEvents(initialEvents));
-    const [view, setView] = useState<View>(Views.MONTH);
+    const [view, setView] = useState<View>(Views.WEEK);
     const [date, setDate] = useState(new Date());
     const { toast } = useToast();
 
@@ -121,18 +121,19 @@ export function BigCalendar({
             onAppointmentTimeChange?.(event.id, nextEvent.start, nextEvent.end);
 
             try {
-                await updateAppointment(event.id, {
+                const result = await updateAppointment(event.id, {
                     startTime: nextEvent.start,
                     endTime: nextEvent.end,
                 });
+                if (!result.success) throw new Error(result.error || "No se pudo actualizar la cita.");
                 toast({ title: successMessage, description: `Movida a ${format(nextEvent.start, "PPP p", { locale: es })}` });
                 await onMutationSettled?.();
-            } catch {
+            } catch (error) {
                 replaceEvent(event.id, originalEvent);
                 onAppointmentTimeChange?.(event.id, originalEvent.start, originalEvent.end);
                 toast({
                     title: "Error",
-                    description: "No se pudo actualizar la cita.",
+                    description: error instanceof Error ? error.message : "No se pudo actualizar la cita.",
                     variant: "destructive",
                 });
             }

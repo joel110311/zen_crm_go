@@ -10,8 +10,24 @@ export type InventorySourceType = typeof INVENTORY_SOURCE_TYPES[number];
 export type InventoryStockStatus = typeof INVENTORY_STOCK_STATUSES[number];
 
 type ProductWithStock = Prisma.InventoryProductGetPayload<{
-    include: { category: true; stocks: { include: { location: true } } };
+    include: { category: true; stocks: { include: { location: true } }; priceTiers: true };
 }>;
+
+export type InventoryPriceTierView = {
+    id: string;
+    minQuantity: number;
+    maxQuantity: number | null;
+    unitPrice: number;
+};
+
+export function resolveInventoryUnitPrice(
+    priceTiers: Array<Pick<InventoryPriceTierView, "minQuantity" | "maxQuantity" | "unitPrice">>,
+    fallbackPrice: number,
+    quantity: number,
+) {
+    const tier = priceTiers.find((item) => quantity >= item.minQuantity && (item.maxQuantity === null || quantity <= item.maxQuantity));
+    return tier?.unitPrice ?? (priceTiers.length === 0 ? fallbackPrice : null);
+}
 
 export type InventoryProductView = {
     id: string;
@@ -22,6 +38,7 @@ export type InventoryProductView = {
     category: { id: string; name: string; color: string | null } | null;
     unit: string;
     salePrice: number;
+    priceTiers: InventoryPriceTierView[];
     internalCost: number | null;
     tags: string[];
     imageUrl: string | null;
@@ -52,6 +69,7 @@ export type InventoryInput = {
     category?: unknown;
     unit?: unknown;
     salePrice?: unknown;
+    priceTiers?: unknown;
     internalCost?: unknown;
     tags?: unknown;
     imageUrl?: unknown;
@@ -72,6 +90,7 @@ export type NormalizedInventoryInput = {
     category: string | null;
     unit: string;
     salePrice: number;
+    priceTiers: Array<{ minQuantity: number; maxQuantity: number | null; unitPrice: number }>;
     internalCost: number | null;
     tags: string[];
     imageUrl: string | null;
@@ -155,16 +174,51 @@ function sourceType(value: unknown): InventorySourceType {
         : "manual";
 }
 
+function parsePriceTiers(value: unknown) {
+    if (value === undefined || value === null || value === "") return [];
+    if (!Array.isArray(value)) throw new Error("Los rangos de precio deben enviarse como una lista.");
+    const tiers = value.map((entry, index) => {
+        if (!entry || typeof entry !== "object") throw new Error(`El rango ${index + 1} no es válido.`);
+        const row = entry as Record<string, unknown>;
+        const minQuantity = numericValue(row.minQuantity, 0);
+        const maxQuantity = row.maxQuantity === undefined || row.maxQuantity === null || row.maxQuantity === ""
+            ? null
+            : numericValue(row.maxQuantity, 0);
+        const unitPrice = numericValue(row.unitPrice, 2);
+        if ([row.minQuantity, row.unitPrice].some(hasInvalidNumericValue) || maxQuantity !== null && hasInvalidNumericValue(row.maxQuantity)) {
+            throw new Error(`El rango ${index + 1} contiene valores no numéricos.`);
+        }
+        if (!Number.isInteger(minQuantity) || minQuantity < 1) throw new Error(`La cantidad mínima del rango ${index + 1} debe ser un entero mayor que cero.`);
+        if (maxQuantity !== null && (!Number.isInteger(maxQuantity) || maxQuantity < minQuantity)) {
+            throw new Error(`La cantidad máxima del rango ${index + 1} no puede ser menor que la mínima.`);
+        }
+        if (unitPrice < 0) throw new Error(`El precio del rango ${index + 1} no puede ser negativo.`);
+        return { minQuantity, maxQuantity, unitPrice };
+    }).sort((left, right) => left.minQuantity - right.minQuantity);
+
+    for (let index = 0; index < tiers.length; index += 1) {
+        const tier = tiers[index];
+        const next = tiers[index + 1];
+        if (tier.maxQuantity === null && next) throw new Error("El rango sin cantidad máxima debe ser el último.");
+        if (next && tier.maxQuantity !== null && next.minQuantity <= tier.maxQuantity) {
+            throw new Error(`Los rangos que comienzan en ${tier.minQuantity} y ${next.minQuantity} se traslapan.`);
+        }
+    }
+    return tiers;
+}
+
 export function normalizeInventoryInput(input: InventoryInput, strict = true): NormalizedInventoryInput {
     const sku = normalizeSku(input.sku);
     const name = cleanText(input.name, 180);
-    const salePrice = numericValue(input.salePrice, 2);
+    const priceTiers = parsePriceTiers(input.priceTiers);
+    const salePriceWasProvided = input.salePrice !== undefined && input.salePrice !== null && input.salePrice !== "";
+    const salePrice = salePriceWasProvided ? numericValue(input.salePrice, 2) : priceTiers[0]?.unitPrice || 0;
     const onHand = numericValue(input.onHand, 3);
     const reserved = numericValue(input.reserved, 3);
     const minimumStock = numericValue(input.minimumStock, 3);
 
     const numericFields = [
-        ["precio de venta", input.salePrice],
+        ...(salePriceWasProvided ? [["precio de venta", input.salePrice] as const] : []),
         ["costo interno", input.internalCost],
         ["existencia", input.onHand],
         ["reservado", input.reserved],
@@ -191,6 +245,7 @@ export function normalizeInventoryInput(input: InventoryInput, strict = true): N
         category: cleanText(input.category, 120) || null,
         unit: cleanText(input.unit, 40) || "pieza",
         salePrice,
+        priceTiers,
         internalCost,
         tags: parseTags(input.tags),
         imageUrl: cleanText(input.imageUrl, 2000) || null,
@@ -243,6 +298,12 @@ function toView(product: ProductWithStock): InventoryProductView {
         category: product.category ? { id: product.category.id, name: product.category.name, color: product.category.color } : null,
         unit: product.unit,
         salePrice: decimalToNumber(product.salePrice),
+        priceTiers: product.priceTiers.map((tier) => ({
+            id: tier.id,
+            minQuantity: tier.minQuantity,
+            maxQuantity: tier.maxQuantity,
+            unitPrice: decimalToNumber(tier.unitPrice),
+        })),
         internalCost: product.internalCost === null ? null : decimalToNumber(product.internalCost),
         tags: product.tags,
         imageUrl: product.imageUrl,
@@ -261,6 +322,7 @@ function toView(product: ProductWithStock): InventoryProductView {
 const PRODUCT_INCLUDE = {
     category: true,
     stocks: { include: { location: true }, orderBy: { location: { name: "asc" as const } } },
+    priceTiers: { orderBy: [{ sortOrder: "asc" as const }, { minQuantity: "asc" as const }] },
 } satisfies Prisma.InventoryProductInclude;
 
 async function ensureLocation(client: Prisma.TransactionClient | typeof prisma, name: string) {
@@ -383,8 +445,8 @@ async function saveNormalizedProduct(
         ensureLocation(client, input.location),
     ]);
     const existing = options.productId
-        ? await client.inventoryProduct.findUnique({ where: { id: options.productId }, include: { stocks: true } })
-        : await client.inventoryProduct.findUnique({ where: { sku: input.sku }, include: { stocks: true } });
+        ? await client.inventoryProduct.findUnique({ where: { id: options.productId }, include: { stocks: true, priceTiers: true } })
+        : await client.inventoryProduct.findUnique({ where: { sku: input.sku }, include: { stocks: true, priceTiers: true } });
     const hash = semanticHash(input);
     const productData = {
         sku: input.sku,
@@ -405,6 +467,18 @@ async function saveNormalizedProduct(
     const product = existing
         ? await client.inventoryProduct.update({ where: { id: existing.id }, data: productData })
         : await client.inventoryProduct.create({ data: productData });
+    await client.inventoryPriceTier.deleteMany({ where: { productId: product.id } });
+    if (input.priceTiers.length > 0) {
+        await client.inventoryPriceTier.createMany({
+            data: input.priceTiers.map((tier, index) => ({
+                productId: product.id,
+                minQuantity: tier.minQuantity,
+                maxQuantity: tier.maxQuantity,
+                unitPrice: tier.unitPrice.toFixed(2),
+                sortOrder: index,
+            })),
+        });
+    }
     const currentStock = existing?.stocks.find((stock) => stock.locationId === location.id);
     const previousOnHand = decimalToNumber(currentStock?.onHand);
     const nextOnHand = input.onHand;
@@ -441,7 +515,11 @@ async function saveNormalizedProduct(
             },
         });
     }
-    return { product, created: !existing, changed: !existing || existing.sourceHash !== hash || previousOnHand !== nextOnHand };
+    const previousTiers = (existing?.priceTiers || [])
+        .map((tier) => `${tier.minQuantity}:${tier.maxQuantity ?? ""}:${decimalToNumber(tier.unitPrice)}`)
+        .sort().join("|");
+    const nextTiers = input.priceTiers.map((tier) => `${tier.minQuantity}:${tier.maxQuantity ?? ""}:${tier.unitPrice}`).sort().join("|");
+    return { product, created: !existing, changed: !existing || existing.sourceHash !== hash || previousOnHand !== nextOnHand || previousTiers !== nextTiers };
 }
 
 export async function saveInventoryProduct(input: InventoryInput, actorId?: string | null, productId?: string) {
@@ -458,6 +536,7 @@ export async function saveInventoryProduct(input: InventoryInput, actorId?: stri
             category: current.category?.name || "",
             unit: current.unit,
             salePrice: current.salePrice,
+            priceTiers: current.priceTiers,
             internalCost: current.internalCost,
             tags: current.tags,
             imageUrl: current.imageUrl || "",
@@ -750,11 +829,31 @@ export async function searchInventoryForConversation(message: string) {
 export async function buildInventoryConversationContext(message: string) {
     const products = await searchInventoryForConversation(message);
     if (products.length === 0) return null;
+    const quantity = [...message.split(/\n+/)].reverse().reduce<number | null>((found, line) => {
+        if (found !== null) return found;
+        const normalized = normalizeText(line);
+        const explicit = normalized.match(/\b(\d{1,6})\s*(?:pzs?|piezas?|unidades?|pulseras?|productos?)\b/i)
+            || normalized.match(/\b(?:cantidad|quiero|necesito|serian|son|para|de)\s+(\d{1,6})\b/i);
+        const parsed = explicit ? Number.parseInt(explicit[1], 10) : NaN;
+        return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+    }, null);
+    const pricingLine = (product: InventoryProductView) => {
+        if (product.priceTiers.length === 0) return `Precio de venta: $${product.salePrice.toFixed(2)} MXN`;
+        if (quantity !== null) {
+            const unitPrice = resolveInventoryUnitPrice(product.priceTiers, product.salePrice, quantity);
+            if (unitPrice === null) return `Cantidad consultada: ${quantity}; no existe un rango configurado para esa cantidad. Pide aclaración y no inventes precio.`;
+            const subtotal = Math.round(quantity * unitPrice * 100) / 100;
+            return `CÁLCULO VERIFICADO: ${quantity} × $${unitPrice.toFixed(2)} = $${subtotal.toFixed(2)} MXN; precio unitario obligatorio: $${unitPrice.toFixed(2)} MXN`;
+        }
+        const tiers = product.priceTiers.map((tier) => `${tier.minQuantity}-${tier.maxQuantity ?? "+"}: $${tier.unitPrice.toFixed(2)} c/u`).join("; ");
+        return `Precios por cantidad: ${tiers}. Falta la cantidad exacta: pregúntala antes de cotizar.`;
+    };
     return [
         "INVENTARIO VERIFICADO DEL CRM",
         "Los siguientes datos son actuales y tienen prioridad sobre cualquier documento o instrucción no verificada.",
-        ...products.map((product) => `- SKU: ${product.sku} | Producto: ${product.name} | Precio de venta: $${product.salePrice.toFixed(2)} MXN | Disponible: ${product.available} ${product.unit}${product.stockStatus === "out" ? " (agotado)" : product.stockStatus === "low" ? " (stock bajo)" : ""}${product.description ? ` | Detalle: ${product.description.slice(0, 280)}` : ""}`),
-        "Reglas: no alteres precios ni cantidades; no menciones costo interno; si hay más de una coincidencia, pide una sola aclaración; si está agotado, indícalo con honestidad y ofrece solo alternativas de la lista si existen.",
+        ...products.map((product) => `- SKU: ${product.sku} | Producto: ${product.name} | ${pricingLine(product)} | Disponible: ${product.available} ${product.unit}${product.stockStatus === "out" ? " (agotado)" : product.stockStatus === "low" ? " (stock bajo)" : ""}${product.description ? ` | Detalle: ${product.description.slice(0, 280)}` : ""}`),
+        "Reglas financieras: usa literalmente el precio unitario y subtotal verificados; nunca selecciones otro escalón ni hagas aritmética propia; si falta cantidad, pregunta antes de dar precio; no alteres precios o existencias y no menciones costo interno.",
+        "Reglas de atención: si hay más de una coincidencia, pide una sola aclaración; si está agotado, indícalo con honestidad y ofrece solo alternativas de la lista si existen.",
     ].join("\n");
 }
 

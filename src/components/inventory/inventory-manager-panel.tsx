@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Box, Boxes, FileUp, Loader2, PackagePlus, Pencil, RefreshCw, Search, Sparkles } from "lucide-react";
+import { AlertTriangle, Box, Boxes, FileUp, Loader2, PackagePlus, Pencil, Plus, RefreshCw, Search, Sparkles, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -24,19 +24,27 @@ type Props = {
     canManageSources: boolean;
 };
 
-type ProductForm = Record<"sku" | "name" | "category" | "description" | "unit" | "salePrice" | "onHand" | "minimumStock" | "tags", string>;
-const blankForm: ProductForm = { sku: "", name: "", category: "", description: "", unit: "pieza", salePrice: "", onHand: "0", minimumStock: "0", tags: "" };
+type PriceTierForm = { minQuantity: string; maxQuantity: string; unitPrice: string };
+type ProductForm = Record<"sku" | "name" | "category" | "description" | "unit" | "salePrice" | "onHand" | "minimumStock" | "tags", string> & { priceTiers: PriceTierForm[] };
+const blankForm: ProductForm = { sku: "", name: "", category: "", description: "", unit: "pieza", salePrice: "", onHand: "0", minimumStock: "0", tags: "", priceTiers: [] };
 
 function formFromProduct(product: InventoryProductView): ProductForm {
     return {
         sku: product.sku, name: product.name, category: product.category?.name || "", description: product.description || "", unit: product.unit,
-        salePrice: String(product.salePrice), onHand: String(product.locations[0]?.onHand ?? product.onHand),
+        salePrice: product.priceTiers.length ? "" : String(product.salePrice), onHand: String(product.locations[0]?.onHand ?? product.onHand),
         minimumStock: String(product.locations[0]?.minimumStock ?? product.minimumStock), tags: product.tags.join(", "),
+        priceTiers: product.priceTiers.map((tier) => ({ minQuantity: String(tier.minQuantity), maxQuantity: tier.maxQuantity === null ? "" : String(tier.maxQuantity), unitPrice: String(tier.unitPrice) })),
     };
 }
 
 function money(value: number) {
     return new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 2 }).format(value);
+}
+
+function priceLabel(product: InventoryProductView) {
+    if (product.priceTiers.length === 0) return money(product.salePrice);
+    const prices = product.priceTiers.map((tier) => tier.unitPrice);
+    return `${money(Math.min(...prices))}–${money(Math.max(...prices))}`;
 }
 
 function statusLabel(status: InventoryProductView["stockStatus"]) {
@@ -85,7 +93,7 @@ export function InventoryManagerPanel({ initialProducts, initialCategories, stat
     }
 
     function openNewProduct() {
-        setEditing(null); setForm(blankForm); setNotice(null); setFormOpen(true);
+        setEditing(null); setForm({ ...blankForm, priceTiers: [] }); setNotice(null); setFormOpen(true);
     }
 
     function openEditProduct(product: InventoryProductView) {
@@ -185,7 +193,7 @@ export function InventoryManagerPanel({ initialProducts, initialCategories, stat
                 <Select value={status} onValueChange={setStatus}><SelectTrigger className="w-full lg:w-[170px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todo el stock</SelectItem><SelectItem value="available">Disponible</SelectItem><SelectItem value="low">Stock bajo</SelectItem><SelectItem value="out">Agotado</SelectItem></SelectContent></Select>
             </div>
             <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Producto</TableHead><TableHead>SKU</TableHead><TableHead>Precio venta</TableHead><TableHead>Disponible</TableHead><TableHead>Estado</TableHead><TableHead className="text-right">Acciones</TableHead></TableRow></TableHeader><TableBody>
-                {visibleProducts.map((product) => <TableRow key={product.id}><TableCell><div className="font-medium">{product.name}</div><div className="text-xs text-muted-foreground">{product.category?.name || "Sin categoría"}</div></TableCell><TableCell className="font-mono text-xs">{product.sku}</TableCell><TableCell>{money(product.salePrice)}</TableCell><TableCell>{product.available.toLocaleString("es-MX", { maximumFractionDigits: 3 })} {product.unit}</TableCell><TableCell><Badge variant={product.stockStatus === "available" ? "secondary" : product.stockStatus === "low" ? "outline" : "destructive"}>{statusLabel(product.stockStatus)}</Badge></TableCell><TableCell className="text-right"><Button size="sm" variant="ghost" onClick={() => { setAdjusting(product); setNextOnHand(String(product.locations[0]?.onHand ?? product.onHand)); setReason(""); }}>Ajustar</Button><Button size="icon-xs" variant="ghost" onClick={() => openEditProduct(product)} aria-label={`Editar ${product.name}`}><Pencil /></Button></TableCell></TableRow>)}
+                {visibleProducts.map((product) => <TableRow key={product.id}><TableCell><div className="font-medium">{product.name}</div><div className="text-xs text-muted-foreground">{product.category?.name || "Sin categoría"}</div></TableCell><TableCell className="font-mono text-xs">{product.sku}</TableCell><TableCell><div>{priceLabel(product)}</div>{product.priceTiers.length ? <div className="text-xs text-muted-foreground">Según cantidad · {product.priceTiers.length} rangos</div> : null}</TableCell><TableCell>{product.available.toLocaleString("es-MX", { maximumFractionDigits: 3 })} {product.unit}</TableCell><TableCell><Badge variant={product.stockStatus === "available" ? "secondary" : product.stockStatus === "low" ? "outline" : "destructive"}>{statusLabel(product.stockStatus)}</Badge></TableCell><TableCell className="text-right"><Button size="sm" variant="ghost" onClick={() => { setAdjusting(product); setNextOnHand(String(product.locations[0]?.onHand ?? product.onHand)); setReason(""); }}>Ajustar</Button><Button size="icon-xs" variant="ghost" onClick={() => openEditProduct(product)} aria-label={`Editar ${product.name}`}><Pencil /></Button></TableCell></TableRow>)}
                 {visibleProducts.length === 0 ? <TableRow><TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">No hay productos que coincidan con el filtro.</TableCell></TableRow> : null}
             </TableBody></Table></div>
         </section>
@@ -195,7 +203,9 @@ export function InventoryManagerPanel({ initialProducts, initialCategories, stat
             <div className="rounded-2xl border border-border bg-card p-4 shadow-soft"><h3 className="font-semibold">Fuentes registradas</h3>{sources.length ? <div className="mt-3 space-y-2">{sources.map((source) => <div key={source.id} className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"><span>{source.name}<span className="ml-2 text-xs text-muted-foreground">{source.type} · ID {source.id}</span></span><Badge variant={source.lastError ? "destructive" : source.isActive ? "secondary" : "outline"}>{source.lastError ? "Error" : source.isActive ? "Activa" : "Pausada"}</Badge></div>)}</div> : <p className="mt-2 text-sm text-muted-foreground">{canManageSources ? "Registra una fuente para usar su ID al configurar n8n." : "Las fuentes solo las puede registrar un Super Admin."}</p>}</div>
         </section>
 
-        <Dialog open={formOpen} onOpenChange={setFormOpen}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>{editing ? "Editar producto" : "Añadir producto"}</DialogTitle><DialogDescription>Los campos de precio y existencia son numéricos y se validan antes de guardarse.</DialogDescription></DialogHeader><form onSubmit={saveProduct} className="grid gap-4 sm:grid-cols-2"><Field label="SKU" value={form.sku} onChange={(value) => setForm({ ...form, sku: value })} required /><Field label="Nombre" value={form.name} onChange={(value) => setForm({ ...form, name: value })} required /><Field label="Categoría" value={form.category} onChange={(value) => setForm({ ...form, category: value })} list="inventory-categories" /><datalist id="inventory-categories">{categories.map((category) => <option key={category.id} value={category.name} />)}</datalist><Field label="Unidad" value={form.unit} onChange={(value) => setForm({ ...form, unit: value })} /><Field label="Precio de venta (MXN)" value={form.salePrice} onChange={(value) => setForm({ ...form, salePrice: value })} inputMode="decimal" required /><Field label="Existencia física" value={form.onHand} onChange={(value) => setForm({ ...form, onHand: value })} inputMode="decimal" required /><Field label="Stock mínimo" value={form.minimumStock} onChange={(value) => setForm({ ...form, minimumStock: value })} inputMode="decimal" required /><Field label="Etiquetas" value={form.tags} onChange={(value) => setForm({ ...form, tags: value })} placeholder="ej. rojo, oferta, 128gb" /><div className="sm:col-span-2"><Label htmlFor="inventory-description">Descripción</Label><Textarea id="inventory-description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className="mt-1" /></div><DialogFooter className="sm:col-span-2"><Button type="submit" disabled={loading}>{loading ? <Loader2 className="animate-spin" /> : null} Guardar producto</Button></DialogFooter></form></DialogContent></Dialog>
+        <Dialog open={formOpen} onOpenChange={setFormOpen}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>{editing ? "Editar producto" : "Añadir producto"}</DialogTitle><DialogDescription>Usa un precio fijo o agrega rangos por cantidad. Los rangos se validan para evitar traslapes y cotizaciones incorrectas.</DialogDescription></DialogHeader><form onSubmit={saveProduct} className="grid gap-4 sm:grid-cols-2"><Field label="SKU" value={form.sku} onChange={(value) => setForm({ ...form, sku: value })} required /><Field label="Nombre" value={form.name} onChange={(value) => setForm({ ...form, name: value })} required /><Field label="Categoría" value={form.category} onChange={(value) => setForm({ ...form, category: value })} list="inventory-categories" /><datalist id="inventory-categories">{categories.map((category) => <option key={category.id} value={category.name} />)}</datalist><Field label="Unidad" value={form.unit} onChange={(value) => setForm({ ...form, unit: value })} /><Field label="Precio fijo (MXN, opcional)" value={form.salePrice} onChange={(value) => setForm({ ...form, salePrice: value })} inputMode="decimal" required={form.priceTiers.length === 0} /><Field label="Existencia física" value={form.onHand} onChange={(value) => setForm({ ...form, onHand: value })} inputMode="decimal" required /><Field label="Stock mínimo" value={form.minimumStock} onChange={(value) => setForm({ ...form, minimumStock: value })} inputMode="decimal" required /><Field label="Etiquetas" value={form.tags} onChange={(value) => setForm({ ...form, tags: value })} placeholder="ej. rojo, oferta, 128gb" />
+            <div className="space-y-3 rounded-xl border border-border bg-secondary/20 p-4 sm:col-span-2"><div className="flex items-start justify-between gap-3"><div><Label>Precios por cantidad</Label><p className="mt-1 text-xs text-muted-foreground">La cantidad máxima vacía significa “en adelante”. La IA calculará el subtotal con el rango exacto.</p></div><Button type="button" size="sm" variant="outline" onClick={() => setForm({ ...form, priceTiers: [...form.priceTiers, { minQuantity: "", maxQuantity: "", unitPrice: "" }] })}><Plus /> Agregar rango</Button></div>{form.priceTiers.length ? <div className="space-y-2">{form.priceTiers.map((tier, index) => <div key={index} className="grid grid-cols-[1fr_1fr_1fr_auto] items-end gap-2"><Field label={index === 0 ? "Desde" : ""} value={tier.minQuantity} onChange={(value) => setForm({ ...form, priceTiers: form.priceTiers.map((entry, position) => position === index ? { ...entry, minQuantity: value } : entry) })} inputMode="numeric" required /><Field label={index === 0 ? "Hasta" : ""} value={tier.maxQuantity} onChange={(value) => setForm({ ...form, priceTiers: form.priceTiers.map((entry, position) => position === index ? { ...entry, maxQuantity: value } : entry) })} inputMode="numeric" placeholder="Sin límite" /><Field label={index === 0 ? "Precio c/u" : ""} value={tier.unitPrice} onChange={(value) => setForm({ ...form, priceTiers: form.priceTiers.map((entry, position) => position === index ? { ...entry, unitPrice: value } : entry) })} inputMode="decimal" required /><Button type="button" size="icon" variant="ghost" className="text-destructive" onClick={() => setForm({ ...form, priceTiers: form.priceTiers.filter((_, position) => position !== index) })} aria-label={`Eliminar rango ${index + 1}`}><Trash2 /></Button></div>)}</div> : <p className="text-sm text-muted-foreground">Sin rangos: se usará el precio fijo.</p>}</div>
+            <div className="sm:col-span-2"><Label htmlFor="inventory-description">Descripción</Label><Textarea id="inventory-description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className="mt-1" /></div><DialogFooter className="sm:col-span-2"><Button type="submit" disabled={loading}>{loading ? <Loader2 className="animate-spin" /> : null} Guardar producto</Button></DialogFooter></form></DialogContent></Dialog>
 
         <Dialog open={Boolean(adjusting)} onOpenChange={(open) => { if (!open) setAdjusting(null); }}><DialogContent><DialogHeader><DialogTitle>Ajustar existencia</DialogTitle><DialogDescription>{adjusting?.name}. Se conservará un historial con la razón del cambio.</DialogDescription></DialogHeader><form onSubmit={saveAdjustment} className="space-y-4"><Field label="Nueva existencia física" value={nextOnHand} onChange={setNextOnHand} inputMode="decimal" required /><div><Label htmlFor="adjust-reason">Motivo</Label><Textarea id="adjust-reason" value={reason} onChange={(event) => setReason(event.target.value)} className="mt-1" placeholder="Conteo físico, merma, entrada…" /></div><DialogFooter><Button type="submit" disabled={loading}>{loading ? <Loader2 className="animate-spin" /> : <RefreshCw />} Confirmar ajuste</Button></DialogFooter></form></DialogContent></Dialog>
 
@@ -203,7 +213,7 @@ export function InventoryManagerPanel({ initialProducts, initialCategories, stat
     </div>;
 }
 
-function Field({ label, value, onChange, required, inputMode, placeholder, list }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; inputMode?: "text" | "decimal"; placeholder?: string; list?: string }) {
+function Field({ label, value, onChange, required, inputMode, placeholder, list }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; inputMode?: "text" | "decimal" | "numeric"; placeholder?: string; list?: string }) {
     const id = `inventory-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
     return <div><Label htmlFor={id}>{label}</Label><Input id={id} value={value} onChange={(event) => onChange(event.target.value)} required={required} inputMode={inputMode} placeholder={placeholder} list={list} className="mt-1" /></div>;
 }

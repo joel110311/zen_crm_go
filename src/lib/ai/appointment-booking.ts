@@ -4,10 +4,12 @@ import { generateCompletion } from "@/lib/ai/openai";
 import {
     AppointmentSchedulingError,
     createManagedAppointment,
+    deleteManagedAppointment,
     formatAppointmentSuggestions,
     getAvailableSlotsForDate,
     getBusinessHoursConfig,
     validateManagedAppointment,
+    updateManagedAppointment,
 } from "@/lib/calendar/appointments";
 import {
     findGoogleSpecialistByMention,
@@ -34,6 +36,12 @@ type PlannerResult = {
 };
 
 type AppointmentHandlingMode = "validate" | "create";
+
+type ReschedulePlannerResult = {
+    intent: "reschedule" | "other";
+    localDate?: string | null;
+    localTime?: string | null;
+};
 
 export type AppointmentHandlingResult =
     | { kind: "none"; reply: null }
@@ -80,6 +88,12 @@ const EVENT_OR_QUOTE_CONTEXT_PATTERNS = [
 
 const DATE_OR_TIME_ANSWER_PATTERN =
     /\b(hoy|mañana|manana|pasado mañana|pasado manana|lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|\d{1,2}:\d{2}|\d{1,2}\s*(?:am|pm|a\.m\.|p\.m\.))\b/i;
+
+const RESCHEDULE_PATTERN = /\b(?:reagend(?:ar|arla|arlo|ame)?|reprogram(?:ar|arla|arlo|ame)?|cambi(?:ar|arla|arlo|ame|o)|mov(?:er|erla|erlo|eme)|recorr(?:er|erla|erlo|eme))\b.{0,100}\b(cita|reserva|fecha|d[ií]a|hora|horario|lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo)\b|\b(cita|reserva)\b.{0,100}\b(reagendar|reprogram(?:ar|arla|arlo)?|cambiar|mover|recorrer)\b/i;
+const CANCEL_PATTERN = /\b(canc[eé]l(?:ar|arla|arlo|arme|ame|o)?|anul(?:ar|arla|arlo|arme|ame|o)?)\b.{0,100}\b(cita|reserva|horario)\b|\b(cita|reserva|horario)\b.{0,100}\b(canc[eé]l(?:ar|arla|arlo|arme|ame|o)?|anul(?:ar|arla|arlo|arme|ame|o)?)\b/i;
+const CONFIRM_CANCEL_PATTERN = /\b(s[ií]|confirmo|correct[oa]|canc[eé]lala|canc[eé]lalo)\b/i;
+const CANCELLED_REPLY_PATTERN = /\b(cita|reserva)\b.{0,50}\b(qued[oó]|est[aá])\b.{0,30}\b(cancelada|anulada)\b/i;
+const RESCHEDULED_REPLY_PATTERN = /\b(cita|reserva)\b.{0,50}\b(qued[oó]|est[aá])\b.{0,30}\b(reprogramada|movida|cambiada)\b/i;
 
 function stripCodeFences(value: string) {
     const fenced = value.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -421,6 +435,104 @@ Cliente: ${latestUserMessage}
     };
 }
 
+async function getAppointmentOperationContext(conversationId: string) {
+    const [conversation, config] = await Promise.all([
+        prisma.conversation.findUnique({
+            where: { id: conversationId },
+            include: { contact: true, messages: { orderBy: { createdAt: "desc" }, take: 16 } },
+        }),
+        getBusinessHoursConfig(),
+    ]);
+    return { conversation, config };
+}
+
+function appointmentLabel(startTime: Date, timeZone: string) {
+    return formatDateTimeInZone(startTime, timeZone, "es-MX", {
+        weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit",
+    });
+}
+
+async function maybeHandleAppointmentCancellation(conversationId: string, latestUserMessage: string): Promise<AppointmentHandlingResult | null> {
+    const couldBeFollowUp = CONFIRM_CANCEL_PATTERN.test(latestUserMessage) || /^\s*[1-3]\s*$/.test(latestUserMessage);
+    if (!CANCEL_PATTERN.test(latestUserMessage) && !couldBeFollowUp) return null;
+    const { conversation, config } = await getAppointmentOperationContext(conversationId);
+    if (!conversation?.contactId) return null;
+    const cancelRequest = conversation.messages.find((message) => message.direction === "inbound" && CANCEL_PATTERN.test(message.content));
+    const completed = conversation.messages.find((message) => message.direction === "outbound" && CANCELLED_REPLY_PATTERN.test(message.content));
+    const pending = Boolean(cancelRequest && (!completed || cancelRequest.createdAt > completed.createdAt));
+    if (!CANCEL_PATTERN.test(latestUserMessage) && !(pending && (CONFIRM_CANCEL_PATTERN.test(latestUserMessage) || /^\s*[1-3]\s*$/.test(latestUserMessage)))) return null;
+
+    const appointments = await prisma.appointment.findMany({
+        where: { contactId: conversation.contactId, status: { notIn: ["cancelled", "completed"] }, endTime: { gte: new Date() } },
+        orderBy: { startTime: "asc" }, take: 3,
+    });
+    if (appointments.length === 0) return { kind: "missing", reply: "No encuentro una cita próxima vinculada a este número para cancelar." };
+    const currentSelection = latestUserMessage.match(/^\s*([1-3])\s*$/);
+    const previousSelection = conversation.messages.find((message) => message.direction === "inbound" && /^\s*[1-3]\s*$/.test(message.content) && cancelRequest && message.createdAt > cancelRequest.createdAt)?.content.match(/^\s*([1-3])\s*$/);
+    const selectedIndex = Number(currentSelection?.[1] || previousSelection?.[1] || 0) - 1;
+    if (appointments.length > 1 && (selectedIndex < 0 || selectedIndex >= appointments.length)) {
+        return { kind: "missing", reply: ["Veo más de una cita próxima. ¿Cuál quieres cancelar?", "", ...appointments.map((item, index) => `${index + 1}. *${item.title}* — ${appointmentLabel(item.startTime, config.timeZone)}`)].join("\n") };
+    }
+    const appointment = appointments.length === 1 ? appointments[0] : appointments[selectedIndex];
+    if (!pending || !CONFIRM_CANCEL_PATTERN.test(latestUserMessage)) {
+        return { kind: "missing", reply: `¿Confirmas que deseas cancelar la cita de *${appointment.title}* del *${appointmentLabel(appointment.startTime, config.timeZone)}*?` };
+    }
+    try {
+        await deleteManagedAppointment(appointment.id);
+        revalidatePath("/dashboard/calendar");
+        return { kind: "created", reply: `Tu cita quedó cancelada.\n\n*Servicio:* ${appointment.title}\n*Fecha cancelada:* ${appointmentLabel(appointment.startTime, config.timeZone)}` };
+    } catch (error) {
+        console.error("[Appointments] Failed to cancel appointment from conversation:", error);
+        return { kind: "unavailable", reply: "No fue posible cancelar la cita de forma segura. La cita continúa activa y necesita revisión humana." };
+    }
+}
+
+async function maybeHandleAppointmentReschedule(conversationId: string, latestUserMessage: string): Promise<AppointmentHandlingResult | null> {
+    const couldBeFollowUp = DATE_OR_TIME_ANSWER_PATTERN.test(latestUserMessage) || /^\s*[1-3]\s*$/.test(latestUserMessage);
+    if (!RESCHEDULE_PATTERN.test(latestUserMessage) && !couldBeFollowUp) return null;
+    const { conversation, config } = await getAppointmentOperationContext(conversationId);
+    if (!conversation?.contactId) return null;
+    const request = conversation.messages.find((message) => message.direction === "inbound" && RESCHEDULE_PATTERN.test(message.content));
+    const completed = conversation.messages.find((message) => message.direction === "outbound" && RESCHEDULED_REPLY_PATTERN.test(message.content));
+    const pending = Boolean(request && (!completed || request.createdAt > completed.createdAt));
+    if (!RESCHEDULE_PATTERN.test(latestUserMessage) && !(pending && (DATE_OR_TIME_ANSWER_PATTERN.test(latestUserMessage) || /^\s*[1-3]\s*$/.test(latestUserMessage)))) return null;
+
+    const appointments = await prisma.appointment.findMany({
+        where: { contactId: conversation.contactId, status: { notIn: ["cancelled", "completed"] }, endTime: { gte: new Date() } },
+        orderBy: { startTime: "asc" }, take: 3,
+    });
+    if (!appointments.length) return { kind: "missing", reply: "No encuentro una cita próxima vinculada a este número para poder moverla." };
+    const latestSelection = conversation.messages.find((message) => message.direction === "inbound" && /^\s*[1-3]\s*$/.test(message.content) && request && message.createdAt > request.createdAt)?.content.match(/^\s*([1-3])\s*$/);
+    const selectedIndex = Number(latestUserMessage.match(/^\s*([1-3])\s*$/)?.[1] || latestSelection?.[1] || 0) - 1;
+    if (appointments.length > 1 && (selectedIndex < 0 || selectedIndex >= appointments.length)) {
+        return { kind: "missing", reply: ["Veo más de una cita próxima. ¿Cuál quieres mover?", "", ...appointments.map((item, index) => `${index + 1}. *${item.title}* — ${appointmentLabel(item.startTime, config.timeZone)}`)].join("\n") };
+    }
+    const appointment = appointments.length === 1 ? appointments[0] : appointments[selectedIndex];
+    const transcript = buildConversationTranscript([...conversation.messages].reverse().map((message) => ({ content: message.content, direction: message.direction, senderType: message.senderType })));
+    const currentDate = getBusinessDateKey(appointment.startTime, config.timeZone);
+    const currentTime = formatDateTimeInZone(appointment.startTime, config.timeZone, "en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+    const raw = await generateCompletion([{ role: "system", content: `Analiza la conversación para mover una cita existente. Devuelve SOLO JSON válido con {"intent":"reschedule"|"other","localDate":"YYYY-MM-DD"|null,"localTime":"HH:mm"|null}. Fecha local actual: ${getBusinessDateKey(new Date(), config.timeZone)}. Zona: ${config.timeZone}. La cita actual es ${currentDate} ${currentTime}. "misma hora" significa ${currentTime}; "misma fecha" significa ${currentDate}. No inventes fecha u hora.\nHISTORIAL\n${transcript}\nÚLTIMO MENSAJE\n${latestUserMessage}` }], 0);
+    let planner: ReschedulePlannerResult | null = null;
+    try { planner = JSON.parse(stripCodeFences(raw || "").match(/\{[\s\S]*\}/)?.[0] || "null") as ReschedulePlannerResult; } catch { planner = null; }
+    if (!planner || planner.intent !== "reschedule") return { kind: "missing", reply: "Dime la nueva fecha y hora para mover la cita." };
+    const durationMinutes = Math.max(15, Math.round((appointment.endTime.getTime() - appointment.startTime.getTime()) / 60000));
+    if (!planner.localDate) return { kind: "missing", reply: `Claro, puedo mover tu cita de *${appointment.title}*. ¿Para qué fecha la quieres?` };
+    if (!planner.localTime) {
+        const availability = await getAvailableSlotsForDate(planner.localDate, durationMinutes * 60000, config, { excludeAppointmentId: appointment.id, calendarIds: appointment.googleCalendarId ? [appointment.googleCalendarId] : undefined, limit: 12 });
+        return { kind: "missing", reply: buildDateAvailabilityReply(planner.localDate, availability, config) };
+    }
+    try {
+        const startTime = zonedDateTimeToUtc(planner.localDate, planner.localTime, config.timeZone);
+        const updated = await updateManagedAppointment(appointment.id, { startTime, endTime: new Date(startTime.getTime() + durationMinutes * 60000), blockingCalendarIds: appointment.googleCalendarId ? [appointment.googleCalendarId] : undefined });
+        revalidatePath("/dashboard/calendar");
+        return { kind: "created", reply: `Listo, la cita quedó reprogramada.\n\n*Servicio:* ${updated.title}\n*Nueva fecha:* ${appointmentLabel(updated.startTime, config.timeZone)}\n*Duración aproximada:* ${durationMinutes} minutos` };
+    } catch (error) {
+        if (error instanceof AppointmentSchedulingError) return { kind: "unavailable", reply: buildUnavailableReply(error, config) };
+        console.error("[Appointments] Failed to reschedule appointment:", error);
+        return { kind: "unavailable", reply: error instanceof Error ? error.message : "No fue posible reprogramar la cita." };
+    }
+}
+
 export async function maybeHandleAppointmentBooking(
     conversationId: string,
     latestUserMessage: string,
@@ -429,6 +541,10 @@ export async function maybeHandleAppointmentBooking(
     },
 ): Promise<AppointmentHandlingResult> {
     const mode = options?.mode || "create";
+    const cancellation = await maybeHandleAppointmentCancellation(conversationId, latestUserMessage);
+    if (cancellation) return cancellation;
+    const reschedule = await maybeHandleAppointmentReschedule(conversationId, latestUserMessage);
+    if (reschedule) return reschedule;
     const planned = await planAppointmentFromConversation(conversationId, latestUserMessage);
 
     if (!planned?.planner || planned.planner.intent !== "schedule") {
@@ -472,7 +588,7 @@ export async function maybeHandleAppointmentBooking(
                 config,
                 {
                     calendarIds: blockingCalendarIds,
-                    limit: 6,
+                    limit: 12,
                 },
             );
 

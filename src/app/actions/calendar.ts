@@ -67,7 +67,7 @@ export async function createAppointment(data: {
         if (error instanceof AppointmentSchedulingError) {
             return { success: false, error: error.message };
         }
-        return { success: false, error: "Failed to create appointment" };
+        return { success: false, error: error instanceof Error ? error.message : "No se pudo crear la cita." };
     }
 }
 
@@ -93,7 +93,7 @@ export async function updateAppointment(id: string, data: {
         if (error instanceof AppointmentSchedulingError) {
             return { success: false, error: error.message };
         }
-        return { success: false, error: "Failed to update appointment" };
+        return { success: false, error: error instanceof Error ? error.message : "No se pudo actualizar la cita." };
     }
 }
 
@@ -104,6 +104,6 @@ export async function deleteAppointment(id: string) {
         return { success: true };
     } catch (error) {
         console.error("Failed to delete appointment:", error);
-        return { success: false, error: "Failed to delete appointment" };
+        return { success: false, error: error instanceof Error ? error.message : "No se pudo eliminar la cita." };
     }
 }

@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { ThemeCustomizer } from "@/components/theme-customizer";
 import { useToast } from "@/components/ui/use-toast";
 import {
     getNotificationPrefs,
@@ -366,6 +367,13 @@ export default function SettingsPage() {
                                 <h2 className="font-semibold">Modo de visualizacion</h2>
                             </div>
                             <ThemeToggle />
+                            <div className="mt-6 border-t border-border pt-6">
+                                <div className="mb-3">
+                                    <h3 className="font-semibold">Tema de colores</h3>
+                                    <p className="mt-1 text-sm text-muted-foreground">Elige la paleta principal del CRM.</p>
+                                </div>
+                                <ThemeCustomizer />
+                            </div>
                         </div>
                     </div>
                 )}

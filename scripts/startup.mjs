@@ -113,6 +113,33 @@ async function startup() {
 
         await runSafeQuery(
             pool,
+            `
+            INSERT INTO "InventoryPriceTier" ("id", "productId", "minQuantity", "maxQuantity", "unitPrice", "sortOrder", "createdAt", "updatedAt")
+            SELECT CONCAT('tier_', MD5(p."id" || ':' || tier.min_quantity::text)), p."id", tier.min_quantity, tier.max_quantity, tier.unit_price, tier.sort_order, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            FROM "InventoryProduct" p
+            CROSS JOIN (VALUES
+              (100, 150, 70.00, 0),
+              (151, 200, 67.00, 1),
+              (201, 250, 64.00, 2),
+              (251, 500, 61.00, 3),
+              (501, 1000, 58.00, 4),
+              (1001, NULL, 55.00, 5)
+            ) AS tier(min_quantity, max_quantity, unit_price, sort_order)
+            WHERE LOWER(p."name") LIKE '%glowsync%'
+            ON CONFLICT ("productId", "minQuantity") DO UPDATE SET
+              "maxQuantity" = EXCLUDED."maxQuantity",
+              "unitPrice" = EXCLUDED."unitPrice",
+              "sortOrder" = EXCLUDED."sortOrder",
+              "updatedAt" = CURRENT_TIMESTAMP
+            `,
+        );
+        await runSafeQuery(
+            pool,
+            `UPDATE "InventoryProduct" SET "salePrice" = 70.00, "updatedAt" = CURRENT_TIMESTAMP WHERE LOWER("name") LIKE '%glowsync%'`,
+        );
+
+        await runSafeQuery(
+            pool,
             'ALTER TABLE "Conversation" ADD COLUMN IF NOT EXISTS "botActive" BOOLEAN DEFAULT true',
         );
         await runSafeQuery(

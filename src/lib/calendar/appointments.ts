@@ -268,7 +268,7 @@ export async function getAvailableSlotsForDate(
 
     const stepMs = 15 * 60 * 1000;
     const safeDurationMs = Math.max(durationMs, 15 * 60 * 1000);
-    const limit = options.limit ?? 6;
+    const limit = options.limit ?? 24;
     const dayReference = zonedDateTimeToUtc(localDate, "12:00", config.timeZone);
     const dayBounds = businessBoundsForDate(dayReference, config);
 
@@ -418,7 +418,17 @@ export async function updateManagedAppointment(id: string, input: Partial<Appoin
     const appointment = await prisma.appointment.update({
         where: { id },
         data: {
-            ...input,
+            ...(input.title !== undefined ? { title: input.title } : {}),
+            ...(input.startTime !== undefined ? { startTime: input.startTime } : {}),
+            ...(input.endTime !== undefined ? { endTime: input.endTime } : {}),
+            ...(input.notes !== undefined ? { notes: input.notes } : {}),
+            ...(input.contactId !== undefined ? { contactId: input.contactId || null } : {}),
+            ...(input.userId !== undefined ? { userId: input.userId || null } : {}),
+            ...(input.status !== undefined ? { status: input.status } : {}),
+            ...(input.googleCalendarId !== undefined ? { googleCalendarId: input.googleCalendarId || null } : {}),
+            ...(input.googleCalendarName !== undefined ? { googleCalendarName: input.googleCalendarName || null } : {}),
+            ...(input.googleCalendarColor !== undefined ? { googleCalendarColor: input.googleCalendarColor || null } : {}),
+            ...(input.specialistName !== undefined ? { specialistName: input.specialistName || null } : {}),
             updatedAt: new Date(),
         },
         include: {
@@ -430,17 +440,30 @@ export async function updateManagedAppointment(id: string, input: Partial<Appoin
     try {
         await syncAppointmentToGoogleCalendar(appointment.id);
     } catch (syncError) {
-        console.error("[Google Calendar] Push failed after update:", syncError);
+        console.error("[Google Calendar] Push failed after update; restoring CRM appointment:", syncError);
+        await prisma.appointment.update({
+            where: { id },
+            data: {
+                title: existing.title,
+                startTime: existing.startTime,
+                endTime: existing.endTime,
+                notes: existing.notes,
+                contactId: existing.contactId,
+                userId: existing.userId,
+                status: existing.status,
+                googleCalendarId: existing.googleCalendarId,
+                googleCalendarName: existing.googleCalendarName,
+                googleCalendarColor: existing.googleCalendarColor,
+                specialistName: existing.specialistName,
+            },
+        });
+        throw new Error("Google Calendar no confirmó la reprogramación. La cita conservó su horario anterior.");
     }
     return appointment;
 }
 
 export async function deleteManagedAppointment(id: string) {
-    try {
-        await deleteAppointmentFromGoogleCalendar(id);
-    } catch (syncError) {
-        console.error("[Google Calendar] Delete sync failed:", syncError);
-    }
+    await deleteAppointmentFromGoogleCalendar(id);
     return prisma.appointment.delete({
         where: { id },
     });

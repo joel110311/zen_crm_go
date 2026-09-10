@@ -925,17 +925,23 @@ export async function syncAppointmentToGoogleCalendar(appointmentId: string) {
 
 export async function deleteAppointmentFromGoogleCalendar(appointmentId: string) {
     const settings = await getGoogleSettingsWithSources();
-    if (!hasGoogleConnection(settings)) return;
-
     const appointment = await prisma.appointment.findUnique({
         where: { id: appointmentId },
         select: { googleEventId: true, googleCalendarId: true },
     });
 
     if (!appointment?.googleEventId) return;
+    if (!hasGoogleConnection(settings)) {
+        throw new Error("La cita está enlazada con Google Calendar, pero la cuenta no está conectada. Reconecta Google antes de eliminarla.");
+    }
 
     const calendarId = appointment.googleCalendarId || getCalendarId(settings.googleCalendarId);
-    await deleteGoogleEventFromCalendar(calendarId, appointment.googleEventId);
+    try {
+        await deleteGoogleEventFromCalendar(calendarId, appointment.googleEventId);
+    } catch (error) {
+        console.error("[Google Calendar] Could not delete linked appointment event:", error);
+        throw new Error("Google Calendar no confirmó la eliminación. La cita se conservó en el CRM para evitar que vuelva a sincronizarse; revisa la conexión e inténtalo nuevamente.");
+    }
 }
 
 export async function syncGoogleCalendarToCrm(force = false) {

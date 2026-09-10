@@ -252,7 +252,7 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                 onOpenChange(false);
             } catch (error) {
                 console.error(error);
-                toast({ title: "Error", description: "No se pudo guardar la cita.", variant: "destructive" });
+                toast({ title: "Error", description: error instanceof Error ? error.message : "No se pudo guardar la cita.", variant: "destructive" });
             }
         });
     };
@@ -262,7 +262,11 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
         if (!confirm("¿Eliminar cita?")) return;
 
         startTransition(async () => {
-            await deleteAppointment(selectedEvent.id);
+            const result = await deleteAppointment(selectedEvent.id);
+            if (!result.success) {
+                toast({ title: "No se eliminó la cita", description: result.error, variant: "destructive" });
+                return;
+            }
             toast({ title: "Cita eliminada" });
             onSuccess();
             onOpenChange(false);
