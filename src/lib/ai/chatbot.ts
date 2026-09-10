@@ -2,6 +2,7 @@ import type OpenAI from "openai";
 import { prisma } from "@/lib/db";
 import { generateCompletion } from "@/lib/ai/openai";
 import { buildKnowledgeContext } from "@/lib/brain/knowledge";
+import { buildInventoryConversationContext } from "@/lib/inventory";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { formatBusinessScheduleLines, normalizeBusinessHours } from "@/lib/calendar/business-hours";
 import { getContactFullName } from "@/lib/contact-name";
@@ -272,10 +273,16 @@ export async function generateConversationReply(
     );
     const knowledgeLookupQuery = buildKnowledgeLookupQuery(dedupedHistory, latestUserMessage);
     const recentSalesFactsInstruction = buildRecentSalesFactsInstruction(dedupedHistory, latestUserMessage);
-    const { context, chunks } = await buildKnowledgeContext(
-        knowledgeLookupQuery || latestUserMessage,
-        settings.knowledgeTopK,
-    );
+    // Price and stock are operational data, so inventory wins over semantic RAG.
+    // This avoids both a stale answer and an unnecessary embedding/completion cost
+    // when a product was identified directly by SKU, name, or tag.
+    const inventoryContext = await buildInventoryConversationContext(knowledgeLookupQuery || latestUserMessage);
+    const { context, chunks } = inventoryContext
+        ? { context: "", chunks: [] }
+        : await buildKnowledgeContext(
+            knowledgeLookupQuery || latestUserMessage,
+            settings.knowledgeTopK,
+        );
 
     const systemPrompt = `
 ${settings.agentPrompt}
@@ -334,6 +341,9 @@ ${formatBusinessScheduleLines(businessHours)}
 
 CONTEXTO RAG
 ${context || "No se recuperaron fuentes relevantes para esta consulta."}
+
+CONTEXTO DE INVENTARIO OPERATIVO
+${inventoryContext || "No hay coincidencias verificadas de inventario para esta consulta."}
 
 FUENTES ENCONTRADAS
 ${chunks.length > 0 ? chunks.map((chunk) => `- ${chunk.sourceTitle}${chunk.sourceUri ? ` -> ${chunk.sourceUri}` : ""}`).join("\n") : "- Ninguna"}

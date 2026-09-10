@@ -90,6 +90,7 @@ Si quieres el flujo mas facil posible de copiar/pegar en Portainer, usa `portain
 - `OPENAI_API_KEY`
 - `GEMINI_API_KEY`
 - `ALLOW_ENV_AI_FALLBACK`
+- `INVENTORY_SYNC_SECRET` (secreto compartido exclusivamente con n8n para sincronización de inventario)
 - `TZ`
 - `STARTUP_DB_MAX_ATTEMPTS`
 - `STARTUP_DB_RETRY_MS`

@@ -8,6 +8,7 @@ const PAGE_TITLES: Record<string, string> = {
     "/dashboard/contacts": "Contactos",
     "/dashboard/pipeline": "Pipeline",
     "/dashboard/inbox": "Chats",
+    "/dashboard/inventory": "Inventario",
     "/dashboard/orders": "Pedidos",
     "/dashboard/templates": "Plantillas",
     "/dashboard/calendar": "Calendario",
