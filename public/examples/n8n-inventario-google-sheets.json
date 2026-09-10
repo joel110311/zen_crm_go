@@ -1,0 +1,289 @@
+{
+  "name": "Zen CRM - Sincronizar inventario desde Google Sheets",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-1080, 120],
+      "id": "manual-trigger",
+      "name": "Probar manualmente"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-1080, -80],
+      "id": "schedule-trigger",
+      "name": "Cada 1 hora"
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = {\n  crmBaseUrl: 'https://TU-CRM.example.com',\n  sourceId: 'REEMPLAZAR_CON_ID_DE_FUENTE',\n  googleSheetUrl: 'https://docs.google.com/spreadsheets/d/REEMPLAZAR/edit',\n  sheetName: 'Inventario',\n  batchSize: 500,\n};\nreturn [{ json: config }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-840, 20],
+      "id": "configuracion",
+      "name": "CONFIGURACION - EDITAR"
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('CONFIGURACION - EDITAR').first().json.googleSheetUrl }}",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('CONFIGURACION - EDITAR').first().json.sheetName }}",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-600, 20],
+      "id": "leer-google-sheets",
+      "name": "Leer todos los productos",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const config = $('CONFIGURACION - EDITAR').first().json;\nconst clean = (value) => String(value ?? '').trim();\nconst key = (value) => clean(value).normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');\nconst parseTiers = (value, rowNumber) => {\n  const source = clean(value);\n  if (!source) return [];\n  if (source.startsWith('[')) {\n    try {\n      const parsed = JSON.parse(source);\n      if (!Array.isArray(parsed)) throw new Error();\n      return parsed;\n    } catch {\n      throw new Error(`Fila ${rowNumber}: Rangos de precio contiene JSON invalido.`);\n    }\n  }\n  return source.split('|').map((part, index) => {\n    const match = part.trim().match(/^(\\d+)\\s*(?:(?:-\\s*(\\d+))|(\\+))\\s*[:=]\\s*\\$?\\s*([\\d,.]+)$/);\n    if (!match) throw new Error(`Fila ${rowNumber}: rango ${index + 1} invalido. Usa 100-150:70|151+:67.`);\n    return { minQuantity: match[1], maxQuantity: match[3] ? null : match[2], unitPrice: match[4] };\n  });\n};\nif (!clean(config.crmBaseUrl).startsWith('https://') || clean(config.crmBaseUrl).includes('TU-CRM')) throw new Error('Edita crmBaseUrl en CONFIGURACION - EDITAR.');\nif (!clean(config.sourceId) || clean(config.sourceId).startsWith('REEMPLAZAR')) throw new Error('Edita sourceId en CONFIGURACION - EDITAR.');\nconst rawRows = $input.all().map((item) => item.json).filter((row) => row && Object.keys(row).length > 0);\nif (!rawRows.length) throw new Error('La hoja esta vacia. Por seguridad no se inicio la conciliacion.');\nconst rows = rawRows.map((raw, index) => {\n  const row = Object.fromEntries(Object.entries(raw).map(([name, value]) => [key(name), value]));\n  const rowNumber = index + 2;\n  const sku = clean(row.sku || row.codigo || row.codigo_producto || row.id_producto);\n  const name = clean(row.nombre || row.producto || row.nombre_producto);\n  if (!sku || !name) throw new Error(`Fila ${rowNumber}: SKU y Nombre son obligatorios.`);\n  return {\n    sku,\n    name,\n    category: row.categoria ?? row.category ?? '',\n    description: row.descripcion ?? row.description ?? '',\n    brand: row.marca ?? row.brand ?? '',\n    unit: row.unidad ?? row.unit ?? 'pieza',\n    salePrice: row.precio ?? row.precio_venta ?? row.sale_price ?? '',\n    priceTiers: parseTiers(row.rangos_de_precio ?? row.precios_por_cantidad ?? row.price_tiers, rowNumber),\n    internalCost: row.costo ?? row.costo_interno ?? row.internal_cost ?? '',\n    tags: row.etiquetas ?? row.tags ?? '',\n    imageUrl: row.imagen ?? row.image_url ?? '',\n    location: row.ubicacion ?? row.location ?? 'Principal',\n    onHand: row.existencia ?? row.stock ?? row.inventario ?? row.on_hand ?? 0,\n    reserved: row.reservado ?? row.reserved ?? 0,\n    minimumStock: row.minimo ?? row.stock_minimo ?? row.minimum_stock ?? 0,\n    isActive: row.activo ?? row.active ?? true,\n    sourceUpdatedAt: row.actualizado_en ?? row.source_updated_at ?? '',\n  };\n});\nconst batchSize = Math.min(500, Math.max(1, Number(config.batchSize) || 500));\nreturn [{ json: { ...config, crmBaseUrl: clean(config.crmBaseUrl).replace(/\\/$/, ''), rows, batchSize, idempotencyKey: `google-sheets-${clean(config.sourceId)}-${Date.now()}` } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-360, 20],
+      "id": "normalizar-validar",
+      "name": "Validar y normalizar hoja"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.crmBaseUrl + '/api/inventory/sync/start' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ sourceId: $json.sourceId, mode: 'full', idempotencyKey: $json.idempotencyKey }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-120, 20],
+      "id": "iniciar-sync",
+      "name": "CRM - Iniciar conciliacion"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const context = $('Validar y normalizar hoja').first().json;\nconst runId = $input.first().json.runId;\nif (!runId) throw new Error('El CRM no devolvio runId.');\nconst output = [];\nfor (let index = 0; index < context.rows.length; index += context.batchSize) {\n  output.push({ json: { crmBaseUrl: context.crmBaseUrl, runId, rows: context.rows.slice(index, index + context.batchSize), batchNumber: output.length + 1 } });\n}\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [120, 20],
+      "id": "crear-lotes",
+      "name": "Crear lotes de hasta 500"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.crmBaseUrl + '/api/inventory/sync/batch' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ runId: $json.runId, rows: $json.rows }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [360, 20],
+      "id": "enviar-lotes",
+      "name": "CRM - Enviar lotes",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const responses = $input.all().map((item) => item.json);\nconst failures = responses.filter((response) => typeof response.accepted !== 'number' || (Array.isArray(response.rejected) && response.rejected.length > 0));\nconst details = failures.flatMap((response) => Array.isArray(response.rejected) ? response.rejected : [response.error?.message || response.message || 'Un lote no fue aceptado por el CRM.']);\nreturn [{ json: { ok: failures.length === 0, error: details.join(' | ').slice(0, 1000), runId: $('CRM - Iniciar conciliacion').first().json.runId, crmBaseUrl: $('Validar y normalizar hoja').first().json.crmBaseUrl, batches: responses.length } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 20],
+      "id": "verificar-lotes",
+      "name": "Verificar todos los lotes"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "all-batches-ok",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [840, 20],
+      "id": "lotes-validos",
+      "name": "Todos los lotes validos"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.crmBaseUrl + '/api/inventory/sync/finish' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ runId: $json.runId }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1080, -80],
+      "id": "finalizar-sync",
+      "name": "CRM - Aplicar cambios"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.crmBaseUrl + '/api/inventory/sync/fail' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ runId: $json.runId, error: $json.error }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1080, 120],
+      "id": "marcar-fallo",
+      "name": "CRM - Registrar fallo"
+    },
+    {
+      "parameters": {
+        "content": "## 1. Configuracion\nEdita **CONFIGURACION - EDITAR**:\n- URL HTTPS del CRM\n- ID mostrado en Inventario > Fuentes registradas\n- URL de Google Sheets\n- Nombre de la pestana\n\nDespues selecciona tu credencial Google Sheets en **Leer todos los productos**.",
+        "height": 300,
+        "width": 380,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-850, -390],
+      "id": "nota-configuracion",
+      "name": "Nota - Configuracion"
+    },
+    {
+      "parameters": {
+        "content": "## 2. Seguridad y activacion\nCrea una credencial **Header Auth**:\n- Name: `Authorization`\n- Value: `Bearer TU_INVENTORY_SYNC_SECRET`\n\nSelecciona esa misma credencial en los cuatro nodos `CRM - ...`. Debe coincidir con `INVENTORY_SYNC_SECRET` de Portainer. Ejecuta primero **Probar manualmente** y publica el workflow solo cuando termine correctamente.",
+        "height": 320,
+        "width": 400,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [40, -390],
+      "id": "nota-seguridad",
+      "name": "Nota - Seguridad"
+    },
+    {
+      "parameters": {
+        "content": "## 3. Comportamiento\nLa sincronizacion es **completa**:\n- SKU nuevo: crea producto\n- SKU existente: actualiza datos, rangos y stock\n- Fila con Activo=no: desactiva\n- SKU retirado de la hoja: desactiva al finalizar\n\nNo borra productos fisicamente ni su historial. Si la hoja esta vacia o cualquier fila/lote falla, no aplica la conciliacion.",
+        "height": 300,
+        "width": 400,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [700, -390],
+      "id": "nota-comportamiento",
+      "name": "Nota - Comportamiento"
+    }
+  ],
+  "connections": {
+    "Probar manualmente": {
+      "main": [[{"node": "CONFIGURACION - EDITAR", "type": "main", "index": 0}]]
+    },
+    "Cada 1 hora": {
+      "main": [[{"node": "CONFIGURACION - EDITAR", "type": "main", "index": 0}]]
+    },
+    "CONFIGURACION - EDITAR": {
+      "main": [[{"node": "Leer todos los productos", "type": "main", "index": 0}]]
+    },
+    "Leer todos los productos": {
+      "main": [[{"node": "Validar y normalizar hoja", "type": "main", "index": 0}]]
+    },
+    "Validar y normalizar hoja": {
+      "main": [[{"node": "CRM - Iniciar conciliacion", "type": "main", "index": 0}]]
+    },
+    "CRM - Iniciar conciliacion": {
+      "main": [[{"node": "Crear lotes de hasta 500", "type": "main", "index": 0}]]
+    },
+    "Crear lotes de hasta 500": {
+      "main": [[{"node": "CRM - Enviar lotes", "type": "main", "index": 0}]]
+    },
+    "CRM - Enviar lotes": {
+      "main": [[{"node": "Verificar todos los lotes", "type": "main", "index": 0}]]
+    },
+    "Verificar todos los lotes": {
+      "main": [[{"node": "Todos los lotes validos", "type": "main", "index": 0}]]
+    },
+    "Todos los lotes validos": {
+      "main": [
+        [{"node": "CRM - Aplicar cambios", "type": "main", "index": 0}],
+        [{"node": "CRM - Registrar fallo", "type": "main", "index": 0}]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Mexico_City",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveExecutionProgress": false,
+    "saveManualExecutions": true
+  },
+  "versionId": "3d44e9bf-b5d3-4bc0-83e3-12c5ee726a9a",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

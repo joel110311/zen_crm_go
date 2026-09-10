@@ -12,9 +12,13 @@ Bearer permite usar el nodo HTTP Request estándar. Para instalaciones que requi
 
 ## Flujo de Google Sheets
 
-Usa un `Schedule Trigger` (cada 5–15 minutos) o `Google Sheets Trigger` y, para una conciliación completa, lee todas las filas con **Google Sheets → Get Row(s)**. Las columnas recomendadas son:
+El archivo importable está disponible en `public/examples/n8n-inventario-google-sheets.json` y desde el botón **Workflow de n8n** de Inventario. Incluye disparador manual y `Schedule Trigger` cada hora. Para cambiarlo a 12 o 24 horas, abre el nodo **Cada 1 hora**, cambia **Hours Between Triggers** y vuelve a publicar el workflow.
 
-`SKU, Nombre, Categoria, Descripcion, Marca, Unidad, Precio, Existencia, Reservado, Stock minimo, Etiquetas, Ubicacion, Activo, Actualizado en`
+Para una conciliación completa, lee todas las filas con **Google Sheets → Get Row(s)**. Las columnas recomendadas son:
+
+`SKU, Nombre, Categoria, Descripcion, Marca, Unidad, Precio, Rangos de precio, Existencia, Reservado, Stock minimo, Etiquetas, Ubicacion, Activo, Actualizado en`
+
+Usa **Precio** para un precio fijo. Para precios escalonados deja **Precio** vacío y usa, por ejemplo, `100-150:70|151-200:67|201+:64` en **Rangos de precio**. La plantilla descargable es `public/examples/inventario-ejemplo.csv`.
 
 Secuencia del flujo:
 
@@ -25,6 +29,8 @@ Secuencia del flujo:
 5. En la rama de error, llama `/api/inventory/sync/fail` con el mismo `runId` y el mensaje del error.
 
 No ejecutes `finish` si no se pudo leer la hoja: una sincronización completa solo desactiva productos de *esa misma fuente* tras terminar correctamente.
+
+Al finalizar correctamente, un SKU nuevo se crea, un SKU existente actualiza catálogo/precios/rangos/existencias y un SKU retirado de la hoja se desactiva. No se elimina físicamente: se conservan pedidos, movimientos e historial. Una fila con `Activo=no` también lo desactiva explícitamente. El workflow rechaza hojas vacías y no llama a `finish` si algún lote contiene errores.
 
 ## Flujo de Google Drive XLSX
 

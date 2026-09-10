@@ -1,0 +1,4 @@
+SKU,Nombre,Categoria,Descripcion,Marca,Unidad,Precio,Rangos de precio,Existencia,Reservado,Stock minimo,Etiquetas,Ubicacion,Activo,Actualizado en
+GLOWSYNC-01,Pulseras GlowSync,Pulseras,"Pulseras controladas para conciertos y eventos",JIN&ROXX,pieza,,"100-150:70|151-200:67|201-250:64|251-500:61|501-1000:58|1001+:55",1000,0,100,"pulseras|eventos|concierto",Principal,si,2026-09-10T12:00:00-06:00
+BEATBAND-01,Pulseras Beatbands audioritmicas,Pulseras,"Se iluminan automaticamente al ritmo de la musica",JIN&ROXX,pieza,,"50-100:55|101-200:50|201-500:45|501-999:40|1000+:37",500,0,50,"pulseras|audioritmicas|fiestas",Principal,si,2026-09-10T12:00:00-06:00
+CONTROL-01,Control remoto GlowSync,Accesorios,"Control para operar pulseras GlowSync",JIN&ROXX,pieza,4000,,5,0,1,"control|glowsync",Principal,si,2026-09-10T12:00:00-06:00

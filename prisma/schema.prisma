@@ -464,6 +464,7 @@ model InventorySource {
   lastError            String?
   config               Json?
   runs                 InventorySyncRun[]
+  products             InventoryProduct[]
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
 
@@ -471,33 +472,36 @@ model InventorySource {
 }
 
 model InventoryProduct {
-  id            String                       @id @default(cuid())
-  sku           String                       @unique
-  name          String
-  description   String?
-  brand         String?
-  categoryId    String?
-  category      InventoryCategory?           @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  unit          String                       @default("pieza")
-  salePrice     Decimal                      @default(0) @db.Decimal(12, 2)
-  internalCost  Decimal?                     @db.Decimal(12, 2)
-  tags          String[]                     @default([])
-  imageUrl      String?
-  isActive      Boolean                      @default(true)
-  source        String                       @default("manual")
-  sourceHash    String?
-  embeddingHash String?
-  embedding     Unsupported("vector(1536)")?
-  stocks        InventoryStock[]
-  priceTiers    InventoryPriceTier[]
-  adjustments   InventoryAdjustment[]
-  orderItems    CustomerOrderItem[]
-  createdAt     DateTime                     @default(now())
-  updatedAt     DateTime                     @updatedAt
+  id                String                       @id @default(cuid())
+  sku               String                       @unique
+  name              String
+  description       String?
+  brand             String?
+  categoryId        String?
+  category          InventoryCategory?           @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  unit              String                       @default("pieza")
+  salePrice         Decimal                      @default(0) @db.Decimal(12, 2)
+  internalCost      Decimal?                     @db.Decimal(12, 2)
+  tags              String[]                     @default([])
+  imageUrl          String?
+  isActive          Boolean                      @default(true)
+  source            String                       @default("manual")
+  inventorySourceId String?
+  inventorySource   InventorySource?             @relation(fields: [inventorySourceId], references: [id], onDelete: SetNull)
+  sourceHash        String?
+  embeddingHash     String?
+  embedding         Unsupported("vector(1536)")?
+  stocks            InventoryStock[]
+  priceTiers        InventoryPriceTier[]
+  adjustments       InventoryAdjustment[]
+  orderItems        CustomerOrderItem[]
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
 
   @@index([categoryId, isActive])
   @@index([isActive, updatedAt(sort: Desc)])
   @@index([brand])
+  @@index([inventorySourceId, isActive])
 }
 
 model InventoryPriceTier {

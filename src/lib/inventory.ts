@@ -438,16 +438,31 @@ export async function getInventoryProduct(id: string) {
 async function saveNormalizedProduct(
     client: Prisma.TransactionClient | typeof prisma,
     input: NormalizedInventoryInput,
-    options: { productId?: string; actorId?: string | null; source?: string } = {},
+    options: { productId?: string; actorId?: string | null; source?: string; inventorySourceId?: string | null } = {},
 ) {
     const [category, location] = await Promise.all([
         ensureCategory(client, input.category),
         ensureLocation(client, input.location),
     ]);
     const existing = options.productId
-        ? await client.inventoryProduct.findUnique({ where: { id: options.productId }, include: { stocks: true, priceTiers: true } })
-        : await client.inventoryProduct.findUnique({ where: { sku: input.sku }, include: { stocks: true, priceTiers: true } });
+        ? await client.inventoryProduct.findUnique({ where: { id: options.productId }, include: { stocks: true, priceTiers: true, category: true } })
+        : await client.inventoryProduct.findUnique({ where: { sku: input.sku }, include: { stocks: true, priceTiers: true, category: true } });
     const hash = semanticHash(input);
+    const nextSource = options.source || input.source;
+    const nextInventorySourceId = options.inventorySourceId !== undefined ? options.inventorySourceId : existing?.inventorySourceId || null;
+    const productChanged = !existing
+        || existing.name !== input.name
+        || existing.description !== input.description
+        || existing.brand !== input.brand
+        || existing.categoryId !== (category?.id || null)
+        || existing.unit !== input.unit
+        || decimalToNumber(existing.salePrice) !== input.salePrice
+        || (existing.internalCost === null ? null : decimalToNumber(existing.internalCost)) !== input.internalCost
+        || [...existing.tags].sort().join("|") !== [...input.tags].sort().join("|")
+        || existing.imageUrl !== input.imageUrl
+        || existing.isActive !== input.isActive
+        || existing.source !== nextSource
+        || existing.inventorySourceId !== nextInventorySourceId;
     const productData = {
         sku: input.sku,
         name: input.name,
@@ -460,7 +475,8 @@ async function saveNormalizedProduct(
         tags: input.tags,
         imageUrl: input.imageUrl,
         isActive: input.isActive,
-        source: options.source || input.source,
+        source: nextSource,
+        ...(options.inventorySourceId !== undefined ? { inventorySourceId: options.inventorySourceId } : {}),
         sourceHash: hash,
         ...(existing?.sourceHash !== hash ? { embeddingHash: null } : {}),
     };
@@ -482,6 +498,11 @@ async function saveNormalizedProduct(
     const currentStock = existing?.stocks.find((stock) => stock.locationId === location.id);
     const previousOnHand = decimalToNumber(currentStock?.onHand);
     const nextOnHand = input.onHand;
+    const stockChanged = !currentStock
+        || previousOnHand !== nextOnHand
+        || decimalToNumber(currentStock.reserved) !== input.reserved
+        || decimalToNumber(currentStock.minimumStock) !== input.minimumStock
+        || currentStock.sourceUpdatedAt?.getTime() !== input.sourceUpdatedAt?.getTime();
     await client.inventoryStock.upsert({
         where: { productId_locationId: { productId: product.id, locationId: location.id } },
         create: {
@@ -519,7 +540,7 @@ async function saveNormalizedProduct(
         .map((tier) => `${tier.minQuantity}:${tier.maxQuantity ?? ""}:${decimalToNumber(tier.unitPrice)}`)
         .sort().join("|");
     const nextTiers = input.priceTiers.map((tier) => `${tier.minQuantity}:${tier.maxQuantity ?? ""}:${tier.unitPrice}`).sort().join("|");
-    return { product, created: !existing, changed: !existing || existing.sourceHash !== hash || previousOnHand !== nextOnHand || previousTiers !== nextTiers };
+    return { product, created: !existing, changed: productChanged || stockChanged || previousTiers !== nextTiers };
 }
 
 export async function saveInventoryProduct(input: InventoryInput, actorId?: string | null, productId?: string) {
@@ -701,7 +722,7 @@ export async function finishInventorySync(runId: string) {
         const seenSkus = new Set<string>();
         for (const stage of run.stages) {
             const normalized = normalizeInventoryInput(stage.payload as InventoryInput);
-            const saved = await saveNormalizedProduct(tx, normalized, { source: sourceName });
+            const saved = await saveNormalizedProduct(tx, normalized, { source: sourceName, inventorySourceId: run.sourceId });
             seenSkus.add(normalized.sku);
             if (saved.created) insertedCount += 1;
             else if (saved.changed) updatedCount += 1;
@@ -712,7 +733,7 @@ export async function finishInventorySync(runId: string) {
         // import must never deactivate products that were not present in the file.
         if (run.mode === "full" && run.sourceId) {
             const stale = await tx.inventoryProduct.findMany({
-                where: { source: sourceName, isActive: true, sku: { notIn: [...seenSkus] } },
+                where: { inventorySourceId: run.sourceId, isActive: true, sku: { notIn: [...seenSkus] } },
                 select: { id: true },
             });
             if (stale.length > 0) {

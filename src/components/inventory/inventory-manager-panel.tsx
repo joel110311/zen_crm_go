@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Box, Boxes, FileUp, Loader2, PackagePlus, Pencil, Plus, RefreshCw, Search, Sparkles, Trash2 } from "lucide-react";
+import { AlertTriangle, Box, Boxes, Download, FileDown, FileUp, Loader2, PackagePlus, Pencil, Plus, RefreshCw, Search, Sparkles, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -174,6 +174,7 @@ export function InventoryManagerPanel({ initialProducts, initialCategories, stat
                 </div>
                 <div className="flex flex-wrap gap-2">
                     <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={importCsv} />
+                    <Button asChild variant="outline"><a href="/examples/inventario-ejemplo.csv" download><Download /> CSV de ejemplo</a></Button>
                     <Button type="button" variant="outline" onClick={() => fileRef.current?.click()} disabled={loading}><FileUp /> Importar CSV</Button>
                     <Button type="button" variant="outline" onClick={prepareSemanticSearch} disabled={loading}><Sparkles /> Preparar RAG</Button>
                     {canManageSources ? <Button type="button" variant="outline" onClick={() => setSourceOpen(true)}>Configurar fuente</Button> : null}
@@ -199,7 +200,7 @@ export function InventoryManagerPanel({ initialProducts, initialCategories, stat
         </section>
 
         <section className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-2xl border border-border bg-card p-4 shadow-soft"><h3 className="font-semibold">Sincronización</h3><p className="mt-1 text-sm text-muted-foreground">{lastRun ? `Última ejecución: ${lastRun.status}${lastRun.sourceName ? ` · ${lastRun.sourceName}` : ""}${lastRun.errorCount ? ` · ${lastRun.errorCount} errores` : ""}` : "Aún no se ha sincronizado una fuente externa."}</p><p className="mt-3 text-xs text-muted-foreground">Configura Google Sheets o Google Drive XLSX desde n8n con los endpoints protegidos del CRM. El CSV es la alternativa manual segura.</p></div>
+            <div className="rounded-2xl border border-border bg-card p-4 shadow-soft"><h3 className="font-semibold">Sincronización</h3><p className="mt-1 text-sm text-muted-foreground">{lastRun ? `Última ejecución: ${lastRun.status}${lastRun.sourceName ? ` · ${lastRun.sourceName}` : ""}${lastRun.errorCount ? ` · ${lastRun.errorCount} errores` : ""}` : "Aún no se ha sincronizado una fuente externa."}</p><p className="mt-3 text-xs text-muted-foreground">Configura Google Sheets desde n8n con los endpoints protegidos del CRM. El workflow concilia altas, cambios y productos retirados sin borrar el historial.</p><Button asChild variant="outline" size="sm" className="mt-3"><a href="/examples/n8n-inventario-google-sheets.json" download><FileDown /> Workflow de n8n</a></Button></div>
             <div className="rounded-2xl border border-border bg-card p-4 shadow-soft"><h3 className="font-semibold">Fuentes registradas</h3>{sources.length ? <div className="mt-3 space-y-2">{sources.map((source) => <div key={source.id} className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"><span>{source.name}<span className="ml-2 text-xs text-muted-foreground">{source.type} · ID {source.id}</span></span><Badge variant={source.lastError ? "destructive" : source.isActive ? "secondary" : "outline"}>{source.lastError ? "Error" : source.isActive ? "Activa" : "Pausada"}</Badge></div>)}</div> : <p className="mt-2 text-sm text-muted-foreground">{canManageSources ? "Registra una fuente para usar su ID al configurar n8n." : "Las fuentes solo las puede registrar un Super Admin."}</p>}</div>
         </section>
 
