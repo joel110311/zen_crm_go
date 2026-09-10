@@ -15,7 +15,6 @@ export default async function InventoryPage() {
         initialProducts={inventory.products}
         initialCategories={inventory.categories.map((category) => ({ id: category.id, name: category.name }))}
         stats={dashboard.stats}
-        lastRun={dashboard.lastRun}
         sources={sources.map((source) => ({ ...source, lastSuccessfulSyncAt: source.lastSuccessfulSyncAt?.toISOString() || null }))}
         canManageSources={(session?.user as { role?: string } | undefined)?.role === "SUPERADMIN"}
     />;

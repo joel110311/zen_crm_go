@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Box, Boxes, Download, FileDown, FileUp, Loader2, PackagePlus, Pencil, Plus, RefreshCw, Search, Sparkles, Trash2 } from "lucide-react";
+import { AlertTriangle, Box, Boxes, Download, FileUp, Loader2, PackagePlus, Pencil, Plus, Power, PowerOff, RefreshCw, Search, Sparkles, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -19,7 +19,6 @@ type Props = {
     initialProducts: InventoryProductView[];
     initialCategories: Array<{ id: string; name: string }>;
     stats: InventoryStats;
-    lastRun: { status: string; startedAt: string; completedAt: string | null; sourceName: string | null; errorCount: number } | null;
     sources: Source[];
     canManageSources: boolean;
 };
@@ -27,6 +26,7 @@ type Props = {
 type PriceTierForm = { minQuantity: string; maxQuantity: string; unitPrice: string };
 type ProductForm = Record<"sku" | "name" | "category" | "description" | "unit" | "salePrice" | "onHand" | "minimumStock" | "tags", string> & { priceTiers: PriceTierForm[] };
 const blankForm: ProductForm = { sku: "", name: "", category: "", description: "", unit: "pieza", salePrice: "", onHand: "0", minimumStock: "0", tags: "", priceTiers: [] };
+const blankSourceForm = { name: "", type: "google_sheets", sourceUri: "", isActive: true };
 
 function formFromProduct(product: InventoryProductView): ProductForm {
     return {
@@ -53,7 +53,7 @@ function statusLabel(status: InventoryProductView["stockStatus"]) {
     return "Disponible";
 }
 
-export function InventoryManagerPanel({ initialProducts, initialCategories, stats, lastRun, sources: initialSources, canManageSources }: Props) {
+export function InventoryManagerPanel({ initialProducts, initialCategories, stats, sources: initialSources, canManageSources }: Props) {
     const [products, setProducts] = useState(initialProducts);
     const [sources, setSources] = useState(initialSources);
     const [categories] = useState(initialCategories);
@@ -68,7 +68,8 @@ export function InventoryManagerPanel({ initialProducts, initialCategories, stat
     const [nextOnHand, setNextOnHand] = useState("");
     const [reason, setReason] = useState("");
     const [sourceOpen, setSourceOpen] = useState(false);
-    const [sourceForm, setSourceForm] = useState({ name: "", type: "google_sheets", sourceUri: "" });
+    const [editingSource, setEditingSource] = useState<Source | null>(null);
+    const [sourceForm, setSourceForm] = useState(blankSourceForm);
     const fileRef = useRef<HTMLInputElement>(null);
 
     const visibleProducts = useMemo(() => products.filter((product) => status === "all" || product.stockStatus === status), [products, status]);
@@ -156,12 +157,50 @@ export function InventoryManagerPanel({ initialProducts, initialCategories, stat
     async function saveSource(event: FormEvent) {
         event.preventDefault(); setLoading(true); setNotice(null);
         try {
-            const response = await fetch("/api/inventory/sources", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(sourceForm) });
+            const response = await fetch("/api/inventory/sources", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: editingSource?.id, ...sourceForm }) });
             if (!response.ok) throw new Error(await readError(response));
             const { source } = await response.json() as { source: Source };
-            setSources((current) => [source, ...current]); setSourceOpen(false); setSourceForm({ name: "", type: "google_sheets", sourceUri: "" });
-            setNotice("Fuente registrada. Copia su identificador desde la respuesta de la API o desde la base de datos al configurar n8n.");
+            setSources((current) => editingSource ? current.map((item) => item.id === source.id ? source : item) : [source, ...current]);
+            setSourceOpen(false); setEditingSource(null); setSourceForm(blankSourceForm);
+            setNotice(editingSource ? "Fuente actualizada." : "Fuente registrada. Usa su ID al configurar n8n.");
         } catch (error) { setNotice(error instanceof Error ? error.message : "No se pudo registrar la fuente."); }
+        finally { setLoading(false); }
+    }
+
+    function openNewSource() {
+        setEditingSource(null); setSourceForm(blankSourceForm); setNotice(null); setSourceOpen(true);
+    }
+
+    function openEditSource(source: Source) {
+        setEditingSource(source);
+        setSourceForm({ name: source.name, type: source.type, sourceUri: source.sourceUri || "", isActive: source.isActive });
+        setNotice(null); setSourceOpen(true);
+    }
+
+    async function setSourceActive(source: Source, isActive: boolean) {
+        setLoading(true); setNotice(null);
+        try {
+            const response = await fetch("/api/inventory/sources", {
+                method: "POST", headers: { "content-type": "application/json" },
+                body: JSON.stringify({ id: source.id, name: source.name, type: source.type, sourceUri: source.sourceUri, isActive }),
+            });
+            if (!response.ok) throw new Error(await readError(response));
+            const { source: updated } = await response.json() as { source: Source };
+            setSources((current) => current.map((item) => item.id === updated.id ? updated : item));
+            setNotice(isActive ? "Fuente activada." : "Fuente pausada. El CRM rechazará nuevas sincronizaciones hasta que la reactives.");
+        } catch (error) { setNotice(error instanceof Error ? error.message : "No se pudo cambiar el estado de la fuente."); }
+        finally { setLoading(false); }
+    }
+
+    async function removeSource(source: Source) {
+        if (!window.confirm(`¿Eliminar la fuente “${source.name}”? Los productos y el historial se conservarán, pero su ID dejará de funcionar en n8n.`)) return;
+        setLoading(true); setNotice(null);
+        try {
+            const response = await fetch(`/api/inventory/sources/${source.id}`, { method: "DELETE" });
+            if (!response.ok) throw new Error(await readError(response));
+            setSources((current) => current.filter((item) => item.id !== source.id));
+            setNotice("Fuente eliminada. Los productos y el historial se conservaron; desactiva o actualiza su workflow en n8n.");
+        } catch (error) { setNotice(error instanceof Error ? error.message : "No se pudo eliminar la fuente."); }
         finally { setLoading(false); }
     }
 
@@ -177,7 +216,7 @@ export function InventoryManagerPanel({ initialProducts, initialCategories, stat
                     <Button asChild variant="outline"><a href="/examples/inventario-ejemplo.csv" download><Download /> CSV de ejemplo</a></Button>
                     <Button type="button" variant="outline" onClick={() => fileRef.current?.click()} disabled={loading}><FileUp /> Importar CSV</Button>
                     <Button type="button" variant="outline" onClick={prepareSemanticSearch} disabled={loading}><Sparkles /> Preparar RAG</Button>
-                    {canManageSources ? <Button type="button" variant="outline" onClick={() => setSourceOpen(true)}>Configurar fuente</Button> : null}
+                    {canManageSources ? <Button type="button" variant="outline" onClick={openNewSource}>Configurar fuente</Button> : null}
                     <Button type="button" onClick={openNewProduct}><PackagePlus /> Añadir producto</Button>
                 </div>
             </div>
@@ -199,9 +238,9 @@ export function InventoryManagerPanel({ initialProducts, initialCategories, stat
             </TableBody></Table></div>
         </section>
 
-        <section className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-2xl border border-border bg-card p-4 shadow-soft"><h3 className="font-semibold">Sincronización</h3><p className="mt-1 text-sm text-muted-foreground">{lastRun ? `Última ejecución: ${lastRun.status}${lastRun.sourceName ? ` · ${lastRun.sourceName}` : ""}${lastRun.errorCount ? ` · ${lastRun.errorCount} errores` : ""}` : "Aún no se ha sincronizado una fuente externa."}</p><p className="mt-3 text-xs text-muted-foreground">Configura Google Sheets desde n8n con los endpoints protegidos del CRM. El workflow concilia altas, cambios y productos retirados sin borrar el historial.</p><Button asChild variant="outline" size="sm" className="mt-3"><a href="/examples/n8n-inventario-google-sheets.json" download><FileDown /> Workflow de n8n</a></Button></div>
-            <div className="rounded-2xl border border-border bg-card p-4 shadow-soft"><h3 className="font-semibold">Fuentes registradas</h3>{sources.length ? <div className="mt-3 space-y-2">{sources.map((source) => <div key={source.id} className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"><span>{source.name}<span className="ml-2 text-xs text-muted-foreground">{source.type} · ID {source.id}</span></span><Badge variant={source.lastError ? "destructive" : source.isActive ? "secondary" : "outline"}>{source.lastError ? "Error" : source.isActive ? "Activa" : "Pausada"}</Badge></div>)}</div> : <p className="mt-2 text-sm text-muted-foreground">{canManageSources ? "Registra una fuente para usar su ID al configurar n8n." : "Las fuentes solo las puede registrar un Super Admin."}</p>}</div>
+        <section className="rounded-2xl border border-border bg-card p-4 shadow-soft">
+            <div className="flex items-center justify-between gap-3"><div><h3 className="font-semibold">Fuentes registradas</h3><p className="mt-1 text-xs text-muted-foreground">Administra la conexión sin borrar los productos ni su historial.</p></div>{canManageSources ? <Button type="button" size="sm" variant="outline" onClick={openNewSource}><Plus /> Nueva fuente</Button> : null}</div>
+            {sources.length ? <div className="mt-3 space-y-2">{sources.map((source) => <div key={source.id} className="flex flex-col gap-3 rounded-lg border border-border px-3 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="font-medium">{source.name}</span><Badge variant={source.lastError ? "destructive" : source.isActive ? "secondary" : "outline"}>{source.lastError ? "Error" : source.isActive ? "Activa" : "Pausada"}</Badge></div><p className="mt-1 break-all text-xs text-muted-foreground">{source.type} · ID {source.id}</p>{source.sourceUri ? <p className="mt-1 truncate text-xs text-muted-foreground">{source.sourceUri}</p> : null}{source.lastError ? <p className="mt-1 text-xs text-destructive">{source.lastError}</p> : null}</div>{canManageSources ? <div className="flex shrink-0 flex-wrap gap-2"><Button type="button" size="sm" variant="outline" onClick={() => openEditSource(source)} disabled={loading}><Pencil /> Editar</Button><Button type="button" size="sm" variant="outline" onClick={() => setSourceActive(source, !source.isActive)} disabled={loading}>{source.isActive ? <PowerOff /> : <Power />}{source.isActive ? "Pausar" : "Activar"}</Button><Button type="button" size="icon-sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => removeSource(source)} disabled={loading} aria-label={`Eliminar ${source.name}`}><Trash2 /></Button></div> : null}</div>)}</div> : <p className="mt-3 text-sm text-muted-foreground">{canManageSources ? "Registra una fuente para usar su ID al configurar n8n." : "Las fuentes solo las puede registrar un Super Admin."}</p>}
         </section>
 
         <Dialog open={formOpen} onOpenChange={setFormOpen}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>{editing ? "Editar producto" : "Añadir producto"}</DialogTitle><DialogDescription>Usa un precio fijo o agrega rangos por cantidad. Los rangos se validan para evitar traslapes y cotizaciones incorrectas.</DialogDescription></DialogHeader><form onSubmit={saveProduct} className="grid gap-4 sm:grid-cols-2"><Field label="SKU" value={form.sku} onChange={(value) => setForm({ ...form, sku: value })} required /><Field label="Nombre" value={form.name} onChange={(value) => setForm({ ...form, name: value })} required /><Field label="Categoría" value={form.category} onChange={(value) => setForm({ ...form, category: value })} list="inventory-categories" /><datalist id="inventory-categories">{categories.map((category) => <option key={category.id} value={category.name} />)}</datalist><Field label="Unidad" value={form.unit} onChange={(value) => setForm({ ...form, unit: value })} /><Field label="Precio fijo (MXN, opcional)" value={form.salePrice} onChange={(value) => setForm({ ...form, salePrice: value })} inputMode="decimal" required={form.priceTiers.length === 0} /><Field label="Existencia física" value={form.onHand} onChange={(value) => setForm({ ...form, onHand: value })} inputMode="decimal" required /><Field label="Stock mínimo" value={form.minimumStock} onChange={(value) => setForm({ ...form, minimumStock: value })} inputMode="decimal" required /><Field label="Etiquetas" value={form.tags} onChange={(value) => setForm({ ...form, tags: value })} placeholder="ej. rojo, oferta, 128gb" />
@@ -210,7 +249,7 @@ export function InventoryManagerPanel({ initialProducts, initialCategories, stat
 
         <Dialog open={Boolean(adjusting)} onOpenChange={(open) => { if (!open) setAdjusting(null); }}><DialogContent><DialogHeader><DialogTitle>Ajustar existencia</DialogTitle><DialogDescription>{adjusting?.name}. Se conservará un historial con la razón del cambio.</DialogDescription></DialogHeader><form onSubmit={saveAdjustment} className="space-y-4"><Field label="Nueva existencia física" value={nextOnHand} onChange={setNextOnHand} inputMode="decimal" required /><div><Label htmlFor="adjust-reason">Motivo</Label><Textarea id="adjust-reason" value={reason} onChange={(event) => setReason(event.target.value)} className="mt-1" placeholder="Conteo físico, merma, entrada…" /></div><DialogFooter><Button type="submit" disabled={loading}>{loading ? <Loader2 className="animate-spin" /> : <RefreshCw />} Confirmar ajuste</Button></DialogFooter></form></DialogContent></Dialog>
 
-        <Dialog open={sourceOpen} onOpenChange={setSourceOpen}><DialogContent><DialogHeader><DialogTitle>Registrar fuente de sincronización</DialogTitle><DialogDescription>Registra únicamente la ubicación de la fuente; las credenciales viven en n8n.</DialogDescription></DialogHeader><form onSubmit={saveSource} className="space-y-4"><Field label="Nombre de la fuente" value={sourceForm.name} onChange={(name) => setSourceForm({ ...sourceForm, name })} required /><div><Label htmlFor="source-type">Tipo</Label><Select value={sourceForm.type} onValueChange={(type) => setSourceForm({ ...sourceForm, type })}><SelectTrigger id="source-type" className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="google_sheets">Google Sheets</SelectItem><SelectItem value="google_drive_xlsx">Google Drive XLSX</SelectItem><SelectItem value="pos_api">API de punto de venta</SelectItem></SelectContent></Select></div><Field label="URL o referencia" value={sourceForm.sourceUri} onChange={(sourceUri) => setSourceForm({ ...sourceForm, sourceUri })} placeholder="https://…" /><DialogFooter><Button type="submit" disabled={loading}>Registrar fuente</Button></DialogFooter></form></DialogContent></Dialog>
+        <Dialog open={sourceOpen} onOpenChange={(open) => { setSourceOpen(open); if (!open) { setEditingSource(null); setSourceForm(blankSourceForm); } }}><DialogContent><DialogHeader><DialogTitle>{editingSource ? "Editar fuente de sincronización" : "Registrar fuente de sincronización"}</DialogTitle><DialogDescription>La fuente guarda su ubicación y estado; las credenciales permanecen en n8n.</DialogDescription></DialogHeader><form onSubmit={saveSource} className="space-y-4"><Field label="Nombre de la fuente" value={sourceForm.name} onChange={(name) => setSourceForm({ ...sourceForm, name })} required /><div><Label htmlFor="source-type">Tipo</Label><Select value={sourceForm.type} onValueChange={(type) => setSourceForm({ ...sourceForm, type })}><SelectTrigger id="source-type" className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="google_sheets">Google Sheets</SelectItem><SelectItem value="google_drive_xlsx">Google Drive XLSX</SelectItem><SelectItem value="pos_api">API de punto de venta</SelectItem></SelectContent></Select></div><Field label="URL o referencia" value={sourceForm.sourceUri} onChange={(sourceUri) => setSourceForm({ ...sourceForm, sourceUri })} placeholder="https://…" /><div><Label htmlFor="source-status">Estado</Label><Select value={sourceForm.isActive ? "active" : "paused"} onValueChange={(value) => setSourceForm({ ...sourceForm, isActive: value === "active" })}><SelectTrigger id="source-status" className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="active">Activa</SelectItem><SelectItem value="paused">Pausada</SelectItem></SelectContent></Select></div><DialogFooter><Button type="submit" disabled={loading}>{loading ? <Loader2 className="animate-spin" /> : null}{editingSource ? "Guardar cambios" : "Registrar fuente"}</Button></DialogFooter></form></DialogContent></Dialog>
     </div>;
 }
 

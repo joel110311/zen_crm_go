@@ -647,6 +647,20 @@ export async function saveInventorySource(input: { id?: unknown; name?: unknown;
     return prisma.inventorySource.create({ data: { name, type, sourceUri, isActive } });
 }
 
+export async function deleteInventorySource(id: string) {
+    const sourceId = cleanText(id, 100);
+    if (!sourceId) throw new Error("Fuente inválida.");
+    const source = await prisma.inventorySource.findUnique({ where: { id: sourceId }, select: { id: true, name: true } });
+    if (!source) throw new Error("Fuente no encontrada.");
+    const activeRun = await prisma.inventorySyncRun.findFirst({
+        where: { sourceId, status: { in: ["staging", "processing"] } },
+        select: { id: true },
+    });
+    if (activeRun) throw new Error("No se puede eliminar la fuente mientras tiene una sincronización en curso.");
+    await prisma.inventorySource.delete({ where: { id: sourceId } });
+    return source;
+}
+
 export async function deactivateInventoryProduct(id: string) {
     const productId = cleanText(id, 100);
     if (!productId) throw new Error("Producto inválido.");
@@ -660,8 +674,14 @@ export async function startInventorySync(input: { sourceId?: string | null; mode
         const existing = await prisma.inventorySyncRun.findUnique({ where: { idempotencyKey } });
         if (existing) return existing;
     }
+    const sourceId = cleanText(input.sourceId, 100) || null;
+    if (sourceId) {
+        const source = await prisma.inventorySource.findUnique({ where: { id: sourceId }, select: { isActive: true } });
+        if (!source) throw new Error("La fuente de sincronización no existe.");
+        if (!source.isActive) throw new Error("La fuente de sincronización está pausada.");
+    }
     return prisma.inventorySyncRun.create({
-        data: { sourceId: input.sourceId || null, mode, idempotencyKey, status: "staging" },
+        data: { sourceId, mode, idempotencyKey, status: "staging" },
     });
 }
 
