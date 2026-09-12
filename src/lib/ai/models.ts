@@ -9,6 +9,8 @@ export type SupportedChatModelOption = {
 };
 
 export const DEFAULT_CHAT_MODEL_ID = "openai:gpt-4o-mini";
+export const GEMINI_ROUTER_MODEL_ID = "gemini:models/gemini-3.1-flash-lite";
+export const GEMINI_ROUTER_MODEL_PATH = "models/gemini-3.1-flash-lite";
 
 export const SUPPORTED_CHAT_MODELS: SupportedChatModelOption[] = [
     {
@@ -33,42 +35,27 @@ export const SUPPORTED_CHAT_MODELS: SupportedChatModelOption[] = [
         description: "Mas potente para conversaciones complejas.",
     },
     {
-        id: "gemini:gemini-2.0-flash",
+        id: GEMINI_ROUTER_MODEL_ID,
         provider: "gemini",
-        model: "gemini-2.0-flash",
-        label: "Gemini 2.0 Flash",
-        description: "Respuesta veloz con buena calidad para chat diario.",
-    },
-    {
-        id: "gemini:gemini-2.5-flash",
-        provider: "gemini",
-        model: "gemini-2.5-flash",
-        label: "Gemini 2.5 Flash",
-        description: "Flash mas reciente para uso general.",
-    },
-    {
-        id: "gemini:gemini-2.5-pro",
-        provider: "gemini",
-        model: "gemini-2.5-pro",
-        label: "Gemini 2.5 Pro",
-        description: "Mas capaz para razonamiento y respuestas exigentes.",
-    },
-    {
-        id: "gemini:models/gemini-3.1-flash-lite",
-        provider: "gemini",
-        model: "models/gemini-3.1-flash-lite",
+        model: GEMINI_ROUTER_MODEL_PATH,
         label: "Gemini 3.1 Flash Lite",
-        description: "Ultrarrapido. Si no esta disponible, el sistema usa fallback estable.",
+        description: "Usado solo como el proveedor Gemini configurado del router.",
     },
 ];
 
 const DEPRECATED_CHAT_MODEL_MAP: Record<string, string> = {
-    "gemini:models/gemini-3.1-flash-lite-preview": "gemini:models/gemini-3.1-flash-lite",
-    "gemini:gemini-3.1-flash-lite-preview": "gemini:models/gemini-3.1-flash-lite",
-    "models/gemini-3.1-flash-lite-preview": "gemini:models/gemini-3.1-flash-lite",
-    "gemini-3.1-flash-lite-preview": "gemini:models/gemini-3.1-flash-lite",
-    "models/gemini-3.1-flash-lite": "gemini:models/gemini-3.1-flash-lite",
-    "gemini-3.1-flash-lite": "gemini:models/gemini-3.1-flash-lite",
+    "gemini:models/gemini-3.1-flash-lite-preview": GEMINI_ROUTER_MODEL_ID,
+    "gemini:gemini-3.1-flash-lite-preview": GEMINI_ROUTER_MODEL_ID,
+    "models/gemini-3.1-flash-lite-preview": GEMINI_ROUTER_MODEL_ID,
+    "gemini-3.1-flash-lite-preview": GEMINI_ROUTER_MODEL_ID,
+    "models/gemini-3.1-flash-lite": GEMINI_ROUTER_MODEL_ID,
+    "gemini-3.1-flash-lite": GEMINI_ROUTER_MODEL_ID,
+    "gemini:gemini-2.0-flash": GEMINI_ROUTER_MODEL_ID,
+    "gemini-2.0-flash": GEMINI_ROUTER_MODEL_ID,
+    "gemini:gemini-2.5-flash": GEMINI_ROUTER_MODEL_ID,
+    "gemini-2.5-flash": GEMINI_ROUTER_MODEL_ID,
+    "gemini:gemini-2.5-pro": GEMINI_ROUTER_MODEL_ID,
+    "gemini-2.5-pro": GEMINI_ROUTER_MODEL_ID,
 };
 
 export function normalizeChatModelSelection(value?: string | null) {
@@ -125,7 +112,7 @@ export function resolveChatModelSelection(value?: string | null) {
 export function resolveGeminiRestModelPath(value?: string | null) {
     const trimmed = (value || "").trim();
     if (!trimmed) {
-        return "models/gemini-2.5-flash";
+        return GEMINI_ROUTER_MODEL_PATH;
     }
 
     if (trimmed.startsWith("models/")) {

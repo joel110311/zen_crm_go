@@ -1,7 +1,12 @@
 import OpenAI, { toFile } from "openai";
 import { prisma } from "@/lib/db";
 import { SYSTEM_SETTINGS_DEFAULTS, withSettingsDefaults } from "@/lib/system-settings";
-import { resolveChatModelSelection, resolveGeminiRestModelPath } from "@/lib/ai/models";
+import {
+    GEMINI_ROUTER_MODEL_ID,
+    GEMINI_ROUTER_MODEL_PATH,
+    resolveChatModelSelection,
+    resolveGeminiRestModelPath,
+} from "@/lib/ai/models";
 import { resolveAiProviderKey } from "@/lib/ai/provider-keys";
 import {
     AI_ROUTER_FALLBACK_ID,
@@ -14,10 +19,6 @@ const DEFAULT_IMAGE_OCR_PROMPT =
     "Extrae en espanol todo el texto legible de esta imagen. Conserva titulos, precios, ubicaciones, bullets y datos comerciales. Si una seccion no se alcanza a leer completa, transcribe lo visible y no inventes nada.";
 
 const GEMINI_RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
-const GEMINI_FALLBACK_MODEL_PATHS = [
-    "models/gemini-2.5-flash",
-    "models/gemini-2.0-flash",
-];
 const GEMINI_MODEL_CACHE_TTL_MS = 10 * 60 * 1000;
 const AI_PROVIDER_FAILURE_COOLDOWN_MS = 30 * 1000;
 
@@ -49,9 +50,7 @@ function sleep(ms: number) {
 
 function buildGeminiModelCandidates(preferredModel?: string | null) {
     const normalizedPreferred = resolveGeminiRestModelPath(preferredModel);
-    return [normalizedPreferred, ...GEMINI_FALLBACK_MODEL_PATHS].filter(
-        (modelPath, index, all) => all.indexOf(modelPath) === index,
-    );
+    return [normalizedPreferred];
 }
 
 function getCachedGeminiModels(apiKey: string) {
@@ -108,23 +107,6 @@ function rememberUnavailableGeminiModel(apiKey: string, modelPath: string) {
     cached.delete(modelPath);
 }
 
-function pickAvailableFallbackModel(availableModels: Set<string>) {
-    const preferredOrder = [
-        "models/gemini-2.5-flash",
-        "models/gemini-2.0-flash",
-        "models/gemini-1.5-flash",
-        "models/gemini-1.5-pro",
-    ];
-
-    for (const preferred of preferredOrder) {
-        if (availableModels.has(preferred)) {
-            return preferred;
-        }
-    }
-
-    return null;
-}
-
 function extractGeminiText(data: unknown) {
     const responseData = data as {
         candidates?: Array<{
@@ -164,14 +146,10 @@ export async function callGeminiGenerateContent(options: {
     const availableCandidates = discoveredModels
         ? baseCandidates.filter((modelPath) => discoveredModels.has(modelPath))
         : baseCandidates;
-    const modelCandidates =
-        availableCandidates.length > 0
-            ? availableCandidates
-            : discoveredModels
-                ? [pickAvailableFallbackModel(discoveredModels)].filter(
-                    (modelPath): modelPath is string => Boolean(modelPath),
-                )
-                : baseCandidates;
+    if (availableCandidates.length === 0) {
+        throw new Error(`El modelo Gemini configurado no esta disponible: ${baseCandidates[0]}`);
+    }
+    const modelCandidates = availableCandidates;
     let lastError: Error | null = null;
 
     for (const modelPath of modelCandidates) {
@@ -299,25 +277,9 @@ async function runGeminiInlineMediaPrompt(
         );
     }
 
-    let settings: { openaiModel: string | null } | null = null;
-    try {
-        settings = await prisma.systemSettings.findFirst({
-            select: {
-                openaiModel: true,
-            },
-        });
-    } catch (error) {
-        console.warn("[AI OCR] Could not read stored model selection, using Gemini fallback model:", error);
-    }
-
-    const selectedModel = resolveChatModelSelection(settings?.openaiModel);
-    const model =
-        selectedModel.provider === "gemini"
-            ? selectedModel.model
-            : "gemini-2.5-flash";
     return callGeminiGenerateContent({
         apiKey,
-        preferredModel: model,
+        preferredModel: GEMINI_ROUTER_MODEL_PATH,
         payload: {
             contents: [
                 {
@@ -406,7 +368,7 @@ export async function generateCompletion(
     });
     const fallbackModel = selectedModel.provider === "gemini"
         ? resolveChatModelSelection("openai:gpt-4o-mini")
-        : resolveChatModelSelection("gemini:gemini-2.5-flash");
+        : resolveChatModelSelection(GEMINI_ROUTER_MODEL_ID);
     const candidatesById = new Map<string, { id: string; run: () => Promise<string | null> }>();
 
     for (const provider of customProviders) {

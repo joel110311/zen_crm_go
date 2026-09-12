@@ -233,7 +233,7 @@ export default function BrainConfigPage() {
     }
 
     const selectedModel = resolveChatModelSelection(openaiModel);
-    const fallbackModelLabel = selectedModel.provider === "openai" ? "Gemini 2.5 Flash" : "GPT-4o mini";
+    const fallbackModelLabel = selectedModel.provider === "openai" ? "Gemini 3.1 Flash Lite" : "GPT-4o mini";
     const orderedRouterIds = normalizeAiRouterOrder(aiRouterOrder, customProviders);
     const currentBusinessHours = normalizeBusinessHours({
         businessTimeZone,

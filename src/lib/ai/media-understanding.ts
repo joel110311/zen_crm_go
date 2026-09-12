@@ -2,8 +2,7 @@ import path from "path";
 import { readFile } from "fs/promises";
 import { extractTextFromFileBuffer } from "@/lib/brain/knowledge";
 import { callGeminiGenerateContent, getOpenAIClient, transcribeAudioBuffer } from "@/lib/ai/openai";
-import { prisma } from "@/lib/db";
-import { resolveChatModelSelection } from "@/lib/ai/models";
+import { GEMINI_ROUTER_MODEL_PATH } from "@/lib/ai/models";
 import { resolveAiProviderKey } from "@/lib/ai/provider-keys";
 
 type InboundMediaContextInput = {
@@ -72,7 +71,6 @@ async function runGeminiInlinePrompt(
     buffer: Buffer,
     mimeType: string,
 ) {
-    const settings = await prisma.systemSettings.findFirst();
     const apiKey = await resolveAiProviderKey("gemini");
 
     if (!apiKey) {
@@ -81,14 +79,9 @@ async function runGeminiInlinePrompt(
         );
     }
 
-    const selectedModel = resolveChatModelSelection(settings?.openaiModel);
-    const model =
-        selectedModel.provider === "gemini"
-            ? selectedModel.model
-            : "gemini-2.5-flash";
     return callGeminiGenerateContent({
         apiKey,
-        preferredModel: model,
+        preferredModel: GEMINI_ROUTER_MODEL_PATH,
         payload: {
             contents: [
                 {
