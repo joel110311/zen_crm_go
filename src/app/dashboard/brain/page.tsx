@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bot, Loader2, Network, Save, SearchCheck, ShieldAlert, Sparkles, Zap } from "lucide-react";
+import { ArrowDown, ArrowUp, Bot, Loader2, Network, Plus, Save, SearchCheck, ShieldAlert, Sparkles, Trash2, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -17,6 +17,13 @@ import { CatalogBase } from "@/components/brain/catalog-base";
 import { getSystemSettings, updateSystemSettings } from "@/app/actions/settings";
 import { useToast } from "@/components/ui/use-toast";
 import { normalizeChatModelSelection, resolveChatModelSelection, SUPPORTED_CHAT_MODELS } from "@/lib/ai/models";
+import {
+    AI_ROUTER_FALLBACK_ID,
+    AI_ROUTER_PRIMARY_ID,
+    normalizeAiRouterOrder,
+    normalizeCustomProviders,
+    type AiRouterCustomProvider,
+} from "@/lib/ai/router-config";
 import {
     BUSINESS_DAY_KEYS,
     BUSINESS_DAY_LABELS,
@@ -38,12 +45,10 @@ export default function BrainConfigPage() {
     const [openaiModel, setOpenaiModel] = useState(normalizeChatModelSelection());
     const [aiRouterEnabled, setAiRouterEnabled] = useState(false);
     const [aiRouterTimeoutMs, setAiRouterTimeoutMs] = useState("4000");
+    const [aiRouterOrder, setAiRouterOrder] = useState<string[]>(["custom", "primary", "fallback"]);
+    const [aiRouterPrimaryEnabled, setAiRouterPrimaryEnabled] = useState(true);
     const [aiRouterFallbackEnabled, setAiRouterFallbackEnabled] = useState(true);
-    const [customLlmEnabled, setCustomLlmEnabled] = useState(false);
-    const [customLlmName, setCustomLlmName] = useState("Chappie Magic (experimental)");
-    const [customLlmBaseUrl, setCustomLlmBaseUrl] = useState("https://chafe-duckling-emphasize.ngrok-free.dev/v1");
-    const [customLlmModel, setCustomLlmModel] = useState("chappie-magic");
-    const [customLlmApiKey, setCustomLlmApiKey] = useState("");
+    const [customProviders, setCustomProviders] = useState<AiRouterCustomProvider[]>([]);
     const [knowledgeTopK, setKnowledgeTopK] = useState("6");
     const [temperature, setTemperature] = useState([0.3]);
     const [businessTimeZone, setBusinessTimeZone] = useState("America/Mexico_City");
@@ -87,12 +92,17 @@ export default function BrainConfigPage() {
                     setOpenaiModel(normalizeChatModelSelection(settings.openaiModel));
                     setAiRouterEnabled(settings.aiRouterEnabled ?? false);
                     setAiRouterTimeoutMs(String(settings.aiRouterTimeoutMs || 4000));
+                    const providers = normalizeCustomProviders(settings.aiRouterCustomProviders, {
+                        enabled: settings.customLlmEnabled,
+                        name: settings.customLlmName,
+                        baseUrl: settings.customLlmBaseUrl,
+                        model: settings.customLlmModel,
+                        apiKey: settings.customLlmApiKey,
+                    });
+                    setCustomProviders(providers);
+                    setAiRouterOrder(normalizeAiRouterOrder(settings.aiRouterOrder, providers));
+                    setAiRouterPrimaryEnabled(settings.aiRouterPrimaryEnabled ?? true);
                     setAiRouterFallbackEnabled(settings.aiRouterFallbackEnabled ?? true);
-                    setCustomLlmEnabled(settings.customLlmEnabled ?? false);
-                    setCustomLlmName(settings.customLlmName || "Chappie Magic (experimental)");
-                    setCustomLlmBaseUrl(settings.customLlmBaseUrl || "https://chafe-duckling-emphasize.ngrok-free.dev/v1");
-                    setCustomLlmModel(settings.customLlmModel || "chappie-magic");
-                    setCustomLlmApiKey(settings.customLlmApiKey || "");
                     setKnowledgeTopK(String(settings.knowledgeTopK || 6));
                     setTemperature([settings.agentTemperature || 0.3]);
                     setBusinessTimeZone(businessHours.timeZone || "America/Mexico_City");
@@ -141,6 +151,7 @@ export default function BrainConfigPage() {
                 appointmentDurationMinutes: Number(appointmentDurationMinutes) || 30,
                 businessWeeklySchedule,
             });
+            const firstCustomProvider = customProviders[0];
             const result = await updateSystemSettings({
                 isBotEnabled,
                 agentName,
@@ -150,12 +161,15 @@ export default function BrainConfigPage() {
                 openaiModel,
                 aiRouterEnabled,
                 aiRouterTimeoutMs: Math.max(1500, Math.min(10000, Number(aiRouterTimeoutMs) || 4000)),
+                aiRouterOrder,
+                aiRouterCustomProviders: customProviders,
+                aiRouterPrimaryEnabled,
                 aiRouterFallbackEnabled,
-                customLlmEnabled,
-                customLlmName,
-                customLlmBaseUrl,
-                customLlmModel,
-                customLlmApiKey,
+                customLlmEnabled: firstCustomProvider?.enabled ?? false,
+                customLlmName: firstCustomProvider?.name ?? "",
+                customLlmBaseUrl: firstCustomProvider?.baseUrl ?? "",
+                customLlmModel: firstCustomProvider?.model ?? "",
+                customLlmApiKey: firstCustomProvider?.apiKey ?? "",
                 knowledgeTopK: Number(knowledgeTopK) || 6,
                 agentTemperature: temperature[0] || 0.3,
                 autoReplyDelayMs: 4000,
@@ -207,12 +221,62 @@ export default function BrainConfigPage() {
     }
 
     const selectedModel = resolveChatModelSelection(openaiModel);
+    const fallbackModelLabel = selectedModel.provider === "openai" ? "Gemini 2.5 Flash" : "GPT-4o mini";
+    const orderedRouterIds = normalizeAiRouterOrder(aiRouterOrder, customProviders);
     const currentBusinessHours = normalizeBusinessHours({
         businessTimeZone,
         appointmentDurationMinutes: Number(appointmentDurationMinutes) || 30,
         businessWeeklySchedule,
     });
     const catalogAssistantEnabled = catalogOfferImages || catalogOfferPdf || catalogIncludeLink;
+
+    const updateCustomProvider = (providerId: string, patch: Partial<AiRouterCustomProvider>) => {
+        setCustomProviders((current) => current.map((provider) => (
+            provider.id === providerId ? { ...provider, ...patch } : provider
+        )));
+    };
+
+    const addCustomProvider = () => {
+        const providerId = `custom-${globalThis.crypto?.randomUUID?.() || Date.now()}`;
+        setCustomProviders((current) => [...current, {
+            id: providerId,
+            name: "Nuevo proveedor",
+            baseUrl: "",
+            model: "",
+            apiKey: "",
+            enabled: false,
+        }]);
+        setAiRouterOrder((current) => [...current.filter((id) => id !== providerId), providerId]);
+    };
+
+    const removeCustomProvider = (providerId: string) => {
+        setCustomProviders((current) => current.filter((provider) => provider.id !== providerId));
+        setAiRouterOrder((current) => current.filter((id) => id !== providerId));
+    };
+
+    const moveRouterProvider = (providerId: string, direction: -1 | 1) => {
+        setAiRouterOrder((current) => {
+            const normalized = normalizeAiRouterOrder(current, customProviders);
+            const index = normalized.indexOf(providerId);
+            const destination = index + direction;
+            if (index < 0 || destination < 0 || destination >= normalized.length) return normalized;
+            const next = [...normalized];
+            [next[index], next[destination]] = [next[destination], next[index]];
+            return next;
+        });
+    };
+
+    const setRouterProviderEnabled = (providerId: string, enabled: boolean) => {
+        if (providerId === AI_ROUTER_PRIMARY_ID) {
+            setAiRouterPrimaryEnabled(enabled);
+            return;
+        }
+        if (providerId === AI_ROUTER_FALLBACK_ID) {
+            setAiRouterFallbackEnabled(enabled);
+            return;
+        }
+        updateCustomProvider(providerId, { enabled });
+    };
 
     const handleCatalogAssistantToggle = (enabled: boolean) => {
         if (!enabled) {
@@ -438,57 +502,113 @@ export default function BrainConfigPage() {
                                 <Switch id="ai-router-enabled" checked={aiRouterEnabled} onCheckedChange={setAiRouterEnabled} />
                             </div>
 
-                            <div className="grid gap-4 lg:grid-cols-[0.7fr_1.3fr]">
-                                <div className="space-y-2">
-                                    <Label>Tiempo maximo por proveedor</Label>
-                                    <Select value={aiRouterTimeoutMs} onValueChange={setAiRouterTimeoutMs}>
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="2500">2.5 segundos</SelectItem>
-                                            <SelectItem value="4000">4 segundos</SelectItem>
-                                            <SelectItem value="6000">6 segundos</SelectItem>
-                                            <SelectItem value="8000">8 segundos</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    <p className="text-xs text-muted-foreground">Cada proveedor tiene una sola oportunidad; no se reintenta antes de saltar.</p>
+                            <div className="max-w-sm space-y-2">
+                                <Label>Tiempo maximo por proveedor</Label>
+                                <Select value={aiRouterTimeoutMs} onValueChange={setAiRouterTimeoutMs}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="2500">2.5 segundos</SelectItem>
+                                        <SelectItem value="4000">4 segundos</SelectItem>
+                                        <SelectItem value="6000">6 segundos</SelectItem>
+                                        <SelectItem value="8000">8 segundos</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">Cada proveedor tiene una sola oportunidad; no se reintenta antes de saltar.</p>
+                            </div>
+
+                            <div className="rounded-xl border bg-secondary/35 p-4">
+                                <div>
+                                    <p className="font-medium">Prioridad y respaldos</p>
+                                    <p className="mt-1 text-sm text-muted-foreground">El bot prueba de arriba hacia abajo únicamente los proveedores activos.</p>
                                 </div>
-                                <div className="flex flex-col gap-3 rounded-xl border bg-background px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-                                    <div className="pr-4">
-                                        <Label htmlFor="ai-router-fallback" className="text-base font-medium">Respaldo entre OpenAI y Gemini</Label>
-                                        <p className="mt-1 text-sm text-muted-foreground">Despues del LLM principal intenta el otro proveedor si su API Key esta configurada.</p>
-                                    </div>
-                                    <Switch id="ai-router-fallback" checked={aiRouterFallbackEnabled} onCheckedChange={setAiRouterFallbackEnabled} />
+                                <div className="mt-4 space-y-2">
+                                    {orderedRouterIds.map((providerId, index) => {
+                                        const customProvider = customProviders.find((provider) => provider.id === providerId);
+                                        const isPrimary = providerId === AI_ROUTER_PRIMARY_ID;
+                                        const isFallback = providerId === AI_ROUTER_FALLBACK_ID;
+                                        const label = isPrimary
+                                            ? selectedModel.label
+                                            : isFallback
+                                                ? fallbackModelLabel
+                                                : customProvider?.name || "Proveedor personalizado";
+                                        const detail = isPrimary
+                                            ? "Proveedor oficial seleccionado"
+                                            : isFallback
+                                                ? "Proveedor oficial alterno"
+                                                : customProvider?.model || "Falta indicar el modelo";
+                                        const enabled = isPrimary
+                                            ? aiRouterPrimaryEnabled
+                                            : isFallback
+                                                ? aiRouterFallbackEnabled
+                                                : customProvider?.enabled ?? false;
+                                        const isComplete = isPrimary || isFallback || Boolean(
+                                            customProvider?.baseUrl && customProvider?.model && customProvider?.apiKey,
+                                        );
+
+                                        return (
+                                            <div key={providerId} className="flex items-center gap-3 rounded-xl border bg-background px-3 py-3">
+                                                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">{index + 1}</span>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="truncate font-medium">{label}</p>
+                                                    <p className="truncate text-xs text-muted-foreground">
+                                                        {detail}{!isComplete ? " · Configuracion incompleta" : ""}
+                                                    </p>
+                                                </div>
+                                                <Switch
+                                                    checked={enabled}
+                                                    onCheckedChange={(checked) => setRouterProviderEnabled(providerId, checked)}
+                                                    aria-label={`Activar ${label}`}
+                                                />
+                                                <div className="flex shrink-0 gap-1">
+                                                    <Button type="button" variant="ghost" size="icon-xs" disabled={index === 0} onClick={() => moveRouterProvider(providerId, -1)} aria-label={`Subir ${label}`}>
+                                                        <ArrowUp />
+                                                    </Button>
+                                                    <Button type="button" variant="ghost" size="icon-xs" disabled={index === orderedRouterIds.length - 1} onClick={() => moveRouterProvider(providerId, 1)} aria-label={`Bajar ${label}`}>
+                                                        <ArrowDown />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
 
                             <div className="rounded-xl border bg-background p-4">
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                     <div>
-                                        <Label htmlFor="custom-llm-enabled" className="flex items-center gap-2 text-base font-medium"><Zap className="h-4 w-4 text-primary" />Proveedor experimental OpenAI-compatible</Label>
-                                        <p className="mt-1 text-sm text-muted-foreground">Se intenta primero. La clave queda guardada en la configuracion del CRM y nunca se incluye en el codigo.</p>
+                                        <Label className="flex items-center gap-2 text-base font-medium"><Zap className="h-4 w-4 text-primary" />Proveedores OpenAI-compatible</Label>
+                                        <p className="mt-1 text-sm text-muted-foreground">Agrega Groq, OpenRouter, NVIDIA NIM u otro endpoint compatible y ordénalo en la lista superior.</p>
                                     </div>
-                                    <Switch id="custom-llm-enabled" checked={customLlmEnabled} onCheckedChange={setCustomLlmEnabled} />
+                                    <Button type="button" variant="outline" onClick={addCustomProvider}><Plus />Agregar proveedor</Button>
                                 </div>
-                                <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                                    <div className="space-y-2"><Label>Nombre</Label><Input value={customLlmName} onChange={(event) => setCustomLlmName(event.target.value)} placeholder="Proveedor experimental" /></div>
-                                    <div className="space-y-2"><Label>Modelo</Label><Input value={customLlmModel} onChange={(event) => setCustomLlmModel(event.target.value)} placeholder="chappie-magic" /></div>
-                                    <div className="space-y-2 sm:col-span-2"><Label>Base URL o endpoint de chat</Label><Input value={customLlmBaseUrl} onChange={(event) => setCustomLlmBaseUrl(event.target.value)} placeholder="https://proveedor.example/v1" /></div>
-                                    <div className="space-y-2 sm:col-span-2"><Label>API Key</Label><Input type="password" autoComplete="new-password" value={customLlmApiKey} onChange={(event) => setCustomLlmApiKey(event.target.value)} placeholder="Pega aqui la clave del proveedor" /></div>
-                                </div>
-                            </div>
 
-                            <div className="rounded-xl border bg-secondary/35 p-4 text-sm">
-                                <p className="font-medium">Orden efectivo</p>
-                                <ol className="mt-2 space-y-1 text-muted-foreground">
-                                    <li>1. Proveedor experimental, si esta activo y completo.</li>
-                                    <li>2. LLM principal: {selectedModel.label}.</li>
-                                    <li>3. Respaldo: {selectedModel.provider === "openai" ? "Gemini 2.5 Flash" : "GPT-4o mini"}, si esta habilitado y tiene clave.</li>
-                                </ol>
+                                {customProviders.length === 0 ? (
+                                    <p className="mt-4 rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Todavía no hay proveedores personalizados.</p>
+                                ) : (
+                                    <div className="mt-4 space-y-4">
+                                        {customProviders.map((provider) => (
+                                            <div key={provider.id} className="rounded-xl border bg-secondary/20 p-4">
+                                                <div className="mb-4 flex items-center justify-between gap-3">
+                                                    <p className="font-medium">{provider.name || "Proveedor personalizado"}</p>
+                                                    <Button type="button" variant="ghost" size="icon-sm" onClick={() => removeCustomProvider(provider.id)} aria-label={`Eliminar ${provider.name || "proveedor"}`}>
+                                                        <Trash2 className="text-destructive" />
+                                                    </Button>
+                                                </div>
+                                                <div className="grid gap-4 sm:grid-cols-2">
+                                                    <div className="space-y-2"><Label>Nombre</Label><Input value={provider.name} onChange={(event) => updateCustomProvider(provider.id, { name: event.target.value })} placeholder="Groq" /></div>
+                                                    <div className="space-y-2"><Label>Modelo</Label><Input value={provider.model} onChange={(event) => updateCustomProvider(provider.id, { model: event.target.value })} placeholder="Nombre exacto del modelo" /></div>
+                                                    <div className="space-y-2 sm:col-span-2"><Label>Base URL o endpoint de chat</Label><Input value={provider.baseUrl} onChange={(event) => updateCustomProvider(provider.id, { baseUrl: event.target.value })} placeholder="https://api.proveedor.com/openai/v1" /></div>
+                                                    <div className="space-y-2 sm:col-span-2"><Label>API Key</Label><Input type="password" autoComplete="new-password" value={provider.apiKey} onChange={(event) => updateCustomProvider(provider.id, { apiKey: event.target.value })} placeholder="Pega aqui la clave del proveedor" /></div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
 
                             <div className="flex gap-3 rounded-xl border border-amber-500/35 bg-amber-500/10 p-4 text-sm text-amber-950 dark:text-amber-100">
                                 <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
-                                <p>El endpoint experimental no publica propietario verificable, politica de privacidad ni garantia de disponibilidad. No lo actives con conversaciones reales que contengan nombres, telefonos, correos u otros datos sensibles hasta confiar en su operador.</p>
+                                <p>Antes de activar un proveedor externo, verifica su propietario, politica de privacidad y disponibilidad. No envies conversaciones reales con nombres, telefonos, correos u otros datos sensibles a un operador en el que no confies.</p>
                             </div>
                         </CardContent>
                     </Card>

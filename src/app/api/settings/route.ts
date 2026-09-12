@@ -4,8 +4,16 @@ import { prisma } from "@/lib/db";
 import { withSettingsDefaults } from "@/lib/system-settings";
 
 function maskClientSettings(settings: ReturnType<typeof withSettingsDefaults>) {
+    const customProviders = Array.isArray(settings.aiRouterCustomProviders)
+        ? settings.aiRouterCustomProviders.map((provider) => (
+            provider && typeof provider === "object" && !Array.isArray(provider)
+                ? { ...provider, apiKey: "" }
+                : provider
+        ))
+        : settings.aiRouterCustomProviders;
     return {
         ...settings,
+        aiRouterCustomProviders: customProviders,
         openaiApiKey: "",
         geminiApiKey: "",
         customLlmApiKey: "",
@@ -46,6 +54,12 @@ export async function POST(request: NextRequest) {
         delete data["y" + "cloudPhoneId"];
         console.log("[API] Settings data:", {
             ...data,
+            aiRouterCustomProviders: Array.isArray(data.aiRouterCustomProviders)
+                ? data.aiRouterCustomProviders.map((provider: Record<string, unknown>) => ({
+                    ...provider,
+                    apiKey: provider.apiKey ? "***" : undefined,
+                }))
+                : data.aiRouterCustomProviders,
             openaiApiKey: data.openaiApiKey ? "***" : undefined,
             geminiApiKey: data.geminiApiKey ? "***" : undefined,
             customLlmApiKey: data.customLlmApiKey ? "***" : undefined,
@@ -64,6 +78,20 @@ export async function POST(request: NextRequest) {
 
         // Upsert the first record (we assume single tenant for now)
         const existing = await prisma.systemSettings.findFirst();
+        if (Array.isArray(data.aiRouterCustomProviders) && Array.isArray(existing?.aiRouterCustomProviders)) {
+            const existingProviders = new Map(
+                existing.aiRouterCustomProviders.flatMap((provider) => (
+                    provider && typeof provider === "object" && !Array.isArray(provider) && typeof provider.id === "string"
+                        ? [[provider.id, provider] as const]
+                        : []
+                )),
+            );
+            data.aiRouterCustomProviders = data.aiRouterCustomProviders.map((provider: Record<string, unknown>) => {
+                if (provider?.apiKey || typeof provider?.id !== "string") return provider;
+                const previous = existingProviders.get(provider.id);
+                return previous?.apiKey ? { ...provider, apiKey: previous.apiKey } : provider;
+            });
+        }
         const secretFields = [
             "openaiApiKey",
             "geminiApiKey",

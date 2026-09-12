@@ -701,6 +701,9 @@ model SystemSettings {
   geminiApiKey                   String?
   aiRouterEnabled                Boolean               @default(false)
   aiRouterTimeoutMs              Int                   @default(4000)
+  aiRouterOrder                  Json?
+  aiRouterCustomProviders        Json?
+  aiRouterPrimaryEnabled         Boolean               @default(true)
   aiRouterFallbackEnabled        Boolean               @default(true)
   customLlmEnabled               Boolean               @default(false)
   customLlmName                  String?                @default("OpenAI-compatible")

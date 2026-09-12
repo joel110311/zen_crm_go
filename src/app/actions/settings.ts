@@ -21,6 +21,9 @@ export async function updateSystemSettings(data: {
     geminiApiKey?: string;
     aiRouterEnabled?: boolean;
     aiRouterTimeoutMs?: number;
+    aiRouterOrder?: Prisma.InputJsonValue;
+    aiRouterCustomProviders?: Prisma.InputJsonValue;
+    aiRouterPrimaryEnabled?: boolean;
     aiRouterFallbackEnabled?: boolean;
     customLlmEnabled?: boolean;
     customLlmName?: string;

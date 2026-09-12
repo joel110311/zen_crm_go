@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import type { SystemSettings } from "@prisma/client";
+import type { Prisma, SystemSettings } from "@prisma/client";
 import { DEFAULT_CHAT_MODEL_ID } from "@/lib/ai/models";
 import {
     DEFAULT_APPOINTMENT_DURATION_MINUTES,
@@ -13,6 +13,9 @@ export const SYSTEM_SETTINGS_DEFAULTS = {
     openaiModel: DEFAULT_CHAT_MODEL_ID,
     aiRouterEnabled: false,
     aiRouterTimeoutMs: 4000,
+    aiRouterOrder: ["custom", "primary", "fallback"],
+    aiRouterCustomProviders: null as Prisma.JsonValue | null,
+    aiRouterPrimaryEnabled: true,
     aiRouterFallbackEnabled: true,
     customLlmEnabled: false,
     customLlmName: "Chappie Magic (experimental)",

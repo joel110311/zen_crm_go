@@ -3,6 +3,12 @@ import { prisma } from "@/lib/db";
 import { SYSTEM_SETTINGS_DEFAULTS, withSettingsDefaults } from "@/lib/system-settings";
 import { resolveChatModelSelection, resolveGeminiRestModelPath } from "@/lib/ai/models";
 import { resolveAiProviderKey } from "@/lib/ai/provider-keys";
+import {
+    AI_ROUTER_FALLBACK_ID,
+    AI_ROUTER_PRIMARY_ID,
+    normalizeAiRouterOrder,
+    normalizeCustomProviders,
+} from "@/lib/ai/router-config";
 
 const DEFAULT_IMAGE_OCR_PROMPT =
     "Extrae en espanol todo el texto legible de esta imagen. Conserva titulos, precios, ubicaciones, bullets y datos comerciales. Si una seccion no se alcanza a leer completa, transcribe lo visible y no inventes nada.";
@@ -391,37 +397,50 @@ export async function generateCompletion(
     }
 
     const timeoutMs = Math.max(1500, Math.min(10000, Number(settings.aiRouterTimeoutMs) || 4000));
-    const candidates: Array<{ id: string; run: () => Promise<string | null> }> = [];
-    if (
-        settings.customLlmEnabled &&
-        settings.customLlmBaseUrl?.trim() &&
-        settings.customLlmModel?.trim() &&
-        settings.customLlmApiKey?.trim()
-    ) {
-        candidates.push({
-            id: `custom:${settings.customLlmName || settings.customLlmModel}`,
+    const customProviders = normalizeCustomProviders(settings.aiRouterCustomProviders, {
+        enabled: settings.customLlmEnabled,
+        name: settings.customLlmName,
+        baseUrl: settings.customLlmBaseUrl,
+        model: settings.customLlmModel,
+        apiKey: settings.customLlmApiKey,
+    });
+    const fallbackModel = selectedModel.provider === "gemini"
+        ? resolveChatModelSelection("openai:gpt-4o-mini")
+        : resolveChatModelSelection("gemini:gemini-2.5-flash");
+    const candidatesById = new Map<string, { id: string; run: () => Promise<string | null> }>();
+
+    for (const provider of customProviders) {
+        if (!provider.enabled || !provider.baseUrl || !provider.model || !provider.apiKey) continue;
+        candidatesById.set(provider.id, {
+            id: `custom:${provider.id}:${provider.model}`,
             run: () => callOpenAiCompatibleProvider({
-                baseUrl: settings.customLlmBaseUrl,
-                apiKey: settings.customLlmApiKey,
-                model: settings.customLlmModel,
+                baseUrl: provider.baseUrl,
+                apiKey: provider.apiKey,
+                model: provider.model,
                 messages,
                 temperature,
                 timeoutMs,
             }),
         });
     }
-    candidates.push({
-        id: selectedModel.id,
-        run: () => callSelectedChatProvider(selectedModel, messages, temperature, timeoutMs),
-    });
+    if (settings.aiRouterPrimaryEnabled) {
+        candidatesById.set(AI_ROUTER_PRIMARY_ID, {
+            id: selectedModel.id,
+            run: () => callSelectedChatProvider(selectedModel, messages, temperature, timeoutMs),
+        });
+    }
     if (settings.aiRouterFallbackEnabled) {
-        const fallbackModel = selectedModel.provider === "gemini"
-            ? resolveChatModelSelection("openai:gpt-4o-mini")
-            : resolveChatModelSelection("gemini:gemini-2.5-flash");
-        candidates.push({
+        candidatesById.set(AI_ROUTER_FALLBACK_ID, {
             id: fallbackModel.id,
             run: () => callSelectedChatProvider(fallbackModel, messages, temperature, timeoutMs),
         });
+    }
+
+    const candidates = normalizeAiRouterOrder(settings.aiRouterOrder, customProviders)
+        .map((id) => candidatesById.get(id))
+        .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate));
+    if (candidates.length === 0) {
+        throw new Error("El router de IA no tiene proveedores activos y configurados.");
     }
 
     const errors: string[] = [];
