@@ -1,14 +1,14 @@
 "use server";
 
 import { prisma } from "@/lib/db";
-import { resolveAiProviderKey } from "@/lib/ai/provider-keys";
-import { callGeminiGenerateContent } from "@/lib/ai/openai";
+import { generateCompletion } from "@/lib/ai/openai";
 
 /**
  * AI Contact Enrichment Service
  * Analyzes incoming messages for contact data (full name, company, email)
  * and updates the Contact and Deal records accordingly.
- * Uses Gemini API if available, otherwise silently skips.
+ * Uses the configured AI router, so contact enrichment follows the same
+ * provider priority and fallbacks as automated replies.
  */
 
 interface EnrichmentData {
@@ -19,16 +19,8 @@ interface EnrichmentData {
     email?: string;
 }
 
-async function getGeminiApiKey(): Promise<string | null> {
-    try {
-        return await resolveAiProviderKey("gemini");
-    } catch {
-        return null;
-    }
-}
-
 /**
- * Call Gemini API to extract contact info from a message
+ * Extract contact data through the configured router.
  */
 async function extractContactData(
     messageText: string,
@@ -37,11 +29,6 @@ async function extractContactData(
     existingCompany?: string | null,
     existingEmail?: string | null
 ): Promise<EnrichmentData | null> {
-    const apiKey = await getGeminiApiKey();
-    if (!apiKey) {
-        return null;
-    }
-
     const prompt = `Analiza el siguiente mensaje de WhatsApp y extrae SOLO datos personales del remitente si los menciona explícitamente.
 
 Datos actuales del contacto:
@@ -61,17 +48,10 @@ Formato de respuesta:
 Si no encuentras ningún dato nuevo, responde: {}`;
 
     try {
-        const text = await callGeminiGenerateContent({
-            apiKey,
-            preferredModel: "gemini-2.5-flash",
-            payload: {
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: {
-                    temperature: 0.1,
-                    maxOutputTokens: 200,
-                },
-            },
-        });
+        const text = await generateCompletion(
+            [{ role: "system", content: prompt }],
+            0.1,
+        );
 
         if (!text) return null;
 
@@ -83,14 +63,14 @@ Si no encuentras ningún dato nuevo, responde: {}`;
         const hasNewData = parsed.firstName || parsed.lastName || parsed.company || parsed.email;
         return hasNewData ? parsed : null;
     } catch (error) {
-        console.error("[AI Enrichment] Error calling Gemini:", error);
+        console.error("[AI Enrichment] Error calling the AI router:", error);
         return null;
     }
 }
 
 /**
- * Enrich contact data from a new inbound message.
- * This is called fire-and-forget from processInboundMessage.
+ * Enrich contact data from a single aggregated inbound-message batch.
+ * Callers should invoke it only after the message batching window closes.
  */
 export async function enrichContactFromMessage(
     contactId: string,

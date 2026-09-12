@@ -2194,10 +2194,10 @@ export async function processQueuedInboundBatch(conversationId: string, queueJob
     const settings = await getSystemSettingsOrDefaults();
     const conversation = await prisma.conversation.findUnique({
         where: { id: conversationId },
-        select: { botActive: true },
+        select: { botActive: true, contactId: true },
     });
 
-    if (!conversation || !settings.isBotEnabled || !conversation.botActive) {
+    if (!conversation) {
         await prisma.message.updateMany({
             where: {
                 conversationId,
@@ -2208,6 +2208,7 @@ export async function processQueuedInboundBatch(conversationId: string, queueJob
         });
         return;
     }
+    const automatedReplyActive = settings.isBotEnabled && conversation.botActive;
 
     const batchId = queueJobId;
     let batchMessages = await prisma.message.findMany({
@@ -2259,6 +2260,23 @@ export async function processQueuedInboundBatch(conversationId: string, queueJob
     });
 
     if (!batchText || shouldSkipAutoReplyText(batchText)) {
+        await prisma.message.updateMany({
+            where: { conversationId, botBatchId: claimedBatchId },
+            data: { botProcessedAt: new Date(), botBatchId: null },
+        });
+        return;
+    }
+
+    // Contact enrichment belongs to the same debounce window as the reply.
+    // This prevents one AI request per fragment when a client sends several
+    // messages in quick succession, and it lets enrichment use the AI router.
+    if (conversation.contactId) {
+        void enrichContactFromMessage(conversation.contactId, batchText).catch((error) => {
+            console.error("[AI Enrichment] Batched enrichment failed:", error);
+        });
+    }
+
+    if (!automatedReplyActive) {
         await prisma.message.updateMany({
             where: { conversationId, botBatchId: claimedBatchId },
             data: { botProcessedAt: new Date(), botBatchId: null },
@@ -2790,38 +2808,44 @@ export async function processInboundMessage(
 
         // ── CHATBOT / N8N FORWARDING ──
         try {
-            if (bulkReplyResult.intent !== "stop" && shouldScheduleAutomatedReply) {
-                if (sourceSettings.messageBatchingEnabled) {
-                    const firstPendingMessage = await prisma.message.findFirst({
-                        where: {
-                            conversationId: conversation.id,
-                            direction: "inbound",
-                            botProcessedAt: null,
-                            botBatchId: null,
-                            botInputText: { not: null },
-                        },
-                        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-                        select: { createdAt: true },
-                    });
-                    const { enqueueBotReplyBatch } = await import("@/lib/bot-reply-queue");
-                    await enqueueBotReplyBatch({
+            if (bulkReplyResult.intent !== "stop" && sourceSettings.messageBatchingEnabled) {
+                const firstPendingMessage = await prisma.message.findFirst({
+                    where: {
                         conversationId: conversation.id,
-                        windowMs: sourceSettings.messageBatchWindowMs,
-                        maxWaitMs: sourceSettings.messageBatchMaxWaitMs,
-                        firstPendingAt: firstPendingMessage?.createdAt || message.createdAt,
-                    });
-                } else {
-                    await prisma.message.update({
-                        where: { id: message.id },
-                        data: { botProcessedAt: new Date() },
-                    });
-                    void maybeSendAutomatedReply(conversation.id, message.id, botInputText, attribution);
-                }
+                        direction: "inbound",
+                        botProcessedAt: null,
+                        botBatchId: null,
+                        botInputText: { not: null },
+                    },
+                    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+                    select: { createdAt: true },
+                });
+                const { enqueueBotReplyBatch } = await import("@/lib/bot-reply-queue");
+                await enqueueBotReplyBatch({
+                    conversationId: conversation.id,
+                    windowMs: sourceSettings.messageBatchWindowMs,
+                    maxWaitMs: sourceSettings.messageBatchMaxWaitMs,
+                    firstPendingAt: firstPendingMessage?.createdAt || message.createdAt,
+                });
+            } else if (bulkReplyResult.intent !== "stop" && shouldScheduleAutomatedReply) {
+                await prisma.message.update({
+                    where: { id: message.id },
+                    data: { botProcessedAt: new Date() },
+                });
+                void maybeSendAutomatedReply(conversation.id, message.id, botInputText, attribution);
+                void enrichContactFromMessage(contact.id, botInputText || text).catch((error) => {
+                    console.error("[AI Enrichment] Non-batched enrichment failed:", error);
+                });
             } else {
                 await prisma.message.update({
                     where: { id: message.id },
                     data: { botProcessedAt: new Date() },
                 });
+                if (bulkReplyResult.intent !== "stop") {
+                    void enrichContactFromMessage(contact.id, botInputText || text).catch((error) => {
+                        console.error("[AI Enrichment] Non-batched enrichment failed:", error);
+                    });
+                }
             }
         } catch (botError) {
             console.error("[Chatbot] Error scheduling automated reply:", botError);
@@ -2831,12 +2855,14 @@ export async function processInboundMessage(
                     data: { botProcessedAt: new Date(), botBatchId: null },
                 }).catch(() => undefined),
             );
+            void enrichContactFromMessage(contact.id, botInputText || text).catch((error) => {
+                console.error("[AI Enrichment] Fallback enrichment failed:", error);
+            });
         }
 
-        // ── AI Contact Enrichment (fire-and-forget) ──
-        enrichContactFromMessage(contact.id, botInputText || text).catch((err) => {
-            console.error("[AI Enrichment] Background enrichment failed:", err);
-        });
+        // Contact enrichment is run from the debounced batch processor above.
+        // It therefore follows the configured router instead of calling Gemini
+        // once for every inbound message.
 
         revalidatePath("/dashboard/inbox");
         return { contact, conversation, message };
