@@ -122,12 +122,17 @@ Si quieres algo mas parecido a tu stack anterior:
 3. pegalo completo en Portainer
 4. despliega el stack
 
+Al actualizar una instalación existente, vuelve a pegar o sincronizar la definición
+completa del stack. Actualizar solamente la imagen de `zen-crm` no crea servicios
+nuevos como Redis.
+
 Ese archivo ya incluye:
 
 - app
 - base de datos
 - base de datos dedicada para WuzAPI
 - gateway de WhatsApp
+- Redis privado y persistente para agrupar mensajes consecutivos del bot
 - router Traefik con `tls=true`
 - healthcheck
 - reintentos de arranque contra PostgreSQL
