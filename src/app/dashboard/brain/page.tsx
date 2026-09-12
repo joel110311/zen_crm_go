@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, Bot, Loader2, Network, Plus, Save, SearchCheck, ShieldAlert, Sparkles, Trash2, Zap } from "lucide-react";
+import { ArrowDown, ArrowUp, Bot, Loader2, MessagesSquare, Network, Plus, Save, SearchCheck, ShieldAlert, Sparkles, Trash2, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -38,6 +38,9 @@ export default function BrainConfigPage() {
     const [isSaving, setIsSaving] = useState(false);
     const [isBotEnabled, setIsBotEnabled] = useState(false);
     const [botReplyDelayMaxSeconds, setBotReplyDelayMaxSeconds] = useState(8);
+    const [messageBatchingEnabled, setMessageBatchingEnabled] = useState(true);
+    const [messageBatchWindowMs, setMessageBatchWindowMs] = useState("8000");
+    const [messageBatchMaxWaitMs, setMessageBatchMaxWaitMs] = useState("30000");
     const [agentName, setAgentName] = useState("Asistente Zen");
     const [agentPrompt, setAgentPrompt] = useState("");
     const [welcomeMessage, setWelcomeMessage] = useState("");
@@ -89,6 +92,9 @@ export default function BrainConfigPage() {
                     setBotReplyDelayMaxSeconds(
                         Math.max(8, Math.min(16, Math.round((settings.botReplyDelayMaxMs || 8000) / 1000))),
                     );
+                    setMessageBatchingEnabled(settings.messageBatchingEnabled ?? true);
+                    setMessageBatchWindowMs(String(settings.messageBatchWindowMs || 8000));
+                    setMessageBatchMaxWaitMs(String(settings.messageBatchMaxWaitMs || 30000));
                     setOpenaiModel(normalizeChatModelSelection(settings.openaiModel));
                     setAiRouterEnabled(settings.aiRouterEnabled ?? false);
                     setAiRouterTimeoutMs(String(settings.aiRouterTimeoutMs || 4000));
@@ -175,6 +181,12 @@ export default function BrainConfigPage() {
                 autoReplyDelayMs: 4000,
                 botReplyDelayMinMs: 4000,
                 botReplyDelayMaxMs: botReplyDelayMaxSeconds * 1000,
+                messageBatchingEnabled,
+                messageBatchWindowMs: Math.max(1000, Math.min(30000, Number(messageBatchWindowMs) || 8000)),
+                messageBatchMaxWaitMs: Math.max(
+                    Number(messageBatchWindowMs) || 8000,
+                    Math.min(120000, Number(messageBatchMaxWaitMs) || 30000),
+                ),
                 businessHoursStart: normalizedBusinessHours.start,
                 businessHoursEnd: normalizedBusinessHours.end,
                 businessTimeZone: normalizedBusinessHours.timeZone,
@@ -383,6 +395,53 @@ export default function BrainConfigPage() {
 
                                     <p className="mt-4 text-xs text-muted-foreground">
                                         Recomendado: 4 a 8 segundos para respuestas normales; usa 4 a 16 segundos si quieres una cadencia mas variable.
+                                    </p>
+                                </div>
+
+                                <div className="rounded-xl border bg-background px-4 py-4">
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                        <div>
+                                            <Label htmlFor="message-batching-enabled" className="flex items-center gap-2 text-base font-medium">
+                                                <MessagesSquare className="h-4 w-4 text-primary" />
+                                                Agrupar mensajes consecutivos
+                                            </Label>
+                                            <p className="mt-1 text-sm text-muted-foreground">
+                                                Reinicia la espera con cada mensaje y envia todo el bloque a la IA para generar una sola respuesta.
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            id="message-batching-enabled"
+                                            checked={messageBatchingEnabled}
+                                            onCheckedChange={setMessageBatchingEnabled}
+                                        />
+                                    </div>
+
+                                    <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                                        <div className="space-y-2">
+                                            <Label>Espera desde el ultimo mensaje</Label>
+                                            <Select value={messageBatchWindowMs} onValueChange={setMessageBatchWindowMs}>
+                                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="5000">5 segundos</SelectItem>
+                                                    <SelectItem value="8000">8 segundos</SelectItem>
+                                                    <SelectItem value="12000">12 segundos</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Espera maxima del bloque</Label>
+                                            <Select value={messageBatchMaxWaitMs} onValueChange={setMessageBatchMaxWaitMs}>
+                                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="20000">20 segundos</SelectItem>
+                                                    <SelectItem value="30000">30 segundos</SelectItem>
+                                                    <SelectItem value="60000">60 segundos</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+                                    <p className="mt-4 text-xs text-muted-foreground">
+                                        Configuracion recomendada: 8 segundos entre mensajes y un maximo de 30 segundos desde el primero.
                                     </p>
                                 </div>
                             </div>

@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - DATABASE_URL=postgresql://zencrm:950b719a13e682e057b42c7b11dd2213@zen-crm-db:5432/zencrm
+      - REDIS_URL=${REDIS_URL:-redis://zen-crm-redis:6379}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - INVENTORY_SYNC_SECRET=${INVENTORY_SYNC_SECRET:-zencrm-local-inventory-sync-secret}
@@ -30,6 +31,7 @@ services:
     depends_on:
       - zen-crm-db
       - whatsapp-gateway
+      - zen-crm-redis
     networks:
       - zen-crm-local
     restart: unless-stopped
@@ -70,9 +72,19 @@ services:
       - zen-crm-local
     restart: unless-stopped
 
+  zen-crm-redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - zen_crm_redis_data:/data
+    networks:
+      - zen-crm-local
+    restart: unless-stopped
+
 volumes:
   zen_crm_db_data:
   zen_crm_uploads:
+  zen_crm_redis_data:
 
 networks:
   zen-crm-local:

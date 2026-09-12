@@ -219,7 +219,7 @@ async function generateConversationReplyResult(
     conversationId: string,
     latestUserMessage: string,
     automationInstruction?: string | null,
-    options?: { skipCompletionOnInventoryShortage?: boolean },
+    options?: { skipCompletionOnInventoryShortage?: boolean; excludeInboundMessageIds?: string[] },
 ): Promise<{ reply: string; inventoryShortage: InventoryShortage | null }> {
     const [settings, conversation] = await Promise.all([
         getSystemSettingsOrDefaults(),
@@ -238,6 +238,9 @@ async function generateConversationReplyResult(
                         type: {
                             not: "system",
                         },
+                        ...(options?.excludeInboundMessageIds?.length
+                            ? { id: { notIn: options.excludeInboundMessageIds } }
+                            : {}),
                     },
                     orderBy: { createdAt: "desc" },
                     take: 16,
@@ -377,8 +380,12 @@ export async function generateConversationReplyWithMetadata(
     conversationId: string,
     latestUserMessage: string,
     automationInstruction?: string | null,
+    options?: { excludeInboundMessageIds?: string[] },
 ) {
-    return generateConversationReplyResult(conversationId, latestUserMessage, automationInstruction, { skipCompletionOnInventoryShortage: true });
+    return generateConversationReplyResult(conversationId, latestUserMessage, automationInstruction, {
+        skipCompletionOnInventoryShortage: true,
+        excludeInboundMessageIds: options?.excludeInboundMessageIds,
+    });
 }
 
 export async function generateConversationReply(

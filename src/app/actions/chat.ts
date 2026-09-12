@@ -1569,7 +1569,6 @@ async function maybeHandleCatalogAssetReply(params: {
             settings: params.settings,
             conversationId: params.conversationId,
             inboundMessageId: params.inboundMessageId,
-            cancelIfNewerInbound: false,
         });
 
     if (intent.negative && isOfferActive) {
@@ -1669,6 +1668,7 @@ async function maybeSendAutomatedReply(
     inboundMessageId: string,
     latestUserMessage: string,
     inboundAttribution?: InboundAttribution,
+    options?: { skipInitialDelay?: boolean; batchMessageIds?: string[] },
 ) {
     try {
         const settings = await getSystemSettingsOrDefaults();
@@ -1685,7 +1685,7 @@ async function maybeSendAutomatedReply(
             return;
         }
 
-        if (settings.autoReplyDelayMs > 0) {
+        if (!options?.skipInitialDelay && settings.autoReplyDelayMs > 0) {
             await sleep(settings.autoReplyDelayMs);
         }
 
@@ -1763,7 +1763,6 @@ async function maybeSendAutomatedReply(
                     settings,
                     conversationId,
                     inboundMessageId,
-                    cancelIfNewerInbound: false,
                 });
                 if (!canSendAfterPacing) return;
 
@@ -1983,6 +1982,7 @@ async function maybeSendAutomatedReply(
                     conversationId,
                     modelUserMessage,
                     automationInstruction,
+                    { excludeInboundMessageIds: options?.batchMessageIds },
                 );
                 reply = generatedReply.reply;
                 inventoryShortage = generatedReply.inventoryShortage;
@@ -2041,7 +2041,6 @@ async function maybeSendAutomatedReply(
             settings,
             conversationId,
             inboundMessageId,
-            cancelIfNewerInbound: false,
         });
         if (!canSendAfterPacing) return;
 
@@ -2172,17 +2171,210 @@ async function waitForBotReplyPacing(params: {
         return true;
     }
 
-    const latestInbound = await prisma.message.findFirst({
-        where: {
-            conversationId: params.conversationId,
-            direction: "inbound",
-            type: { not: "system" },
-        },
-        orderBy: { createdAt: "desc" },
+    const [latestInbound, conversation] = await Promise.all([
+        prisma.message.findFirst({
+            where: {
+                conversationId: params.conversationId,
+                direction: "inbound",
+                type: { not: "system" },
+            },
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            select: { id: true },
+        }),
+        prisma.conversation.findUnique({
+            where: { id: params.conversationId },
+            select: { botActive: true },
+        }),
+    ]);
+
+    return conversation?.botActive === true && latestInbound?.id === params.inboundMessageId;
+}
+
+export async function processQueuedInboundBatch(conversationId: string, queueJobId: string) {
+    const settings = await getSystemSettingsOrDefaults();
+    const conversation = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: { botActive: true },
+    });
+
+    if (!conversation || !settings.isBotEnabled || !conversation.botActive) {
+        await prisma.message.updateMany({
+            where: {
+                conversationId,
+                direction: "inbound",
+                botProcessedAt: null,
+            },
+            data: { botProcessedAt: new Date(), botBatchId: null },
+        });
+        return;
+    }
+
+    const batchId = queueJobId;
+    let batchMessages = await prisma.message.findMany({
+        where: { conversationId, botBatchId: queueJobId, botProcessedAt: null },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+
+    if (batchMessages.length === 0) {
+        const pendingMessages = await prisma.message.findMany({
+            where: {
+                conversationId,
+                direction: "inbound",
+                botProcessedAt: null,
+                botInputText: { not: null },
+            },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        });
+        if (pendingMessages.length === 0) return;
+
+        await prisma.message.updateMany({
+            where: {
+                id: { in: pendingMessages.map((message) => message.id) },
+                botProcessedAt: null,
+            },
+            data: { botBatchId: batchId },
+        });
+        batchMessages = await prisma.message.findMany({
+            where: { conversationId, botBatchId: batchId, botProcessedAt: null },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        });
+    }
+
+    if (batchMessages.length === 0) return;
+
+    const claimedBatchId = batchMessages[0].botBatchId;
+    const batchText = batchMessages
+        .map((message) => message.botInputText?.trim() || message.content.trim())
+        .filter(Boolean)
+        .join("\n");
+    const latestMessage = batchMessages[batchMessages.length - 1];
+    const storedAttribution = [...batchMessages]
+        .reverse()
+        .map((message) => message.botAttribution)
+        .find((value) => value && typeof value === "object" && !Array.isArray(value));
+    const latestOutboundBefore = await prisma.message.findFirst({
+        where: { conversationId, direction: "outbound" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         select: { id: true },
     });
 
-    return latestInbound?.id === params.inboundMessageId;
+    if (!batchText || shouldSkipAutoReplyText(batchText)) {
+        await prisma.message.updateMany({
+            where: { conversationId, botBatchId: claimedBatchId },
+            data: { botProcessedAt: new Date(), botBatchId: null },
+        });
+        return;
+    }
+
+    await maybeSendAutomatedReply(
+        conversationId,
+        latestMessage.id,
+        batchText,
+        storedAttribution as InboundAttribution | undefined,
+        {
+            skipInitialDelay: true,
+            batchMessageIds: batchMessages.map((message) => message.id),
+        },
+    );
+
+    const [latestOutboundAfter, newerPendingMessage, latestConversation] = await Promise.all([
+        prisma.message.findFirst({
+            where: { conversationId, direction: "outbound" },
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            select: { id: true },
+        }),
+        prisma.message.findFirst({
+            where: {
+                conversationId,
+                direction: "inbound",
+                botProcessedAt: null,
+                botBatchId: null,
+            },
+            select: { id: true },
+        }),
+        prisma.conversation.findUnique({
+            where: { id: conversationId },
+            select: { botActive: true },
+        }),
+    ]);
+    const createdOutbound = latestOutboundAfter?.id !== latestOutboundBefore?.id;
+
+    if (!createdOutbound && newerPendingMessage && latestConversation?.botActive) {
+        await prisma.message.updateMany({
+            where: { conversationId, botBatchId: claimedBatchId, botProcessedAt: null },
+            data: { botBatchId: null },
+        });
+        const firstPendingMessage = await prisma.message.findFirst({
+            where: {
+                conversationId,
+                direction: "inbound",
+                botProcessedAt: null,
+                botBatchId: null,
+                botInputText: { not: null },
+            },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+            select: { createdAt: true },
+        });
+        if (firstPendingMessage) {
+            const { enqueueBotReplyBatch } = await import("@/lib/bot-reply-queue");
+            await enqueueBotReplyBatch({
+                conversationId,
+                windowMs: settings.messageBatchWindowMs,
+                maxWaitMs: settings.messageBatchMaxWaitMs,
+                firstPendingAt: firstPendingMessage.createdAt,
+                deduplicationId: `${conversationId}-${Date.now()}`,
+            });
+        }
+        return;
+    }
+
+    if (!createdOutbound && latestConversation?.botActive) {
+        await prisma.message.updateMany({
+            where: { conversationId, botBatchId: claimedBatchId, botProcessedAt: null },
+            data: { botBatchId: null },
+        });
+        throw new Error("The bot batch completed without creating an outbound response.");
+    }
+
+    await prisma.message.updateMany({
+        where: { conversationId, botBatchId: claimedBatchId },
+        data: { botProcessedAt: new Date(), botBatchId: null },
+    });
+}
+
+export async function recoverPendingInboundBatches() {
+    const settings = await getSystemSettingsOrDefaults();
+    if (!settings.messageBatchingEnabled) return 0;
+
+    const pendingMessages = await prisma.message.findMany({
+        where: {
+            direction: "inbound",
+            botProcessedAt: null,
+            botInputText: { not: null },
+        },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { conversationId: true, createdAt: true },
+    });
+    const firstPendingByConversation = new Map<string, Date>();
+    for (const message of pendingMessages) {
+        if (!firstPendingByConversation.has(message.conversationId)) {
+            firstPendingByConversation.set(message.conversationId, message.createdAt);
+        }
+    }
+
+    if (firstPendingByConversation.size === 0) return 0;
+    const { enqueueBotReplyBatch } = await import("@/lib/bot-reply-queue");
+    await Promise.all(
+        [...firstPendingByConversation.entries()].map(([conversationId, firstPendingAt]) => (
+            enqueueBotReplyBatch({
+                conversationId,
+                windowMs: settings.messageBatchWindowMs,
+                maxWaitMs: settings.messageBatchMaxWaitMs,
+                firstPendingAt,
+            })
+        )),
+    );
+    return firstPendingByConversation.size;
 }
 
 export async function getConversations() {
@@ -2551,6 +2743,18 @@ export async function processInboundMessage(
             mediaType: media?.mediaType,
             mediaFileName: media?.mediaFileName,
         });
+        const storedAttribution = attribution
+            ? Object.fromEntries(
+                Object.entries(attribution).filter(([, value]) => typeof value === "string" && value.trim()),
+            )
+            : undefined;
+        await prisma.message.update({
+            where: { id: message.id },
+            data: {
+                botInputText: botInputText || text,
+                botAttribution: storedAttribution,
+            },
+        });
 
         const bulkReplyResult = await markBulkCampaignReplyForContact(
             contact.id,
@@ -2587,10 +2791,46 @@ export async function processInboundMessage(
         // ── CHATBOT / N8N FORWARDING ──
         try {
             if (bulkReplyResult.intent !== "stop" && shouldScheduleAutomatedReply) {
-                void maybeSendAutomatedReply(conversation.id, message.id, botInputText, attribution);
+                if (sourceSettings.messageBatchingEnabled) {
+                    const firstPendingMessage = await prisma.message.findFirst({
+                        where: {
+                            conversationId: conversation.id,
+                            direction: "inbound",
+                            botProcessedAt: null,
+                            botBatchId: null,
+                            botInputText: { not: null },
+                        },
+                        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+                        select: { createdAt: true },
+                    });
+                    const { enqueueBotReplyBatch } = await import("@/lib/bot-reply-queue");
+                    await enqueueBotReplyBatch({
+                        conversationId: conversation.id,
+                        windowMs: sourceSettings.messageBatchWindowMs,
+                        maxWaitMs: sourceSettings.messageBatchMaxWaitMs,
+                        firstPendingAt: firstPendingMessage?.createdAt || message.createdAt,
+                    });
+                } else {
+                    await prisma.message.update({
+                        where: { id: message.id },
+                        data: { botProcessedAt: new Date() },
+                    });
+                    void maybeSendAutomatedReply(conversation.id, message.id, botInputText, attribution);
+                }
+            } else {
+                await prisma.message.update({
+                    where: { id: message.id },
+                    data: { botProcessedAt: new Date() },
+                });
             }
         } catch (botError) {
             console.error("[Chatbot] Error scheduling automated reply:", botError);
+            void maybeSendAutomatedReply(conversation.id, message.id, botInputText, attribution).finally(
+                () => prisma.message.update({
+                    where: { id: message.id },
+                    data: { botProcessedAt: new Date(), botBatchId: null },
+                }).catch(() => undefined),
+            );
         }
 
         // ── AI Contact Enrichment (fire-and-forget) ──
