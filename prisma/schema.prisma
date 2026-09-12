@@ -699,6 +699,14 @@ model SystemSettings {
   openaiApiKey                   String?
   openaiModel                    String?                @default("gpt-4o-mini")
   geminiApiKey                   String?
+  aiRouterEnabled                Boolean               @default(false)
+  aiRouterTimeoutMs              Int                   @default(4000)
+  aiRouterFallbackEnabled        Boolean               @default(true)
+  customLlmEnabled               Boolean               @default(false)
+  customLlmName                  String?                @default("OpenAI-compatible")
+  customLlmBaseUrl               String?
+  customLlmModel                 String?
+  customLlmApiKey                String?
   whatsappBaseUrl                String?
   whatsappAdminToken             String?
   whatsappUserToken              String?

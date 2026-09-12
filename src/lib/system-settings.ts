@@ -11,6 +11,14 @@ import {
 
 export const SYSTEM_SETTINGS_DEFAULTS = {
     openaiModel: DEFAULT_CHAT_MODEL_ID,
+    aiRouterEnabled: false,
+    aiRouterTimeoutMs: 4000,
+    aiRouterFallbackEnabled: true,
+    customLlmEnabled: false,
+    customLlmName: "Chappie Magic (experimental)",
+    customLlmBaseUrl: "https://chafe-duckling-emphasize.ngrok-free.dev/v1",
+    customLlmModel: "chappie-magic",
+    customLlmApiKey: "",
     whatsappBaseUrl: process.env.WHATSAPP_GATEWAY_URL || "",
     whatsappAdminToken: process.env.WUZAPI_ADMIN_TOKEN || "",
     whatsappUserToken: process.env.WUZAPI_USER_TOKEN || "",

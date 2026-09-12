@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bot, Loader2, Save, SearchCheck, Sparkles } from "lucide-react";
+import { Bot, Loader2, Network, Save, SearchCheck, ShieldAlert, Sparkles, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -36,6 +36,14 @@ export default function BrainConfigPage() {
     const [welcomeMessage, setWelcomeMessage] = useState("");
     const [welcomeRepeatHours, setWelcomeRepeatHours] = useState("24");
     const [openaiModel, setOpenaiModel] = useState(normalizeChatModelSelection());
+    const [aiRouterEnabled, setAiRouterEnabled] = useState(false);
+    const [aiRouterTimeoutMs, setAiRouterTimeoutMs] = useState("4000");
+    const [aiRouterFallbackEnabled, setAiRouterFallbackEnabled] = useState(true);
+    const [customLlmEnabled, setCustomLlmEnabled] = useState(false);
+    const [customLlmName, setCustomLlmName] = useState("Chappie Magic (experimental)");
+    const [customLlmBaseUrl, setCustomLlmBaseUrl] = useState("https://chafe-duckling-emphasize.ngrok-free.dev/v1");
+    const [customLlmModel, setCustomLlmModel] = useState("chappie-magic");
+    const [customLlmApiKey, setCustomLlmApiKey] = useState("");
     const [knowledgeTopK, setKnowledgeTopK] = useState("6");
     const [temperature, setTemperature] = useState([0.3]);
     const [businessTimeZone, setBusinessTimeZone] = useState("America/Mexico_City");
@@ -77,6 +85,14 @@ export default function BrainConfigPage() {
                         Math.max(8, Math.min(16, Math.round((settings.botReplyDelayMaxMs || 8000) / 1000))),
                     );
                     setOpenaiModel(normalizeChatModelSelection(settings.openaiModel));
+                    setAiRouterEnabled(settings.aiRouterEnabled ?? false);
+                    setAiRouterTimeoutMs(String(settings.aiRouterTimeoutMs || 4000));
+                    setAiRouterFallbackEnabled(settings.aiRouterFallbackEnabled ?? true);
+                    setCustomLlmEnabled(settings.customLlmEnabled ?? false);
+                    setCustomLlmName(settings.customLlmName || "Chappie Magic (experimental)");
+                    setCustomLlmBaseUrl(settings.customLlmBaseUrl || "https://chafe-duckling-emphasize.ngrok-free.dev/v1");
+                    setCustomLlmModel(settings.customLlmModel || "chappie-magic");
+                    setCustomLlmApiKey(settings.customLlmApiKey || "");
                     setKnowledgeTopK(String(settings.knowledgeTopK || 6));
                     setTemperature([settings.agentTemperature || 0.3]);
                     setBusinessTimeZone(businessHours.timeZone || "America/Mexico_City");
@@ -132,6 +148,14 @@ export default function BrainConfigPage() {
                 welcomeMessage,
                 welcomeRepeatHours: Math.max(1, Number(welcomeRepeatHours) || 24),
                 openaiModel,
+                aiRouterEnabled,
+                aiRouterTimeoutMs: Math.max(1500, Math.min(10000, Number(aiRouterTimeoutMs) || 4000)),
+                aiRouterFallbackEnabled,
+                customLlmEnabled,
+                customLlmName,
+                customLlmBaseUrl,
+                customLlmModel,
+                customLlmApiKey,
                 knowledgeTopK: Number(knowledgeTopK) || 6,
                 agentTemperature: temperature[0] || 0.3,
                 autoReplyDelayMs: 4000,
@@ -394,6 +418,80 @@ export default function BrainConfigPage() {
                             </CardContent>
                         </Card>
                     </div>
+
+                    <Card className="border-primary/20">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Network className="h-5 w-5 text-primary" />
+                                Router de IA
+                            </CardTitle>
+                            <CardDescription>
+                                Prueba proveedores en orden y cambia al siguiente cuando hay timeout, limite, error o una respuesta vacia.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-5">
+                            <div className="flex flex-col gap-3 rounded-xl border bg-background px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="pr-4">
+                                    <Label htmlFor="ai-router-enabled" className="text-base font-medium">Activar router y respaldos</Label>
+                                    <p className="mt-1 text-sm text-muted-foreground">Si se desactiva, se usa solamente el LLM principal seleccionado arriba.</p>
+                                </div>
+                                <Switch id="ai-router-enabled" checked={aiRouterEnabled} onCheckedChange={setAiRouterEnabled} />
+                            </div>
+
+                            <div className="grid gap-4 lg:grid-cols-[0.7fr_1.3fr]">
+                                <div className="space-y-2">
+                                    <Label>Tiempo maximo por proveedor</Label>
+                                    <Select value={aiRouterTimeoutMs} onValueChange={setAiRouterTimeoutMs}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="2500">2.5 segundos</SelectItem>
+                                            <SelectItem value="4000">4 segundos</SelectItem>
+                                            <SelectItem value="6000">6 segundos</SelectItem>
+                                            <SelectItem value="8000">8 segundos</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground">Cada proveedor tiene una sola oportunidad; no se reintenta antes de saltar.</p>
+                                </div>
+                                <div className="flex flex-col gap-3 rounded-xl border bg-background px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                                    <div className="pr-4">
+                                        <Label htmlFor="ai-router-fallback" className="text-base font-medium">Respaldo entre OpenAI y Gemini</Label>
+                                        <p className="mt-1 text-sm text-muted-foreground">Despues del LLM principal intenta el otro proveedor si su API Key esta configurada.</p>
+                                    </div>
+                                    <Switch id="ai-router-fallback" checked={aiRouterFallbackEnabled} onCheckedChange={setAiRouterFallbackEnabled} />
+                                </div>
+                            </div>
+
+                            <div className="rounded-xl border bg-background p-4">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <div>
+                                        <Label htmlFor="custom-llm-enabled" className="flex items-center gap-2 text-base font-medium"><Zap className="h-4 w-4 text-primary" />Proveedor experimental OpenAI-compatible</Label>
+                                        <p className="mt-1 text-sm text-muted-foreground">Se intenta primero. La clave queda guardada en la configuracion del CRM y nunca se incluye en el codigo.</p>
+                                    </div>
+                                    <Switch id="custom-llm-enabled" checked={customLlmEnabled} onCheckedChange={setCustomLlmEnabled} />
+                                </div>
+                                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                                    <div className="space-y-2"><Label>Nombre</Label><Input value={customLlmName} onChange={(event) => setCustomLlmName(event.target.value)} placeholder="Proveedor experimental" /></div>
+                                    <div className="space-y-2"><Label>Modelo</Label><Input value={customLlmModel} onChange={(event) => setCustomLlmModel(event.target.value)} placeholder="chappie-magic" /></div>
+                                    <div className="space-y-2 sm:col-span-2"><Label>Base URL o endpoint de chat</Label><Input value={customLlmBaseUrl} onChange={(event) => setCustomLlmBaseUrl(event.target.value)} placeholder="https://proveedor.example/v1" /></div>
+                                    <div className="space-y-2 sm:col-span-2"><Label>API Key</Label><Input type="password" autoComplete="new-password" value={customLlmApiKey} onChange={(event) => setCustomLlmApiKey(event.target.value)} placeholder="Pega aqui la clave del proveedor" /></div>
+                                </div>
+                            </div>
+
+                            <div className="rounded-xl border bg-secondary/35 p-4 text-sm">
+                                <p className="font-medium">Orden efectivo</p>
+                                <ol className="mt-2 space-y-1 text-muted-foreground">
+                                    <li>1. Proveedor experimental, si esta activo y completo.</li>
+                                    <li>2. LLM principal: {selectedModel.label}.</li>
+                                    <li>3. Respaldo: {selectedModel.provider === "openai" ? "Gemini 2.5 Flash" : "GPT-4o mini"}, si esta habilitado y tiene clave.</li>
+                                </ol>
+                            </div>
+
+                            <div className="flex gap-3 rounded-xl border border-amber-500/35 bg-amber-500/10 p-4 text-sm text-amber-950 dark:text-amber-100">
+                                <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
+                                <p>El endpoint experimental no publica propietario verificable, politica de privacidad ni garantia de disponibilidad. No lo actives con conversaciones reales que contengan nombres, telefonos, correos u otros datos sensibles hasta confiar en su operador.</p>
+                            </div>
+                        </CardContent>
+                    </Card>
 
                     <Card>
                         <CardHeader>

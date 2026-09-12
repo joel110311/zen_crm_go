@@ -8,6 +8,7 @@ function maskClientSettings(settings: ReturnType<typeof withSettingsDefaults>) {
         ...settings,
         openaiApiKey: "",
         geminiApiKey: "",
+        customLlmApiKey: "",
         whatsappAdminToken: "",
         whatsappUserToken: "",
         whatsappProxyUrl: "",
@@ -47,6 +48,7 @@ export async function POST(request: NextRequest) {
             ...data,
             openaiApiKey: data.openaiApiKey ? "***" : undefined,
             geminiApiKey: data.geminiApiKey ? "***" : undefined,
+            customLlmApiKey: data.customLlmApiKey ? "***" : undefined,
             whatsappAdminToken: data.whatsappAdminToken ? "***" : undefined,
             whatsappUserToken: data.whatsappUserToken ? "***" : undefined,
             whatsappProxyUrl: data.whatsappProxyUrl ? "***" : undefined,
@@ -65,6 +67,7 @@ export async function POST(request: NextRequest) {
         const secretFields = [
             "openaiApiKey",
             "geminiApiKey",
+            "customLlmApiKey",
             "whatsappAdminToken",
             "whatsappUserToken",
             "whatsappProxyUrl",

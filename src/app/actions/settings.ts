@@ -19,6 +19,14 @@ export async function updateSystemSettings(data: {
     openaiApiKey?: string;
     openaiModel?: string;
     geminiApiKey?: string;
+    aiRouterEnabled?: boolean;
+    aiRouterTimeoutMs?: number;
+    aiRouterFallbackEnabled?: boolean;
+    customLlmEnabled?: boolean;
+    customLlmName?: string;
+    customLlmBaseUrl?: string;
+    customLlmModel?: string;
+    customLlmApiKey?: string;
     whatsappBaseUrl?: string;
     whatsappAdminToken?: string;
     whatsappUserToken?: string;
