@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db";
+import { hasExplicitCompanyDisclosure } from "@/lib/contact-enrichment-guards";
 import { generateCompletion } from "@/lib/ai/openai";
 
 /**
@@ -101,7 +102,6 @@ export async function enrichContactFromMessage(
 
         // Build update payload
         const contactUpdate: Record<string, string> = {};
-        const dealUpdate: Record<string, string> = {};
 
         if (enrichment.firstName && (!contact.name || enrichment.firstName.length > (contact.name?.length || 0))) {
             contactUpdate.name = enrichment.firstName;
@@ -123,7 +123,11 @@ export async function enrichContactFromMessage(
             contactUpdate.lastName = enrichment.lastName;
         }
 
-        if (enrichment.company && !contact.company) {
+        if (
+            enrichment.company &&
+            !contact.company &&
+            hasExplicitCompanyDisclosure(messageText)
+        ) {
             contactUpdate.company = enrichment.company;
         }
 

@@ -22,6 +22,11 @@ import { getSystemSettingsOrDefaults, type AppSystemSettings } from "@/lib/syste
 import { buildInboundMediaContext, shouldSkipAutoReplyText } from "@/lib/ai/media-understanding";
 import { maybeHandleAppointmentBooking } from "@/lib/ai/appointment-booking";
 import { processLeadAutomationTurn } from "@/lib/ai/lead-intelligence";
+import {
+    hasNewSentCustomerBotText,
+    resolveBotBatchCompletion,
+    type BotReplyMessageEvidence,
+} from "@/lib/bot-reply-outcome";
 import { buildPhoneMatchClauses, normalizePhoneDigits } from "@/lib/phone";
 import { sendMetaMediaMessage, sendMetaTextMessage } from "@/lib/meta-whatsapp";
 import { sendMessengerMessage } from "@/lib/meta-messenger";
@@ -1087,9 +1092,6 @@ async function touchAutomatedConversation(conversationId: string) {
         where: { id: conversationId },
         data: { updatedAt: new Date() },
     });
-
-    revalidatePath("/dashboard/inbox");
-    revalidatePath("/dashboard/pipeline");
 }
 
 async function getAutomatedConversationSource(conversationId: string): Promise<{
@@ -1712,7 +1714,7 @@ async function maybeSendAutomatedReply(
                         where: {
                             type: { not: "system" },
                         },
-                        orderBy: { createdAt: "desc" },
+                        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
                         take: 8,
                         select: {
                             content: true,
@@ -1723,8 +1725,12 @@ async function maybeSendAutomatedReply(
                 },
             }),
             prisma.message.findFirst({
-                where: { conversationId },
-                orderBy: { createdAt: "desc" },
+                where: {
+                    conversationId,
+                    direction: "inbound",
+                    type: { not: "system" },
+                },
+                orderBy: [{ createdAt: "desc" }, { id: "desc" }],
             }),
             prisma.message.findFirst({
                 where: {
@@ -1732,7 +1738,7 @@ async function maybeSendAutomatedReply(
                     direction: "inbound",
                     id: { not: inboundMessageId },
                 },
-                orderBy: { createdAt: "desc" },
+                orderBy: [{ createdAt: "desc" }, { id: "desc" }],
                 select: { createdAt: true },
             }),
         ]);
@@ -2153,7 +2159,30 @@ async function maybeSendAutomatedReply(
         await touchAutomatedConversation(conversationId);
     } catch (error) {
         console.error("[Bot] Failed to send automated reply:", error);
+        throw error;
     }
+}
+
+async function getLatestSentCustomerBotText(
+    conversationId: string,
+): Promise<BotReplyMessageEvidence | null> {
+    return prisma.message.findFirst({
+        where: {
+            conversationId,
+            direction: "outbound",
+            type: "text",
+            senderType: "bot",
+            status: { in: ["sent", "delivered", "read"] },
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: {
+            id: true,
+            direction: true,
+            type: true,
+            senderType: true,
+            status: true,
+        },
+    });
 }
 
 async function waitForBotReplyPacing(params: {
@@ -2253,11 +2282,7 @@ export async function processQueuedInboundBatch(conversationId: string, queueJob
         .reverse()
         .map((message) => message.botAttribution)
         .find((value) => value && typeof value === "object" && !Array.isArray(value));
-    const latestOutboundBefore = await prisma.message.findFirst({
-        where: { conversationId, direction: "outbound" },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        select: { id: true },
-    });
+    const latestBotReplyBefore = await getLatestSentCustomerBotText(conversationId);
 
     if (!batchText || shouldSkipAutoReplyText(batchText)) {
         await prisma.message.updateMany({
@@ -2284,40 +2309,54 @@ export async function processQueuedInboundBatch(conversationId: string, queueJob
         return;
     }
 
-    await maybeSendAutomatedReply(
-        conversationId,
-        latestMessage.id,
-        batchText,
-        storedAttribution as InboundAttribution | undefined,
-        {
-            skipInitialDelay: true,
-            batchMessageIds: batchMessages.map((message) => message.id),
-        },
-    );
+    let replyError: unknown = null;
+    try {
+        await maybeSendAutomatedReply(
+            conversationId,
+            latestMessage.id,
+            batchText,
+            storedAttribution as InboundAttribution | undefined,
+            {
+                skipInitialDelay: true,
+                batchMessageIds: batchMessages.map((message) => message.id),
+            },
+        );
+    } catch (error) {
+        replyError = error;
+    }
 
-    const [latestOutboundAfter, newerPendingMessage, latestConversation] = await Promise.all([
-        prisma.message.findFirst({
-            where: { conversationId, direction: "outbound" },
-            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-            select: { id: true },
-        }),
+    const [latestBotReplyAfter, newerPendingMessage, latestConversation] = await Promise.all([
+        getLatestSentCustomerBotText(conversationId),
         prisma.message.findFirst({
             where: {
                 conversationId,
                 direction: "inbound",
                 botProcessedAt: null,
-                botBatchId: null,
+                botInputText: { not: null },
+                id: { notIn: batchMessages.map((message) => message.id) },
             },
-            select: { id: true },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+            select: { id: true, createdAt: true },
         }),
         prisma.conversation.findUnique({
             where: { id: conversationId },
             select: { botActive: true },
         }),
     ]);
-    const createdOutbound = latestOutboundAfter?.id !== latestOutboundBefore?.id;
+    const completion = resolveBotBatchCompletion({
+        sentCustomerReply: hasNewSentCustomerBotText(latestBotReplyBefore, latestBotReplyAfter),
+        botActive: latestConversation?.botActive === true,
+        hasNewerPendingInbound: Boolean(newerPendingMessage),
+    });
+    console.info("[Bot Batch] Batch completion evaluated", {
+        conversationId,
+        queueJobId,
+        messageCount: batchMessages.length,
+        completion,
+        replyError: replyError instanceof Error ? replyError.message : null,
+    });
 
-    if (!createdOutbound && newerPendingMessage && latestConversation?.botActive) {
+    if (completion === "superseded") {
         await prisma.message.updateMany({
             where: { conversationId, botBatchId: claimedBatchId, botProcessedAt: null },
             data: { botBatchId: null },
@@ -2346,18 +2385,37 @@ export async function processQueuedInboundBatch(conversationId: string, queueJob
         return;
     }
 
-    if (!createdOutbound && latestConversation?.botActive) {
+    if (completion === "retry") {
         await prisma.message.updateMany({
             where: { conversationId, botBatchId: claimedBatchId, botProcessedAt: null },
             data: { botBatchId: null },
         });
-        throw new Error("The bot batch completed without creating an outbound response.");
+        if (replyError) throw replyError;
+        throw new Error("The bot batch completed without sending a customer-facing response.");
     }
 
     await prisma.message.updateMany({
         where: { conversationId, botBatchId: claimedBatchId },
         data: { botProcessedAt: new Date(), botBatchId: null },
     });
+
+    if (completion === "sent" && replyError) {
+        console.warn("[Bot Batch] Reply was sent but post-send processing failed", {
+            conversationId,
+            queueJobId,
+            error: replyError instanceof Error ? replyError.message : String(replyError),
+        });
+    }
+
+    if (completion === "sent" && newerPendingMessage) {
+        const { enqueueBotReplyBatch } = await import("@/lib/bot-reply-queue");
+        await enqueueBotReplyBatch({
+            conversationId,
+            windowMs: settings.messageBatchWindowMs,
+            maxWaitMs: settings.messageBatchMaxWaitMs,
+            firstPendingAt: newerPendingMessage.createdAt,
+        });
+    }
 }
 
 export async function recoverPendingInboundBatches() {
@@ -2832,7 +2890,9 @@ export async function processInboundMessage(
                     where: { id: message.id },
                     data: { botProcessedAt: new Date() },
                 });
-                void maybeSendAutomatedReply(conversation.id, message.id, botInputText, attribution);
+                void maybeSendAutomatedReply(conversation.id, message.id, botInputText, attribution).catch((error) => {
+                    console.error("[Chatbot] Non-batched automated reply failed:", error);
+                });
                 void enrichContactFromMessage(contact.id, botInputText || text).catch((error) => {
                     console.error("[AI Enrichment] Non-batched enrichment failed:", error);
                 });
@@ -2849,12 +2909,15 @@ export async function processInboundMessage(
             }
         } catch (botError) {
             console.error("[Chatbot] Error scheduling automated reply:", botError);
-            void maybeSendAutomatedReply(conversation.id, message.id, botInputText, attribution).finally(
-                () => prisma.message.update({
+            void maybeSendAutomatedReply(conversation.id, message.id, botInputText, attribution)
+                .catch((error) => {
+                    console.error("[Chatbot] Fallback automated reply failed:", error);
+                })
+                .finally(() => prisma.message.update({
                     where: { id: message.id },
                     data: { botProcessedAt: new Date(), botBatchId: null },
                 }).catch(() => undefined),
-            );
+                );
             void enrichContactFromMessage(contact.id, botInputText || text).catch((error) => {
                 console.error("[AI Enrichment] Fallback enrichment failed:", error);
             });

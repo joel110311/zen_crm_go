@@ -2,6 +2,9 @@ import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
 
 const BOT_REPLY_QUEUE_NAME = "zen-crm-bot-replies";
+const BOT_REPLY_LOCK_TTL_MS = 120000;
+const BOT_REPLY_LOCK_REFRESH_MS = 30000;
+const BOT_REPLY_RECOVERY_INTERVAL_MS = 30000;
 
 type BotReplyJob = {
     conversationId: string;
@@ -15,6 +18,8 @@ type BotReplyQueueGlobals = {
     warnedMissingRedis?: boolean;
     localBatches?: Map<string, ReturnType<typeof setTimeout>>;
     localProcessing?: Set<string>;
+    recoveryTimer?: ReturnType<typeof setInterval>;
+    recoveryRunning?: boolean;
 };
 
 const globalForBotReplies = globalThis as typeof globalThis & {
@@ -119,7 +124,7 @@ export async function enqueueBotReplyBatch(params: {
                 delay,
                 deduplication: {
                     id: params.deduplicationId || params.conversationId,
-                    ttl: Math.max(1000, delay),
+                    ttl: Math.max(1000, maxWaitMs),
                     extend: true,
                     replace: true,
                 },
@@ -144,20 +149,53 @@ export function startBotReplyWorker() {
         async (job) => {
             const lockKey = `zen-crm:bot-reply-lock:${job.data.conversationId}`;
             const lockValue = `${job.id || "job"}:${Date.now()}`;
-            const acquired = await state.workerConnection!.set(lockKey, lockValue, "PX", 120000, "NX");
+            const acquired = await state.workerConnection!.set(
+                lockKey,
+                lockValue,
+                "PX",
+                BOT_REPLY_LOCK_TTL_MS,
+                "NX",
+            );
             if (acquired !== "OK") {
-                throw new Error("Conversation batch is already being processed.");
+                console.info("[Bot Batch] Conversation is already processing; pending messages will be swept", {
+                    jobId: job.id,
+                    conversationId: job.data.conversationId,
+                });
+                return;
             }
+            const lockHeartbeat = setInterval(() => {
+                void state.workerConnection!.eval(
+                    "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('pexpire', KEYS[1], ARGV[2]) else return 0 end",
+                    1,
+                    lockKey,
+                    lockValue,
+                    String(BOT_REPLY_LOCK_TTL_MS),
+                ).catch((error) => {
+                    console.error("[Bot Batch] Could not refresh conversation lock", {
+                        conversationId: job.data.conversationId,
+                        error: error instanceof Error ? error.message : String(error),
+                    });
+                });
+            }, BOT_REPLY_LOCK_REFRESH_MS);
+            lockHeartbeat.unref();
             try {
                 const { processQueuedInboundBatch } = await import("@/app/actions/chat");
                 await processQueuedInboundBatch(job.data.conversationId, String(job.id || "bot-batch"));
             } finally {
-                await state.workerConnection!.eval(
-                    "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
-                    1,
-                    lockKey,
-                    lockValue,
-                );
+                clearInterval(lockHeartbeat);
+                try {
+                    await state.workerConnection!.eval(
+                        "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+                        1,
+                        lockKey,
+                        lockValue,
+                    );
+                } catch (error) {
+                    console.error("[Bot Batch] Could not release conversation lock", {
+                        conversationId: job.data.conversationId,
+                        error: error instanceof Error ? error.message : String(error),
+                    });
+                }
             }
         },
         {
@@ -176,15 +214,28 @@ export function startBotReplyWorker() {
         console.error("[Bot Batch] Redis worker error:", error);
     });
     console.log("[Bot Batch] Redis worker started.");
-    void import("@/app/actions/chat")
-        .then(async ({ recoverPendingInboundBatches }) => {
+    const recoverPending = async () => {
+        if (state.recoveryRunning) return;
+        state.recoveryRunning = true;
+        try {
+            const { recoverPendingInboundBatches } = await import("@/app/actions/chat");
             const recovered = await recoverPendingInboundBatches();
             if (recovered > 0) {
                 console.log(`[Bot Batch] Recovered ${recovered} pending conversation batches.`);
             }
-        })
-        .catch((error) => {
+        } catch (error) {
             console.error("[Bot Batch] Pending batch recovery failed:", error);
-        });
+        } finally {
+            state.recoveryRunning = false;
+        }
+    };
+
+    void recoverPending();
+    if (!state.recoveryTimer) {
+        state.recoveryTimer = setInterval(() => {
+            void recoverPending();
+        }, BOT_REPLY_RECOVERY_INTERVAL_MS);
+        state.recoveryTimer.unref();
+    }
     return state.worker;
 }

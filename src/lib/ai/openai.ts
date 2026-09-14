@@ -520,9 +520,21 @@ async function callOpenAiCompatibleProvider(options: {
         signal: AbortSignal.timeout(options.timeoutMs),
         cache: "no-store",
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json() as { choices?: Array<{ message?: { content?: unknown } }> };
-    const content = data.choices?.[0]?.message?.content;
+    const data = await response.json().catch(() => null) as {
+        choices?: Array<{ message?: { content?: unknown } }>;
+        error?: { message?: unknown; code?: unknown; type?: unknown };
+    } | null;
+    if (!response.ok) {
+        const providerMessage = typeof data?.error?.message === "string"
+            ? data.error.message.replace(/\s+/g, " ").trim().slice(0, 300)
+            : "";
+        const providerCode = typeof data?.error?.code === "string" || typeof data?.error?.code === "number"
+            ? String(data.error.code)
+            : "";
+        const detail = [providerCode, providerMessage].filter(Boolean).join(": ");
+        throw new Error(`HTTP ${response.status}${detail ? ` (${detail})` : ""}`);
+    }
+    const content = data?.choices?.[0]?.message?.content;
     if (typeof content !== "string" || !content.trim()) throw new Error("respuesta sin texto util");
     return content.trim();
 }
