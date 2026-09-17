@@ -6,7 +6,10 @@ import {
     isSentCustomerBotText,
     resolveBotBatchCompletion,
 } from "../src/lib/bot-reply-outcome.ts";
-import { hasExplicitCompanyDisclosure } from "../src/lib/contact-enrichment-guards.ts";
+import {
+    hasExplicitCompanyDisclosure,
+    hasExplicitContactDisclosure,
+} from "../src/lib/contact-enrichment-guards.ts";
 
 test("an internal system note never counts as a customer reply", () => {
     assert.equal(isSentCustomerBotText({
@@ -80,4 +83,16 @@ test("a product choice and location are not treated as a company", () => {
 test("an explicitly disclosed company is eligible for enrichment", () => {
     assert.equal(hasExplicitCompanyDisclosure("Mi empresa se llama Eventos Diana"), true);
     assert.equal(hasExplicitCompanyDisclosure("Trabajo en Eventos Diana"), true);
+});
+
+test("ordinary sales messages do not trigger contact enrichment", () => {
+    assert.equal(hasExplicitContactDisclosure("Audiorítmica\nEstado de México"), false);
+    assert.equal(hasExplicitContactDisclosure("Quiero 500 pulseras para el jueves"), false);
+});
+
+test("explicit contact data remains eligible for enrichment", () => {
+    assert.equal(hasExplicitContactDisclosure("Mi nombre es Diana López"), true);
+    assert.equal(hasExplicitContactDisclosure("Me llamo Diana"), true);
+    assert.equal(hasExplicitContactDisclosure("Mi correo es diana@example.com"), true);
+    assert.equal(hasExplicitContactDisclosure("Trabajo en Eventos Diana"), true);
 });

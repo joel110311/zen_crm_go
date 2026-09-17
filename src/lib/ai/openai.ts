@@ -14,6 +14,11 @@ import {
     normalizeAiRouterOrder,
     normalizeCustomProviders,
 } from "@/lib/ai/router-config";
+import {
+    AiProviderHttpError,
+    ensureOpenAiCompatibleUserMessage,
+    shouldCooldownAiProvider,
+} from "@/lib/ai/openai-compatible";
 
 const DEFAULT_IMAGE_OCR_PROMPT =
     "Extrae en espanol todo el texto legible de esta imagen. Conserva titulos, precios, ubicaciones, bullets y datos comerciales. Si una seccion no se alcanza a leer completa, transcribe lo visible y no inventes nada.";
@@ -422,7 +427,11 @@ export async function generateCompletion(
         } catch (error) {
             const reason = error instanceof Error ? error.message : "error desconocido";
             errors.push(`${candidate.id}: ${reason}`);
-            aiProviderCooldowns.set(candidate.id, Date.now() + AI_PROVIDER_FAILURE_COOLDOWN_MS);
+            if (shouldCooldownAiProvider(error)) {
+                aiProviderCooldowns.set(candidate.id, Date.now() + AI_PROVIDER_FAILURE_COOLDOWN_MS);
+            } else {
+                aiProviderCooldowns.delete(candidate.id);
+            }
             console.warn(`[AI Router] ${candidate.id} failed; trying next provider:`, reason);
         }
     }
@@ -513,7 +522,7 @@ async function callOpenAiCompatibleProvider(options: {
         },
         body: JSON.stringify({
             model: options.model.trim(),
-            messages: options.messages,
+            messages: ensureOpenAiCompatibleUserMessage(options.messages),
             temperature: options.temperature,
             stream: false,
         }),
@@ -532,7 +541,7 @@ async function callOpenAiCompatibleProvider(options: {
             ? String(data.error.code)
             : "";
         const detail = [providerCode, providerMessage].filter(Boolean).join(": ");
-        throw new Error(`HTTP ${response.status}${detail ? ` (${detail})` : ""}`);
+        throw new AiProviderHttpError(response.status, detail);
     }
     const content = data?.choices?.[0]?.message?.content;
     if (typeof content !== "string" || !content.trim()) throw new Error("respuesta sin texto util");

@@ -21,3 +21,17 @@ export function hasExplicitCompanyDisclosure(messageText: string) {
         /\bcompania:\s*\S+/,
     ].some((pattern) => pattern.test(normalized));
 }
+
+export function hasExplicitContactDisclosure(messageText: string) {
+    const normalized = normalizeComparableText(messageText);
+    if (!normalized) return false;
+
+    const hasEmail = /\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b/i.test(messageText);
+    const hasExplicitName = [
+        /\bme llamo\s+[a-z][a-z .'-]{1,80}/,
+        /\bmi nombre es\s+[a-z][a-z .'-]{1,80}/,
+        /\bnombre:\s*[a-z][a-z .'-]{1,80}/,
+    ].some((pattern) => pattern.test(normalized));
+
+    return hasEmail || hasExplicitName || hasExplicitCompanyDisclosure(messageText);
+}

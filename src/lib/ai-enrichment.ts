@@ -1,7 +1,10 @@
 "use server";
 
 import { prisma } from "@/lib/db";
-import { hasExplicitCompanyDisclosure } from "@/lib/contact-enrichment-guards";
+import {
+    hasExplicitCompanyDisclosure,
+    hasExplicitContactDisclosure,
+} from "@/lib/contact-enrichment-guards";
 import { generateCompletion } from "@/lib/ai/openai";
 
 /**
@@ -89,6 +92,12 @@ export async function enrichContactFromMessage(
         if (!messageText || messageText.length < 3) return;
         // Skip media placeholders
         if (messageText.startsWith("[") && messageText.endsWith("]")) return;
+        // Ordinary product, quantity and location messages do not need a
+        // second AI request. Lead-intelligence handles contextual field
+        // capture; this best-effort pass is only for explicit disclosures.
+        if (!hasExplicitContactDisclosure(messageText)) return;
+
+        if (contact.name && contact.lastName && contact.company && contact.email) return;
 
         const enrichment = await extractContactData(
             messageText,

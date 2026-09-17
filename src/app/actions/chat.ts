@@ -2292,21 +2292,21 @@ export async function processQueuedInboundBatch(conversationId: string, queueJob
         return;
     }
 
-    // Contact enrichment belongs to the same debounce window as the reply.
-    // This prevents one AI request per fragment when a client sends several
-    // messages in quick succession, and it lets enrichment use the AI router.
-    if (conversation.contactId) {
-        void enrichContactFromMessage(conversation.contactId, batchText).catch((error) => {
-            console.error("[AI Enrichment] Batched enrichment failed:", error);
-        });
-    }
-
     if (!automatedReplyActive) {
         await prisma.message.updateMany({
             where: { conversationId, botBatchId: claimedBatchId },
             data: { botProcessedAt: new Date(), botBatchId: null },
         });
         return;
+    }
+
+    // Contact enrichment belongs to the same debounce window as the reply and
+    // only runs while the bot is active. The enrichment service itself skips
+    // messages without an explicit personal-data disclosure.
+    if (conversation.contactId) {
+        void enrichContactFromMessage(conversation.contactId, batchText).catch((error) => {
+            console.error("[AI Enrichment] Batched enrichment failed:", error);
+        });
     }
 
     let replyError: unknown = null;
@@ -2901,26 +2901,28 @@ export async function processInboundMessage(
                     where: { id: message.id },
                     data: { botProcessedAt: new Date() },
                 });
-                if (bulkReplyResult.intent !== "stop") {
-                    void enrichContactFromMessage(contact.id, botInputText || text).catch((error) => {
-                        console.error("[AI Enrichment] Non-batched enrichment failed:", error);
-                    });
-                }
             }
         } catch (botError) {
             console.error("[Chatbot] Error scheduling automated reply:", botError);
-            void maybeSendAutomatedReply(conversation.id, message.id, botInputText, attribution)
-                .catch((error) => {
-                    console.error("[Chatbot] Fallback automated reply failed:", error);
-                })
-                .finally(() => prisma.message.update({
+            if (bulkReplyResult.intent !== "stop" && shouldScheduleAutomatedReply) {
+                void maybeSendAutomatedReply(conversation.id, message.id, botInputText, attribution)
+                    .catch((error) => {
+                        console.error("[Chatbot] Fallback automated reply failed:", error);
+                    })
+                    .finally(() => prisma.message.update({
+                        where: { id: message.id },
+                        data: { botProcessedAt: new Date(), botBatchId: null },
+                    }).catch(() => undefined),
+                    );
+                void enrichContactFromMessage(contact.id, botInputText || text).catch((error) => {
+                    console.error("[AI Enrichment] Fallback enrichment failed:", error);
+                });
+            } else {
+                await prisma.message.update({
                     where: { id: message.id },
                     data: { botProcessedAt: new Date(), botBatchId: null },
-                }).catch(() => undefined),
-                );
-            void enrichContactFromMessage(contact.id, botInputText || text).catch((error) => {
-                console.error("[AI Enrichment] Fallback enrichment failed:", error);
-            });
+                });
+            }
         }
 
         // Contact enrichment is run from the debounced batch processor above.
