@@ -1281,6 +1281,7 @@ async function sendAutomatedBotMedia(params: {
 }) {
     const placeholderContent = params.mediaCategory === "image" ? "[image]" : "[document]";
     let storedMediaUrl = params.mediaUrl;
+    let transportAccepted = false;
     const source = await getAutomatedConversationSource(params.conversationId);
 
     try {
@@ -1335,6 +1336,7 @@ async function sendAutomatedBotMedia(params: {
                 mimeType: resolvedMedia.mimeType,
                 caption: params.mediaCategory === "document" ? `Catalogo PDF de ${params.development}` : undefined,
             });
+        transportAccepted = true;
 
         await prisma.message.create({
             data: {
@@ -1359,16 +1361,19 @@ async function sendAutomatedBotMedia(params: {
         return true;
     } catch (error) {
         console.error("[Catalog] Failed to send automated media asset:", error);
+        // A storage failure after the provider accepted the send is not a delivery failure.
+        if (transportAccepted) throw error;
         await prisma.message.create({
             data: {
                 conversationId: params.conversationId,
-                content: `No se pudo adjuntar ${params.mediaCategory === "image" ? "la imagen" : "el PDF"} al cliente. Revisa el archivo configurado en el catálogo o fuente de conocimiento.`,
+                content: placeholderContent,
                 direction: "outbound",
                 status: "failed",
-                type: "system",
+                type: params.mediaCategory,
                 sourceType: source.sourceType,
                 sourceId: source.sourceId,
-                senderType: "system",
+                senderType: "bot",
+                mediaUrl: params.mediaUrl,
                 mediaFileName: params.mediaLabel || null,
             },
         });

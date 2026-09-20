@@ -288,6 +288,7 @@ export async function GET(request: NextRequest) {
                 lastMessageTime: conv.messages[0]?.createdAt || conv.updatedAt,
                 updatedAt: conv.updatedAt,
                 lastMessageType: conv.messages[0]?.type || "text",
+                lastMessageStatus: conv.messages[0]?.status || null,
                 lastMessageDirection: conv.messages[0]?.direction || "inbound",
                 lastMessageSenderType: conv.messages[0]?.senderType || null,
                 sourceType: conv.sourceType || "wuzapi",

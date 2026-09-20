@@ -30,7 +30,6 @@ import { ImageViewer } from "@/components/inbox/image-viewer";
 import { ChannelSourceIcon } from "@/components/inbox/channel-source-icon";
 import { TemplatePicker } from "@/components/inbox/template-picker";
 import { WhatsAppFormattedText } from "@/components/shared/whatsapp-formatted-text";
-import { formatBotReplyForReadability } from "@/lib/ai/reply-format";
 import { getSafeMediaUrl } from "@/lib/media-url";
 import {
     normalizeMessageSourceType,
@@ -380,6 +379,7 @@ type ConversationRecord = {
     updatedAt?: string | Date | null;
     lastMessageDirection?: string | null;
     lastMessageType?: string | null;
+    lastMessageStatus?: string | null;
     lastMessageSenderType?: string | null;
     sourceType?: string | null;
     sourceId?: string | null;
@@ -419,6 +419,7 @@ function transformConversation(conv: ConversationRecord): Conversation {
             senderId: null,
             direction: conv.lastMessageDirection || "inbound",
             type: conv.lastMessageType || "text",
+            status: conv.lastMessageStatus || null,
             sourceType: normalizeUiSourceType(conv.lastMessageSourceType),
             sourceId: conv.lastMessageSourceId || null,
             senderType: conv.lastMessageSenderType || null,
@@ -552,6 +553,11 @@ function getAvatarColor(name: string | null | undefined): string {
 function getLastMessagePreview(conv: Conversation): string {
     const msg = conv.messages[0];
     if (!msg) return "Sin mensajes";
+    if (msg.status === "failed") {
+        if (msg.type === "image") return "⚠️ Imagen no enviada";
+        if (msg.type === "document") return "⚠️ Documento no enviado";
+        return "⚠️ Mensaje no enviado";
+    }
     if (conv.lastMessageType === "image") return "📷 Imagen";
     if (conv.lastMessageType === "audio") return "🎙️ Audio";
     if (conv.lastMessageType === "video") return "🎥 Video";
@@ -832,8 +838,20 @@ function MediaContent({ msg, onImageClick }: { msg: Message, onImageClick?: (msg
     const isOutbound = msg.direction === "outbound";
     const cleanUrl = getCleanMediaUrl(msg.mediaUrl);
 
-    if (msg.type === "image" && msg.status === "failed") {
-        return <span className="text-sm">No se pudo enviar esta imagen.</span>;
+    if ((msg.type === "image" || msg.type === "document") && msg.status === "failed") {
+        return (
+            <div className="space-y-1 text-sm">
+                <p className="font-semibold text-destructive">
+                    {msg.type === "image" ? "Imagen no enviada" : "Documento no enviado"}
+                </p>
+                {msg.mediaFileName && <p>{msg.mediaFileName}</p>}
+                {cleanUrl && /^https?:\/\//i.test(cleanUrl) && (
+                    <a href={cleanUrl} target="_blank" rel="noopener noreferrer" className="underline">
+                        Revisar enlace de origen
+                    </a>
+                )}
+            </div>
+        );
     }
 
     if (msg.type === "image" && cleanUrl) {
@@ -893,10 +911,7 @@ function MediaContent({ msg, onImageClick }: { msg: Message, onImageClick?: (msg
         );
     }
 
-    const displayContent = isOutbound && msg.senderType === "bot" && msg.type === "text"
-        ? formatBotReplyForReadability(msg.content)
-        : msg.content;
-    return <WhatsAppFormattedText text={displayContent} className="whitespace-pre-wrap" />;
+    return <WhatsAppFormattedText text={msg.content} className="whitespace-pre-wrap" />;
 }
 
 // ──────────── Mic Permission Banner ────────────
@@ -3236,7 +3251,13 @@ export default function InboxPage() {
                                                             </div>
                                                         ) : (
                                                             <div className="flex justify-center">
-                                                                <div className="max-w-[90%] rounded-full border border-border bg-secondary/90 px-4 py-2 text-center text-[12px] font-medium text-foreground shadow-soft dark:border-border dark:bg-secondary dark:text-foreground">
+                                                                <div className={cn(
+                                                                    "max-w-[90%] rounded-full border px-4 py-2 text-center text-[12px] font-medium shadow-soft",
+                                                                    msg.status === "failed"
+                                                                        ? "border-destructive/60 bg-destructive/10 text-destructive"
+                                                                        : "border-border bg-secondary/90 text-foreground dark:border-border dark:bg-secondary dark:text-foreground",
+                                                                )}>
+                                                                    {msg.status === "failed" && <AlertTriangle className="mr-1 inline h-3.5 w-3.5" />}
                                                                     {msg.content}
                                                                 </div>
                                                             </div>
