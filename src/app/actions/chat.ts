@@ -7,6 +7,11 @@ import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { enrichContactFromMessage } from "@/lib/ai-enrichment";
 import { resolveMediaToDataUrl } from "@/lib/media-data-url";
+import { formatBotReplyForReadability } from "@/lib/ai/reply-format";
+import {
+    identifyAutomatedMediaMimeType,
+    normalizeAutomatedMediaDataUrl,
+} from "@/lib/automated-media-validation";
 import {
     findBestCatalogItem,
     findBestCatalogItemInDevelopment,
@@ -1279,18 +1284,33 @@ async function sendAutomatedBotMedia(params: {
     const source = await getAutomatedConversationSource(params.conversationId);
 
     try {
-        const resolvedMedia = await resolveMediaToDataUrl(params.mediaUrl);
-        try {
-            const persisted = await persistAutomatedMediaToUploads({
-                sourceUrl: params.mediaUrl,
-                dataUrl: resolvedMedia.dataUrl,
-                fileName: resolvedMedia.fileName,
-                mimeType: resolvedMedia.mimeType,
-            });
-            storedMediaUrl = persisted.mediaUrl;
-        } catch (persistError) {
-            console.warn("[Catalog] Failed to persist automated media locally:", persistError);
-        }
+        const downloadedMedia = await resolveMediaToDataUrl(params.mediaUrl);
+        const verifiedMimeType = identifyAutomatedMediaMimeType(
+            params.mediaCategory,
+            downloadedMedia.dataUrl,
+        );
+        const verifiedExtension = verifiedMimeType === "image/jpeg"
+            ? ".jpg"
+            : verifiedMimeType === "image/png"
+                ? ".png"
+                : verifiedMimeType === "image/gif"
+                    ? ".gif"
+                    : verifiedMimeType === "image/webp"
+                        ? ".webp"
+                        : ".pdf";
+        const resolvedMedia = {
+            ...downloadedMedia,
+            dataUrl: normalizeAutomatedMediaDataUrl(downloadedMedia.dataUrl, verifiedMimeType),
+            fileName: `${path.parse(downloadedMedia.fileName).name || "archivo"}${verifiedExtension}`,
+            mimeType: verifiedMimeType,
+        };
+        const persisted = await persistAutomatedMediaToUploads({
+            sourceUrl: params.mediaUrl,
+            dataUrl: resolvedMedia.dataUrl,
+            fileName: resolvedMedia.fileName,
+            mimeType: resolvedMedia.mimeType,
+        });
+        storedMediaUrl = persisted.mediaUrl;
 
         const result = source.sourceType === "meta"
             ? await sendMetaMediaMessage({
@@ -1342,14 +1362,13 @@ async function sendAutomatedBotMedia(params: {
         await prisma.message.create({
             data: {
                 conversationId: params.conversationId,
-                content: placeholderContent,
+                content: `No se pudo adjuntar ${params.mediaCategory === "image" ? "la imagen" : "el PDF"} al cliente. Revisa el archivo configurado en el catálogo o fuente de conocimiento.`,
                 direction: "outbound",
                 status: "failed",
-                type: params.mediaCategory,
+                type: "system",
                 sourceType: source.sourceType,
                 sourceId: source.sourceId,
-                senderType: "bot",
-                mediaUrl: storedMediaUrl,
+                senderType: "system",
                 mediaFileName: params.mediaLabel || null,
             },
         });
@@ -1437,17 +1456,11 @@ async function maybeSendKnowledgeImageFromTextSources(params: {
         }
 
         const entriesByUrl = new Map<string, KnowledgeImageEntry>();
-        const entriesByNormalizedUrl = new Map<string, KnowledgeImageEntry>();
 
         for (const source of sources) {
             for (const entry of extractKnowledgeImageEntries(source.rawContent)) {
                 if (!entriesByUrl.has(entry.imageUrl)) {
                     entriesByUrl.set(entry.imageUrl, entry);
-                }
-
-                const normalizedEntryUrl = normalizeKnowledgeImageUrl(entry.imageUrl);
-                if (normalizedEntryUrl && !entriesByNormalizedUrl.has(normalizedEntryUrl)) {
-                    entriesByNormalizedUrl.set(normalizedEntryUrl, entry);
                 }
             }
         }
@@ -1457,33 +1470,11 @@ async function maybeSendKnowledgeImageFromTextSources(params: {
             return false;
         }
 
-        const preferredEntries = [...new Set(
+        const alreadyTriedUrls = new Set(
             (params.preferredImageUrls || [])
                 .map((rawUrl) => normalizeKnowledgeImageUrl(rawUrl))
                 .filter(Boolean),
-        )]
-            .map((normalizedUrl) => entriesByNormalizedUrl.get(normalizedUrl))
-            .filter((entry): entry is KnowledgeImageEntry => Boolean(entry));
-
-        for (const entry of preferredEntries) {
-            const alreadySent = await hasBotImageAlreadySentInConversation(params.conversationId, entry.imageUrl);
-            if (alreadySent) {
-                continue;
-            }
-
-            const sent = await sendAutomatedBotMedia({
-                conversationId: params.conversationId,
-                phone: params.phone,
-                mediaCategory: "image",
-                mediaUrl: entry.imageUrl,
-                mediaLabel: entry.label,
-                development: entry.label,
-            });
-
-            if (sent) {
-                return true;
-            }
-        }
+        );
 
         const matchContext = [params.latestUserMessage, params.assistantReplyText]
             .filter((value): value is string => Boolean(value && value.trim()))
@@ -1495,34 +1486,33 @@ async function maybeSendKnowledgeImageFromTextSources(params: {
             return false;
         }
 
-        let bestEntry: KnowledgeImageEntry | null = null;
-        let bestScore = 0;
+        const rankedEntries = entries
+            .map((entry) => ({ entry, score: scoreKnowledgeImageEntry(entry, normalizedNeedle, tokens) }))
+            .filter(({ entry, score }) =>
+                score >= KNOWLEDGE_IMAGE_MIN_SCORE &&
+                !alreadyTriedUrls.has(normalizeKnowledgeImageUrl(entry.imageUrl)),
+            )
+            .sort((left, right) => right.score - left.score)
+            .slice(0, 3);
 
-        for (const entry of entries) {
-            const score = scoreKnowledgeImageEntry(entry, normalizedNeedle, tokens);
-            if (score > bestScore) {
-                bestScore = score;
-                bestEntry = entry;
-            }
+        for (const { entry } of rankedEntries) {
+            const normalizedUrl = normalizeKnowledgeImageUrl(entry.imageUrl);
+            if (alreadyTriedUrls.has(normalizedUrl)) continue;
+            alreadyTriedUrls.add(normalizedUrl);
+            if (await hasBotImageAlreadySentInConversation(params.conversationId, entry.imageUrl)) continue;
+
+            const sent = await sendAutomatedBotMedia({
+                conversationId: params.conversationId,
+                phone: params.phone,
+                mediaCategory: "image",
+                mediaUrl: entry.imageUrl,
+                mediaLabel: entry.label,
+                development: entry.label,
+            });
+            if (sent) return true;
         }
 
-        if (!bestEntry || bestScore < KNOWLEDGE_IMAGE_MIN_SCORE) {
-            return false;
-        }
-
-        const alreadySent = await hasBotImageAlreadySentInConversation(params.conversationId, bestEntry.imageUrl);
-        if (alreadySent) {
-            return false;
-        }
-
-        return sendAutomatedBotMedia({
-            conversationId: params.conversationId,
-            phone: params.phone,
-            mediaCategory: "image",
-            mediaUrl: bestEntry.imageUrl,
-            mediaLabel: bestEntry.label,
-            development: bestEntry.label,
-        });
+        return false;
     } catch (error) {
         console.error("[KnowledgeImage] Failed to evaluate/send image from knowledge text sources:", error);
         return false;
@@ -2089,7 +2079,7 @@ async function maybeSendAutomatedReply(
         await sendAutomatedBotText({
             conversationId,
             phone: latestConversation.contact.phone,
-            content: replyToSend,
+            content: formatBotReplyForReadability(replyToSend),
         });
 
         if (shouldEscalate) {

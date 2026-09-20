@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { generateCompletion } from "@/lib/ai/openai";
+import { hasReliableNameEvidence } from "@/lib/ai/name-capture-guard";
 import type { AppSystemSettings } from "@/lib/system-settings";
 import {
     getBusinessDateKey,
@@ -227,6 +228,7 @@ function looksLikeStandaloneName(text: string, sourceText = text) {
 
     const parts = candidate.split(" ").filter(Boolean);
     if (parts.length === 0 || parts.length > 5) return false;
+    if (!hasReliableNameEvidence(candidate, sourceText)) return false;
 
     return parts.every((part) => /^[A-Za-zÁÉÍÓÚáéíóúÑñÜü.'-]+$/u.test(part));
 }

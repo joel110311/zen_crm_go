@@ -30,6 +30,7 @@ import { ImageViewer } from "@/components/inbox/image-viewer";
 import { ChannelSourceIcon } from "@/components/inbox/channel-source-icon";
 import { TemplatePicker } from "@/components/inbox/template-picker";
 import { WhatsAppFormattedText } from "@/components/shared/whatsapp-formatted-text";
+import { formatBotReplyForReadability } from "@/lib/ai/reply-format";
 import { getSafeMediaUrl } from "@/lib/media-url";
 import {
     normalizeMessageSourceType,
@@ -831,6 +832,10 @@ function MediaContent({ msg, onImageClick }: { msg: Message, onImageClick?: (msg
     const isOutbound = msg.direction === "outbound";
     const cleanUrl = getCleanMediaUrl(msg.mediaUrl);
 
+    if (msg.type === "image" && msg.status === "failed") {
+        return <span className="text-sm">No se pudo enviar esta imagen.</span>;
+    }
+
     if (msg.type === "image" && cleanUrl) {
         return (
             <div className="space-y-1">
@@ -888,7 +893,10 @@ function MediaContent({ msg, onImageClick }: { msg: Message, onImageClick?: (msg
         );
     }
 
-    return <WhatsAppFormattedText text={msg.content} className="whitespace-pre-wrap" />;
+    const displayContent = isOutbound && msg.senderType === "bot" && msg.type === "text"
+        ? formatBotReplyForReadability(msg.content)
+        : msg.content;
+    return <WhatsAppFormattedText text={displayContent} className="whitespace-pre-wrap" />;
 }
 
 // ──────────── Mic Permission Banner ────────────
