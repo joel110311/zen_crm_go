@@ -60,6 +60,9 @@ const DEPRECATED_CHAT_MODEL_MAP: Record<string, string> = {
 
 export function normalizeChatModelSelection(value?: string | null) {
     const trimmed = (value || "").trim();
+    if (/^(?:gemini:)?(?:models\/)?gemini-2\.5-flash(?:$|-)/i.test(trimmed)) {
+        return GEMINI_ROUTER_MODEL_ID;
+    }
     if (!trimmed) {
         return DEFAULT_CHAT_MODEL_ID;
     }
@@ -110,7 +113,10 @@ export function resolveChatModelSelection(value?: string | null) {
 }
 
 export function resolveGeminiRestModelPath(value?: string | null) {
-    const trimmed = (value || "").trim();
+    const trimmed = (value || "").trim().replace(/^gemini:/, "").replace(/^\/+/, "");
+    if (/^(?:models\/)?gemini-2\.5-flash(?:$|-)/i.test(trimmed)) {
+        return GEMINI_ROUTER_MODEL_PATH;
+    }
     if (!trimmed) {
         return GEMINI_ROUTER_MODEL_PATH;
     }

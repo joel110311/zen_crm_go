@@ -96,9 +96,6 @@ async function runGeminiInlinePrompt(
                     ],
                 },
             ],
-            generationConfig: {
-                temperature: 0.2,
-            },
         },
     });
 }

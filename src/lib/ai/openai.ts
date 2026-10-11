@@ -1,4 +1,5 @@
 import OpenAI, { toFile } from "openai";
+import { prepareGeminiPayload, prepareCompatibleChatPayload } from "@/lib/ai/gemini-config";
 import { prisma } from "@/lib/db";
 import { SYSTEM_SETTINGS_DEFAULTS, withSettingsDefaults } from "@/lib/system-settings";
 import {
@@ -164,7 +165,7 @@ export async function callGeminiGenerateContent(options: {
                 {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload),
+                    body: JSON.stringify(prepareGeminiPayload(modelPath, payload)),
                     signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
                 },
             );
@@ -299,9 +300,6 @@ async function runGeminiInlineMediaPrompt(
                     ],
                 },
             ],
-            generationConfig: {
-                temperature: 0.1,
-            },
         },
     });
 }
@@ -482,7 +480,6 @@ async function callSelectedChatProvider(
             timeoutMs,
             payload: {
                 contents: [{ role: "user", parts: [{ text: buildGeminiConversationPrompt(messages) }] }],
-                generationConfig: { temperature },
             },
         });
     }
@@ -520,12 +517,12 @@ async function callOpenAiCompatibleProvider(options: {
             "content-type": "application/json",
             "ngrok-skip-browser-warning": "true",
         },
-        body: JSON.stringify({
+        body: JSON.stringify(prepareCompatibleChatPayload(options.baseUrl, {
             model: options.model.trim(),
             messages: ensureOpenAiCompatibleUserMessage(options.messages),
             temperature: options.temperature,
             stream: false,
-        }),
+        })),
         signal: AbortSignal.timeout(options.timeoutMs),
         cache: "no-store",
     });
